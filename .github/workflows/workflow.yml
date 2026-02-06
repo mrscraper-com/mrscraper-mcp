@@ -29,7 +29,7 @@ jobs:
             docker push $TAG
           EOF
 
-          ssh denver-1 << 'EOF'
+          ssh kubernetes << 'EOF'
             export COMMIT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
             export TAG=registry.mrbrowser.com/mrscraper-mcp:$COMMIT_SHA
             export COMPOSE="compose.yaml"
