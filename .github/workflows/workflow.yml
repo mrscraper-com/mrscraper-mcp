@@ -1,0 +1,39 @@
+name: Deploy mcp
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Build + Deploy
+        run: |
+          ssh gthost-langgraph-dev << 'EOF'
+            export COMMIT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+            export TAG=registry.mrbrowser.com/mrscraper-mcp:$COMMIT_SHA
+            export COMPOSE="-f compose.yaml"
+
+            echo $TAG
+
+            cd /home/ubuntu/mrscraper-mcp/docker
+            git fetch
+            git reset --hard
+            git checkout $COMMIT_SHA
+
+            docker compose $COMPOSE build
+            docker tag docker-mrscraper-mcp:latest $TAG
+            docker push $TAG
+          EOF
+
+          ssh denver-1 << 'EOF'
+            export COMMIT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+            export TAG=registry.mrbrowser.com/mrscraper-mcp:$COMMIT_SHA
+            export COMPOSE="compose.yaml"
+
+            kubectl set image deploy/mrscraper-mcp mrscraper-mcp=$TAG
+            kubectl rollout status deploy/mrscraper-mcp
+          EOF
