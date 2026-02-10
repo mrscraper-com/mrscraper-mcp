@@ -168,6 +168,7 @@ async def create_scraper(
                    Depth 0 = only the starting URL, depth 1 = starting URL + direct links,
                    depth 2 = starting URL + direct links + links from those pages, etc.
                    Use lower values (1-2) for focused scraping, higher values (3-5) for broader crawling.
+                   Be wary that it will be exponentially more expensive to scrape deeper levels. Thus, for now let's keep it at <= 3.
         max_pages: Maximum number of pages to scrape during the crawling process (default: 50).
                    This limits the total pages processed regardless of depth.
                    Use lower values (10-50) for quick scraping, higher values (100-500) for comprehensive crawling.
@@ -186,7 +187,7 @@ async def create_scraper(
                           Use double pipe (||) to separate multiple patterns.
                           Examples: "*/cart/*||*/checkout/*||*/admin/*||*.pdf"
                           Useful for filtering out irrelevant pages, admin areas, or file downloads.
-                          
+
     Returns:
         A dictionary containing:
         - status_code: HTTP status code of the response
