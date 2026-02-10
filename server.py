@@ -133,6 +133,11 @@ async def create_scraper(
     message: str,
     agent: Literal["general", "listing", "map"] = "general",
     proxy_country: str = None,
+    max_depth: int = 2,
+    max_pages: int = 50,
+    limit: int = 1000,
+    include_patterns: str = "",
+    exclude_patterns: str = "",
 ) -> dict:
     """
     Creates an AI-powered scraper that intelligently extracts structured data from a website based on natural language instructions.
@@ -149,12 +154,39 @@ async def create_scraper(
                Available agents may include specialized types for different use cases.
                Use 'general' for most standard web scraping tasks. The go to agent if the user doesn't specify or the connected LLM is not confident about the type of page. But mostly used for scraping product page, but handles any type of page very well as well.
                Use 'listing' for scraping listing pages like product listings, job listings, etc. Choose this if the connected LLM can confidently identify whether the given URL is a listing page.
-               Use 'map' for crawling and getting all subdomain or subpages of a website. Choose this if the user specifies that the given URL is a website and not a specific page.
+               Use 'map' for crawling and getting all subdomain or subpages of a website. Choose this if the user specifies that the given URL is a website and not a specific page. For 'map' agent type, there is a special args that can be used to configure the scraping process.
         proxy_country: ISO country code for proxy-based scraping (optional).
                        If provided, the scraper will use a proxy from the specified country.
                        Examples: 'US', 'GB', 'ID', 'SG', etc.
                        Leave as None to use default proxy settings.
-        
+
+    Special Args (for 'map' agent type):
+        token: Your MrScraper API token (required for authentication)
+        url: The target URL to scrape (e.g., 'https://www.example.com/products')
+        agent: The AI agent type to use for scraping (for this case it is 'map).
+        max_depth: Maximum depth level for crawling links from the starting URL (default: 2).
+                   Depth 0 = only the starting URL, depth 1 = starting URL + direct links,
+                   depth 2 = starting URL + direct links + links from those pages, etc.
+                   Use lower values (1-2) for focused scraping, higher values (3-5) for broader crawling.
+        max_pages: Maximum number of pages to scrape during the crawling process (default: 50).
+                   This limits the total pages processed regardless of depth.
+                   Use lower values (10-50) for quick scraping, higher values (100-500) for comprehensive crawling.
+        limit: Maximum number of data records to extract across all pages (default: 1000).
+                Once this limit is reached, scraping stops even if more pages are available.
+                Use this to control the size of your dataset.
+        include_patterns: URL patterns to include when following links (optional, default: empty string).
+                          Only URLs matching these patterns will be crawled.
+                          Provide a regex pattern for exclusion.
+                          Use double pipe (||) to separate multiple patterns.
+                          Examples: "*/products/*||*/blog/*||https://example.com/category/*"
+                          Leave empty to include all links (subject to exclude_patterns).
+        exclude_patterns: URL patterns to exclude when following links (optional, default: empty string).
+                          URLs matching these patterns will be skipped during crawling.
+                          Provide a regex pattern for exclusion.
+                          Use double pipe (||) to separate multiple patterns.
+                          Examples: "*/cart/*||*/checkout/*||*/admin/*||*.pdf"
+                          Useful for filtering out irrelevant pages, admin areas, or file downloads.
+                          
     Returns:
         A dictionary containing:
         - status_code: HTTP status code of the response
@@ -183,12 +215,23 @@ async def create_scraper(
         "accept": "application/json",
         "x-api-token": token,
     }
-    payload = {
-        "url": url,
-        "message": message,
-        "agent": agent,
-        "proxyCountry": proxy_country,
-    }
+    if agent == "general" or agent == "listing":
+        payload = {
+            "url": url,
+            "message": message,
+            "agent": agent,
+            "proxyCountry": proxy_country,
+        }
+    elif agent == "map":
+        payload = {
+            "url": url,
+            "agent": agent,
+            "maxDepth": max_depth,
+            "maxPages": max_pages,
+            "limit": limit,
+            "includePatterns": include_patterns,
+            "excludePatterns": exclude_patterns,
+        }
 
     async with httpx.AsyncClient() as client:
         try:
