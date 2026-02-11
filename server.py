@@ -74,6 +74,12 @@ async def fetch_html(
             geo_code="GB",
             block_resources=True
         )
+
+    Notes:
+        - This MCP directly returns the raw HTML content. The HTML can be extremely large (both in character count and token size).
+        - For LLMs calling this endpoint, it is NOT recommended to pass the entire result into your prompt/context, as it may overwhelm context length and degrade performance.
+        - Instead, consider saving the HTML to a file without reading it into the LLM, or use external storage methods. Only process or summarize essential parts.
+        - Consider preprocessing/extracting specific elements before feeding text to the LLM.
     """
     base_url = "https://api.mrscraper.com"
     
