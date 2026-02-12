@@ -1,11 +1,12 @@
 ---
 name: mrscraper
-description: Use the MrScraper Skill to unblock webpages, run AI scrapers, rerun existing scrapers, execute manual workflows, and fetch results.
+description: Run AI-powered, unblockable web scraping, data extraction with natural language via the MrScraper API
+tags: [scraping, data-extraction, web-crawling, stealth-browser, web-automation]
 ---
 
 # MrScraper
 
-Use this skill to run MrScraper jobs and retrieve outputs through the MrScraper API
+Run AI-powered, unblockable web scraping, data extraction with natural language via the MrScraper API
 
 ## Purpose
 
@@ -92,13 +93,13 @@ Opens a target URL through stealth browsing and IP rotation, then returns HTML. 
 
 #### Query parameters:
 
-| Field            | Type      | Required | Default | Description                            |
-| ---------------- | --------- | -------- | ------- | -------------------------------------- |
-| `token`          | `string`  | Yes      | —       | Unblocker token (`MRSCRAPER_API_TOKEN`)    |
-| `url`            | `string`  | Yes      | —       | URL-encoded target URL                 |
-| `timeout`        | `number`  | No       | 60      | Max wait in seconds (example `120`)    |
-| `geoCode`        | `string`  | No       | None    | Geographic routing code (example `SG`) |
-| `blockResources` | `boolean` | No       | false   | Block non-essential resources          |
+| Field            | Type      | Required | Default | Description                             |
+| ---------------- | --------- | -------- | ------- | --------------------------------------- |
+| `token`          | `string`  | Yes      | —       | Unblocker token (`MRSCRAPER_API_TOKEN`) |
+| `url`            | `string`  | Yes      | —       | URL-encoded target URL                  |
+| `timeout`        | `number`  | No       | 60      | Max wait in seconds (example `120`)     |
+| `geoCode`        | `string`  | No       | None    | Geographic routing code (example `SG`)  |
+| `blockResources` | `boolean` | No       | false   | Block non-essential resources           |
 
 #### Request example:
 
@@ -132,12 +133,12 @@ Create a new AI scraper run from natural-language instructions.
 
 #### Payload parameters (for `agent`: `general` or `agent`: `listing`):
 
-| Field          | Type     | Required | Default   | Description                                                                               |
-| -------------- | -------- | -------- | --------- | ----------------------------------------------------------------------------------------- |
-| `url`          | `string` | Yes      | —         | Target URL                                                                                |
-| `message`      | `string` | Yes      | —         | Extraction instruction                                                                    |
-| `agent`        | `string` | No       | general   | The AI agent type to use for scraping: `general`, `listing`, or `map`                     |
-| `proxyCountry` | `string` | No       | None      | ISO country code for proxy-based scraping                                                 |
+| Field          | Type     | Required | Default  | Description                                                |
+| -------------- | -------- | -------- | -------- | ---------------------------------------------------------- |
+| `url`          | string   | Yes      | —        | Target URL                                                 |
+| `message`      | string   | Yes      | —        | Extraction instruction                                     |
+| `agent`        | string   | No       | general  | The AI agent type to use for scraping: `general`, `listing`, or `map`  |
+| `proxyCountry` | string   | No       | None     | ISO country code for proxy-based scraping                  |
 
 #### Payload parameters (for `agent`: `map`):
 
