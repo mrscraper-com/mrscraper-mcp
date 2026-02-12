@@ -8,7 +8,7 @@ tags: [scraping, data-extraction, web-crawling, stealth-browser, web-automation]
 
 Run AI-powered, unblockable web scraping, data extraction with natural language via the MrScraper API
 
-## Purpose
+## Actions
 
 This skill supports:
 
