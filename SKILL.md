@@ -2,6 +2,20 @@
 name: mrscraper
 description: Run AI-powered, unblockable web scraping, data extraction with natural language via the MrScraper API
 tags: [scraping, data-extraction, web-crawling, stealth-browser, web-automation]
+
+required_env_vars:
+  - name: MRSCRAPER_API_TOKEN
+    description: "API token used for both Unblocker (query param token=...) and Platform API (x-api-token header). Treat as a secret."
+    secret: true
+
+primary_credential:
+  type: env
+  name: MRSCRAPER_API_TOKEN
+
+network:
+  allowed_hosts:
+    - api.mrscraper.com
+    - api.app.mrscraper.com
 ---
 
 # MrScraper
