@@ -4,6 +4,7 @@ This server provides web scraping capabilities through the MrScraper API.
 It allows you to scrape web pages with configurable options like geolocation,
 timeout settings, and resource blocking.
 """
+
 import os
 from typing import Literal
 from urllib.parse import urlencode
@@ -24,7 +25,7 @@ mcp = FastMCP(
         "geolocation-based scraping, configurable timeouts, and resource blocking options. "
         "Perfect for extracting content from websites that require JavaScript rendering, "
         "geographic restrictions, or complex page structures."
-    )
+    ),
 )
 
 
@@ -34,12 +35,12 @@ async def fetch_html(
     url: str,
     timeout: int = 120,
     geo_code: str = "US",
-    block_resources: bool = False
+    block_resources: bool = False,
 ) -> dict:
     """
     MrScraper Fetch HTML Tool. It features stealth, unblocking, and rendering capabilities. The main response is the HTML of the page.
     It features timeout, geolocation-based access, and resource management.
-    
+
     Args:
         token: Your MrScraper API token (required for authentication)
         url: The target URL to scrape (e.g., 'https://www.example.com/page')
@@ -48,14 +49,14 @@ async def fetch_html(
                   Examples: 'US', 'GB', 'ID', 'SG', etc.
         block_resources: Whether to block loading of images, CSS, fonts, and other resources
                          to speed up scraping (default: False)
-        
+
     Returns:
         A dictionary containing:
         - status_code: HTTP status code of the response
         - data: The scraped HTML content or JSON response
         - headers: Response headers from the API
         - error: Error message if the request failed (if applicable)
-        
+
     Example:
         Fetch HTML content from a geolocation-restricted website:
         fetch_html(
@@ -65,7 +66,7 @@ async def fetch_html(
             timeout=120,
             block_resources=False
         )
-        
+
         Fast scraping with resource blocking enabled:
         fetch_html(
             token="atk_your_token_here",
@@ -82,7 +83,7 @@ async def fetch_html(
         - Consider preprocessing/extracting specific elements before feeding text to the LLM.
     """
     base_url = "https://api.mrscraper.com"
-    
+
     # Build query parameters
     params = {
         "token": token,
@@ -91,16 +92,16 @@ async def fetch_html(
         "url": url,
         "blockResources": str(block_resources).lower(),
     }
-    
+
     # Construct the full URL with query parameters
     full_url = f"{base_url}?{urlencode(params)}"
-    
+
     async with httpx.AsyncClient() as client:
         try:
             # Use a longer timeout since scraping can take time
             response = await client.get(full_url, timeout=float(timeout + 30))
             response.raise_for_status()
-            
+
             # Try to parse as JSON first, fallback to text
             content_type = response.headers.get("content-type", "").lower()
             if "application/json" in content_type:
@@ -113,7 +114,7 @@ async def fetch_html(
                     "error": "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token.",
                     "status_code": response.status_code,
                 }
-            
+
             return {
                 "status_code": response.status_code,
                 "data": data,
@@ -123,7 +124,9 @@ async def fetch_html(
         except httpx.HTTPError as e:
             return {
                 "error": str(e),
-                "status_code": getattr(e.response, "status_code", None) if hasattr(e, "response") else None,
+                "status_code": getattr(e.response, "status_code", None)
+                if hasattr(e, "response")
+                else None,
             }
         except Exception as e:
             return {
@@ -149,7 +152,7 @@ async def create_scraper(
     Creates an AI-powered scraper that intelligently extracts structured data from a website based on natural language instructions.
     The scraper uses AI agents to understand the page structure and extract the requested information automatically.
     This is ideal for extracting data from complex websites without writing custom selectors.
-    
+
     Args:
         token: Your MrScraper API token (required for authentication)
         url: The target URL to scrape (e.g., 'https://www.example.com/products')
@@ -201,7 +204,7 @@ async def create_scraper(
                 The scraper ID is essential for subsequent operations like rerun_scraper.
         - headers: Response headers from the API
         - error: Error message if the request failed (if applicable)
-        
+
     Example:
         Create a scraper to extract product information from an e-commerce page:
         create_scraper(
@@ -242,7 +245,9 @@ async def create_scraper(
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(endpoint_url, headers=headers, json=payload, timeout=600)
+            response = await client.post(
+                endpoint_url, headers=headers, json=payload, timeout=600
+            )
             response.raise_for_status()
 
             # Try to parse as JSON first, fallback to text
@@ -257,7 +262,7 @@ async def create_scraper(
                     "error": "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token.",
                     "status_code": response.status_code,
                 }
-            
+
             return {
                 "status_code": response.status_code,
                 "data": data,
@@ -267,7 +272,9 @@ async def create_scraper(
         except httpx.HTTPError as e:
             return {
                 "error": str(e),
-                "status_code": getattr(e.response, "status_code", None) if hasattr(e, "response") else None,
+                "status_code": getattr(e.response, "status_code", None)
+                if hasattr(e, "response")
+                else None,
             }
         except Exception as e:
             return {
@@ -292,7 +299,7 @@ async def rerun_scraper(
     This allows you to apply the same scraping logic (created via create_scraper) to different pages
     or websites, with control over how deep and wide the scraper should crawl.
     Use this when you want to reuse a scraper configuration on multiple URLs or crawl a website structure.
-    
+
     Args:
         token: Your MrScraper API token (required for authentication)
         scraper_id: The ID of the scraper to rerun (obtained from create_scraper response).
@@ -327,7 +334,7 @@ async def rerun_scraper(
                           Use double pipe (||) to separate multiple patterns.
                           Examples: "*/cart/*||*/checkout/*||*/admin/*||*.pdf"
                           Useful for filtering out irrelevant pages, admin areas, or file downloads.
-        
+
     Returns:
         A dictionary containing:
         - status_code: HTTP status code of the response
@@ -335,7 +342,7 @@ async def rerun_scraper(
                 The results can be retrieved using get_all_results or get_result_by_id.
         - headers: Response headers from the API
         - error: Error message if the request failed (if applicable)
-        
+
     Example:
         Rerun a product scraper on a category page, crawling up to 3 levels deep:
         rerun_scraper(
@@ -370,9 +377,10 @@ async def rerun_scraper(
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(endpoint_url, headers=headers, json=payload, timeout=600)
+            response = await client.post(
+                endpoint_url, headers=headers, json=payload, timeout=600
+            )
             response.raise_for_status()
-
 
             # Try to parse as JSON first, fallback to text
             content_type = response.headers.get("content-type", "").lower()
@@ -386,7 +394,7 @@ async def rerun_scraper(
                     "error": "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token.",
                     "status_code": response.status_code,
                 }
-            
+
             return {
                 "status_code": response.status_code,
                 "data": data,
@@ -396,7 +404,9 @@ async def rerun_scraper(
         except httpx.HTTPError as e:
             return {
                 "error": str(e),
-                "status_code": getattr(e.response, "status_code", None) if hasattr(e, "response") else None,
+                "status_code": getattr(e.response, "status_code", None)
+                if hasattr(e, "response")
+                else None,
             }
         except Exception as e:
             return {
@@ -406,7 +416,7 @@ async def rerun_scraper(
 
 
 @mcp.tool
-async def bulk_rerun_scraper(
+async def bulk_rerun_ai_scraper(
     token: str,
     scraper_id: str,
     urls: list[str],
@@ -416,7 +426,7 @@ async def bulk_rerun_scraper(
     This is more efficient than calling rerun_scraper multiple times, as it processes all URLs
     in parallel and returns consolidated results. Ideal for scraping multiple pages, products, or
     articles with the same extraction logic.
-    
+
     Args:
         token: Your MrScraper API token (required for authentication)
         scraper_id: The ID of the scraper to rerun (obtained from create_scraper response).
@@ -426,7 +436,7 @@ async def bulk_rerun_scraper(
               Each URL will be processed independently using the scraper's extraction logic.
               Examples: ["https://example.com/page1", "https://example.com/page2", "https://example.com/page3"]
               All URLs should be compatible with the scraper's original extraction instructions.
-        
+
     Returns:
         A dictionary containing:
         - status_code: HTTP status code of the response
@@ -435,7 +445,7 @@ async def bulk_rerun_scraper(
                 The response may include per-URL status information.
         - headers: Response headers from the API
         - error: Error message if the request failed (if applicable)
-        
+
     Example:
         Bulk scrape multiple product pages with the same scraper:
         bulk_rerun_scraper(
@@ -464,7 +474,9 @@ async def bulk_rerun_scraper(
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(endpoint_url, headers=headers, json=payload, timeout=600)
+            response = await client.post(
+                endpoint_url, headers=headers, json=payload, timeout=600
+            )
             response.raise_for_status()
 
             # Try to parse as JSON first, fallback to text
@@ -479,7 +491,7 @@ async def bulk_rerun_scraper(
                     "error": "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token.",
                     "status_code": response.status_code,
                 }
-            
+
             return {
                 "status_code": response.status_code,
                 "data": data,
@@ -489,7 +501,9 @@ async def bulk_rerun_scraper(
         except httpx.HTTPError as e:
             return {
                 "error": str(e),
-                "status_code": getattr(e.response, "status_code", None) if hasattr(e, "response") else None,
+                "status_code": getattr(e.response, "status_code", None)
+                if hasattr(e, "response")
+                else None,
             }
         except Exception as e:
             return {
@@ -509,7 +523,7 @@ async def rerun_manual_scraper(
     Manual scrapers are created through the MrScraper web interface with specific CSS selectors,
     XPath expressions, or extraction rules. This tool applies those manual configurations to
     a different URL. Use this for scrapers that were created manually, not via create_scraper.
-    
+
     Args:
         token: Your MrScraper API token (required for authentication)
         scraper_id: The ID of the manual scraper to rerun (obtained from the MrScraper dashboard).
@@ -518,7 +532,7 @@ async def rerun_manual_scraper(
         url: The target URL to scrape with the manual scraper configuration.
              The page structure should be similar to the original scraper's target page
              for the manual selectors/rules to work correctly.
-        
+
     Returns:
         A dictionary containing:
         - status_code: HTTP status code of the response
@@ -526,7 +540,7 @@ async def rerun_manual_scraper(
                 The results can be retrieved using get_all_results or get_result_by_id.
         - headers: Response headers from the API
         - error: Error message if the request failed (if applicable)
-        
+
     Example:
         Rerun a manually configured scraper on a new product page:
         rerun_manual_scraper(
@@ -551,9 +565,11 @@ async def rerun_manual_scraper(
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(endpoint_url, headers=headers, json=payload, timeout=600)
+            response = await client.post(
+                endpoint_url, headers=headers, json=payload, timeout=600
+            )
             response.raise_for_status()
-        
+
             # Try to parse as JSON first, fallback to text
             content_type = response.headers.get("content-type", "").lower()
             if "application/json" in content_type:
@@ -566,7 +582,7 @@ async def rerun_manual_scraper(
                     "error": "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token.",
                     "status_code": response.status_code,
                 }
-            
+
             return {
                 "status_code": response.status_code,
                 "data": data,
@@ -575,7 +591,103 @@ async def rerun_manual_scraper(
         except httpx.HTTPError as e:
             return {
                 "error": str(e),
-                "status_code": getattr(e.response, "status_code", None) if hasattr(e, "response") else None,
+                "status_code": getattr(e.response, "status_code", None)
+                if hasattr(e, "response")
+                else None,
+            }
+        except Exception as e:
+            return {
+                "error": f"Unexpected error: {str(e)}",
+                "status_code": None,
+            }
+
+
+@mcp.tool
+async def bulk_rerun_manual_scraper(
+    token: str,
+    scraper_id: str,
+    urls: list[str],
+) -> dict:
+    """
+    Reruns a manually configured scraper on multiple URLs simultaneously in a single batch operation.
+    This is more efficient than calling rerun_manual_scraper multiple times, as it processes all URLs
+    in parallel and returns consolidated results. Ideal for scraping multiple pages, products, or
+    articles with the same extraction logic.
+
+    Args:
+        token: Your MrScraper API token (required for authentication)
+        scraper_id: The ID of the manual scraper to rerun (obtained from the MrScraper dashboard).
+                    This must be a scraper created manually through the web interface, not an AI scraper.
+                    The scraper ID can be found in your scraper list at https://app.mrscraper.com
+        urls: A list of target URLs to scrape (required, must contain at least one URL).
+              Each URL will be processed independently using the scraper's extraction logic.
+              Examples: ["https://example.com/page1", "https://example.com/page2", "https://example.com/page3"]
+              All URLs should be compatible with the scraper's original extraction instructions.
+
+    Returns:
+        A dictionary containing:
+        - status_code: HTTP status code of the response
+        - data: Bulk scraping job information including job ID, status, and metadata for all URLs.
+                Results for individual URLs can be retrieved using get_all_results or get_result_by_id.
+                The response may include per-URL status information.
+        - headers: Response headers from the API
+        - error: Error message if the request failed (if applicable)
+
+    Example:
+        Bulk scrape multiple product pages with the same manual scraper:
+        bulk_rerun_manual_scraper(
+            token="atk_your_token_here",
+            scraper_id="scraper_12345",
+            urls=[
+                "https://www.example.com/products/item1",
+                "https://www.example.com/products/item2",
+                "https://www.example.com/products/item3"
+            ]
+        )
+    """
+
+    endpoint_url = "https://api.app.mrscraper.com/api/v1/scrapers-manual-rerun/bulk"
+    headers = {
+        "Content-Type": "application/json",
+        "accept": "application/json",
+        "x-api-token": token,
+    }
+    payload = {
+        "scraperId": scraper_id,
+        "urls": urls,
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                endpoint_url, headers=headers, json=payload, timeout=600
+            )
+            response.raise_for_status()
+
+            # Try to parse as JSON first, fallback to text
+            content_type = response.headers.get("content-type", "").lower()
+            if "application/json" in content_type:
+                data = response.json()
+            else:
+                data = response.text
+
+            if response.status_code == 401:
+                return {
+                    "error": "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token.",
+                    "status_code": response.status_code,
+                }
+
+            return {
+                "status_code": response.status_code,
+                "data": data,
+                "headers": dict(response.headers),
+            }
+        except httpx.HTTPError as e:
+            return {
+                "error": str(e),
+                "status_code": getattr(e.response, "status_code", None)
+                if hasattr(e, "response")
+                else None,
             }
         except Exception as e:
             return {
@@ -587,7 +699,17 @@ async def rerun_manual_scraper(
 @mcp.tool
 async def get_all_results(
     token: str,
-    sort_field: Literal["createdAt", "updatedAt", "id", "type", "url", "status", "error", "tokenUsage", "runtime"] = "updatedAt",
+    sort_field: Literal[
+        "createdAt",
+        "updatedAt",
+        "id",
+        "type",
+        "url",
+        "status",
+        "error",
+        "tokenUsage",
+        "runtime",
+    ] = "updatedAt",
     sort_order: Literal["ASC", "DESC"] = "DESC",
     page_size: int = 10,
     page: int = 1,
@@ -601,7 +723,7 @@ async def get_all_results(
     This tool allows you to browse, search, and filter all results from your scrapers, making it easy to
     find specific data or monitor scraping activity. Results are returned in pages for efficient handling
     of large datasets.
-    
+
     Args:
         token: Your MrScraper API token (required for authentication)
         sort_field: Field name to sort results by (default: 'updatedAt').
@@ -631,7 +753,7 @@ async def get_all_results(
                 Format should match API expectations (typically ISO 8601: 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS').
                 Only results with date_range_column <= end_at will be returned.
                 Requires date_range_column to be set. Leave as None to not filter by end date.
-        
+
     Returns:
         A dictionary containing:
         - status_code: HTTP status code of the response
@@ -641,7 +763,7 @@ async def get_all_results(
                 - Each result includes fields like result ID, scraper ID, URL, extracted data, timestamps
         - headers: Response headers from the API
         - error: Error message if the request failed (if applicable)
-        
+
     Example:
         Get the 20 most recently updated results from the last 7 days:
         get_all_results(
@@ -654,7 +776,7 @@ async def get_all_results(
             start_at="2024-01-01",
             end_at="2024-01-08"
         )
-        
+
         Search for results containing "product" and sort by creation date:
         get_all_results(
             token="atk_your_token_here",
@@ -691,7 +813,7 @@ async def get_all_results(
         try:
             response = await client.get(full_url, headers=headers, timeout=600)
             response.raise_for_status()
-        
+
             # Try to parse as JSON first, fallback to text
             content_type = response.headers.get("content-type", "").lower()
             if "application/json" in content_type:
@@ -704,7 +826,7 @@ async def get_all_results(
                     "error": "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token.",
                     "status_code": response.status_code,
                 }
-            
+
             return {
                 "status_code": response.status_code,
                 "data": data,
@@ -714,7 +836,9 @@ async def get_all_results(
         except httpx.HTTPError as e:
             return {
                 "error": str(e),
-                "status_code": getattr(e.response, "status_code", None) if hasattr(e, "response") else None,
+                "status_code": getattr(e.response, "status_code", None)
+                if hasattr(e, "response")
+                else None,
             }
         except Exception as e:
             return {
@@ -733,13 +857,13 @@ async def get_result_by_id(
     This tool provides complete result data including all extracted fields, metadata, timestamps,
     and associated scraper information. Use this when you have a result ID (from get_all_results
     or scraper execution responses) and need the full details of that specific result.
-    
+
     Args:
         token: Your MrScraper API token (required for authentication)
         result_id: The unique identifier of the result to retrieve (required).
                    Result IDs are returned in responses from scraper execution (rerun_scraper,
                    bulk_rerun_scraper, etc.) and in the results array from get_all_results.
-        
+
     Returns:
         A dictionary containing:
         - status_code: HTTP status code of the response
@@ -752,7 +876,7 @@ async def get_result_by_id(
                 - Any other fields specific to the result type
         - headers: Response headers from the API
         - error: Error message if the request failed (if applicable)
-        
+
     Example:
         Retrieve detailed information for a specific scraping result:
         get_result_by_id(
@@ -784,7 +908,7 @@ async def get_result_by_id(
                     "error": "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token.",
                     "status_code": response.status_code,
                 }
-            
+
             return {
                 "status_code": response.status_code,
                 "data": data,
@@ -793,7 +917,9 @@ async def get_result_by_id(
         except httpx.HTTPError as e:
             return {
                 "error": str(e),
-                "status_code": getattr(e.response, "status_code", None) if hasattr(e, "response") else None,
+                "status_code": getattr(e.response, "status_code", None)
+                if hasattr(e, "response")
+                else None,
             }
         except Exception as e:
             return {
@@ -806,7 +932,7 @@ if __name__ == "__main__":
     # Check if running in Docker/remote mode (HTTP transport)
     # or local mode (stdio transport)
     transport = os.getenv("TRANSPORT", "stdio").lower()
-    
+
     if transport == "http":
         # Run with HTTP transport for remote access
         port = int(os.getenv("PORT", 8000))
