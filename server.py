@@ -136,7 +136,7 @@ async def fetch_html(
 
 
 @mcp.tool
-async def create_scraper(
+async def create_ai_scraper(
     token: str,
     url: str,
     message: str,
@@ -284,7 +284,7 @@ async def create_scraper(
 
 
 @mcp.tool
-async def rerun_scraper(
+async def rerun_ai_scraper(
     token: str,
     scraper_id: str,
     url: str,
