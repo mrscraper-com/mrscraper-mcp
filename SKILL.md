@@ -208,7 +208,7 @@ curl -X POST "https://api.app.mrscraper.com/api/v1/scrapers-ai" \
 - Choose agent type correctly as each agent is specialized for specified use cases. Use `general` for most standard web scraping tasks. The go to agent if the user doesn't specify or the connected LLM is not confident about the type of page. But mostly used for scraping product page, but handles any type of page very well as well. Use `listing` for scraping listing pages like product listings, job listings, etc. Choose this if the connected LLM can confidently identify whether the given URL is a listing page. Use `map` for crawling and getting all subdomain or subpages of a website. Choose this if the user specifies that the given URL is a website and not a specific page. For `map` agent type, there is a special args that can be used to configure the scraping process.
 - For the `map` agent, you can use special arguments to control crawling:<br>`maxDepth` (lower values 1–2 for focused scraping, max 3 recommended),<br>`maxPages` (limits total pages regardless of depth),<br>`limit` (caps total records extracted),<br>and `includePatterns`/`excludePatterns` (regex patterns separated by `||` to specify which URLs to crawl or skip, e.g., `*/products/*||*/blog/*` or `*/cart/*||*.pdf`).<br>If `includePatterns` is an empty string, all URLs are included. If `excludePatterns` is an empty string, no URLs are excluded.
 
-### 3. Rerun Existing AI Scraper
+### 3. Rerun AI Scraper
 
 - Method: `POST`
 - Host: `https://api.app.mrscraper.com`
@@ -278,7 +278,7 @@ curl -X POST "https://api.app.mrscraper.com/api/v1/scrapers-ai-rerun" \
 }
 ```
 
-### 4. Bulk Rerun Existing AI Scraper
+### 4. Bulk Rerun AI Scraper
 
 - Method: `POST`
 - Host: `https://api.app.mrscraper.com`
@@ -291,7 +291,7 @@ Runs one scraper configuration over multiple URLs.
 
 | Field       | Type            | Required | Default | Description                       |
 | ----------- | --------------- | -------- | ------- | --------------------------------- |
-| `scraperId` | `string`        | Yes      | —       | Existing scraper configuration ID |
+| `scraperId` | `string`        | Yes      | —       | Existing AI scraper configuration ID |
 | `urls`      | `array[string]` | Yes      | —       | Target URLs to run                |
 
 #### Request example:
@@ -412,7 +412,52 @@ curl -X POST "https://api.app.mrscraper.com/api/v1/scrapers-manual-rerun" \
 }
 ```
 
-### 6. Fetch Results
+### 6. Bulk Rerun Manual Scraper
+
+- Method: `POST`
+- Host: `https://api.app.mrscraper.com`
+- Path: `/api/v1/scrapers-manual-rerun/bulk`
+- Auth: `x-api-token`
+
+Runs one scraper configuration over multiple URLs.
+
+#### Payload parameters:
+
+| Field       | Type            | Required | Default | Description                       |
+| ----------- | --------------- | -------- | ------- | --------------------------------- |
+| `scraperId` | `string`        | Yes      | —       | Existing manual scraper configuration ID |
+| `urls`      | `array[string]` | Yes      | —       | Target URLs to run                |
+
+#### Request example:
+
+```bash
+curl -X POST "https://api.app.mrscraper.com/api/v1/scrapers-manual-rerun/bulk" \
+  -H "x-api-token: " \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scraperId": "6695bf87-aaa6-46b0-b1ee-88586b222b0b",
+    "urls": [
+      "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+      "https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html",
+      "https://books.toscrape.com/catalogue/soumission_998/index.html"
+    ]
+  }'
+```
+
+#### Response example:
+
+```json
+{
+  "message": "Bulk rerun started successfully",
+  "data": {
+    "bulkResultId": "f89f8f58-3c9a-42e5-a72e-59fa6c389f09",
+    "status": "Running",
+    "totalUrls": 3
+  }
+}
+```
+
+### 7. Fetch Results
 
 - Method: `GET`
 - Host: `https://api.app.mrscraper.com`
@@ -481,7 +526,7 @@ curl -X GET "https://api.app.mrscraper.com/api/v1/results?sortField=updatedAt&so
 }
 ```
 
-### 7. Fetch Detailed Result by ID
+### 8. Fetch Detailed Result by ID
 
 - Method: `GET`
 - Host: `https://api.app.mrscraper.com`
