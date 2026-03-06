@@ -11,6 +11,8 @@ from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 import httpx
 
 load_dotenv()
@@ -27,6 +29,11 @@ mcp = FastMCP(
         "geographic restrictions, or complex page structures."
     ),
 )
+
+
+@mcp.custom_route(path="/.well-known/openai-apps-challenge", methods=["GET"])
+async def openai_apps_challenge(request: Request) -> PlainTextResponse:
+    return PlainTextResponse("UkKS1u5vKkqnhEPjgQC2mImFd4J0oNsjNHTfoL6df0s")
 
 
 @mcp.tool
