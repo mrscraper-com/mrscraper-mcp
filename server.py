@@ -15,7 +15,21 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 import httpx
 
+
 load_dotenv()
+
+# UI resource URI constant and helper for UI metadata
+UI_RESOURCE_URI = os.getenv("UI_RESOURCE_URI", "https://chatgpt-app-mcp-ui.vercel.app")
+
+def with_ui_metadata(payload: dict) -> dict:
+    return {
+        "structuredContent": payload,
+        "_meta": {
+            "ui": {
+                "resourceUri": UI_RESOURCE_URI,
+            }
+        },
+    }
 
 
 # Create the FastMCP server instance with instructions
@@ -265,29 +279,37 @@ async def create_ai_scraper(
                 data = response.text
 
             if response.status_code == 401:
-                return {
-                    "error": "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token.",
-                    "status_code": response.status_code,
-                }
+                return with_ui_metadata(
+                    {
+                        "error": "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token.",
+                        "status_code": response.status_code,
+                    }
+                )
 
-            return {
-                "status_code": response.status_code,
-                "data": data,
-                "headers": dict(response.headers),
-            }
+            return with_ui_metadata(
+                {
+                    "status_code": response.status_code,
+                    "data": data,
+                    "headers": dict(response.headers),
+                }
+            )
 
         except httpx.HTTPError as e:
-            return {
-                "error": str(e),
-                "status_code": getattr(e.response, "status_code", None)
-                if hasattr(e, "response")
-                else None,
-            }
+            return with_ui_metadata(
+                {
+                    "error": str(e),
+                    "status_code": getattr(e.response, "status_code", None)
+                    if hasattr(e, "response")
+                    else None,
+                }
+            )
         except Exception as e:
-            return {
-                "error": f"Unexpected error: {str(e)}",
-                "status_code": None,
-            }
+            return with_ui_metadata(
+                {
+                    "error": f"Unexpected error: {str(e)}",
+                    "status_code": None,
+                }
+            )
 
 
 @mcp.tool
