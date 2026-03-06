@@ -21,6 +21,7 @@ load_dotenv()
 # UI resource URI constant and helper for UI metadata
 UI_RESOURCE_URI = os.getenv("UI_RESOURCE_URI", "https://chatgpt-app-mcp-ui.vercel.app")
 
+
 def with_ui_metadata(payload: dict) -> dict:
     return {
         "structuredContent": payload,
@@ -43,11 +44,6 @@ mcp = FastMCP(
         "geographic restrictions, or complex page structures."
     ),
 )
-
-
-@mcp.custom_route(path="/.well-known/openai-apps-challenge", methods=["GET"])
-async def openai_apps_challenge(request: Request) -> PlainTextResponse:
-    return PlainTextResponse("UkKS1u5vKkqnhEPjgQC2mImFd4J0oNsjNHTfoL6df0s")
 
 
 @mcp.tool
