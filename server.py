@@ -312,7 +312,8 @@ async def _run_fetch_html_task(task_id: str) -> None:
                 "error": f"Unexpected error: {str(e)}",
                 "status_code": None,
             }
-
+    with open('test.html', 'w') as f:
+        f.write(str(task["result"]))
 
 @mcp.tool(
     app=AppConfig(resource_uri=UI_RESOURCE_URI),
