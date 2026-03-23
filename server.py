@@ -577,7 +577,7 @@ async def rerun_ai_scraper(
     Example:
         Rerun a product scraper on a category page, crawling up to 3 levels deep:
         rerun_scraper(
-            token="atk_your_token_here",
+            token="MRSCRAPER_API_TOKEN",
             scraper_id="scraper_12345",
             url="https://www.example.com/category/electronics",
             max_depth=3,
@@ -680,7 +680,7 @@ async def bulk_rerun_ai_scraper(
     Example:
         Bulk scrape multiple product pages with the same scraper:
         bulk_rerun_scraper(
-            token="atk_your_token_here",
+            token="MRSCRAPER_API_TOKEN",
             scraper_id="scraper_12345",
             urls=[
                 "https://www.example.com/products/item1",
@@ -775,7 +775,7 @@ async def rerun_manual_scraper(
     Example:
         Rerun a manually configured scraper on a new product page:
         rerun_manual_scraper(
-            token="atk_your_token_here",
+            token="MRSCRAPER_API_TOKEN",
             scraper_id="manual_scraper_67890",
             url="https://www.example.com/products/new-item"
         )
@@ -867,7 +867,7 @@ async def bulk_rerun_manual_scraper(
     Example:
         Bulk scrape multiple product pages with the same manual scraper:
         bulk_rerun_manual_scraper(
-            token="atk_your_token_here",
+            token="MRSCRAPER_API_TOKEN",
             scraper_id="scraper_12345",
             urls=[
                 "https://www.example.com/products/item1",
@@ -998,7 +998,7 @@ async def get_all_results(
     Example:
         Get the 20 most recently updated results from the last 7 days:
         get_all_results(
-            token="atk_your_token_here",
+            token="MRSCRAPER_API_TOKEN",
             sort_field="updatedAt",
             sort_order="DESC",
             page_size=20,
@@ -1010,7 +1010,7 @@ async def get_all_results(
 
         Search for results containing "product" and sort by creation date:
         get_all_results(
-            token="atk_your_token_here",
+            token="MRSCRAPER_API_TOKEN",
             search="product",
             sort_field="createdAt",
             sort_order="DESC",
@@ -1111,7 +1111,7 @@ async def get_result_by_id(
     Example:
         Retrieve detailed information for a specific scraping result:
         get_result_by_id(
-            token="atk_your_token_here",
+            token="MRSCRAPER_API_TOKEN",
             result_id="result_12345"
         )
     """

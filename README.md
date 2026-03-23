@@ -80,7 +80,7 @@ async def main():
             "scrape_url",
             {
                 "url": "https://www.takapedia.com/id-id/magic-chess-go-go",
-                "token": "atk_your_token_here",
+                "token": "MRSCRAPER_API_TOKEN",
                 "geo_code": "ID",
                 "timeout": 120,
                 "block_resources": False
