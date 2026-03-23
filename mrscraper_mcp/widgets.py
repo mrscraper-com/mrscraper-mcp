@@ -115,7 +115,7 @@ def register_widget_resources(mcp: FastMCP) -> None:
       <div>Progress</div><div id="progressText">0%</div>
     </div>
     <div>
-      <button id="loadResult" type="button" disabled>Load final result</button>
+      <button id="loadResult" type="button" disabled></button>
     </div>
     <div id="result" class="result" hidden></div>
   </div>
