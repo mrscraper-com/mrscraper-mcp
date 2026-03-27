@@ -2,7 +2,9 @@
 
 import os
 
-from mrscraper_mcp.app import mcp
+import uvicorn
+
+from mrscraper_mcp.app import app, mcp
 
 
 def run() -> None:
@@ -10,6 +12,6 @@ def run() -> None:
     if transport == "http":
         port = int(os.getenv("PORT", "8000"))
         host = os.getenv("HOST", "0.0.0.0")
-        mcp.run(transport="http", port=port, host=host)
+        uvicorn.run(app, host=host, port=port)
     else:
         mcp.run()
