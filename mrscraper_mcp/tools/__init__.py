@@ -24,6 +24,7 @@ def register_tools(mcp: FastMCP) -> None:
 
 
 def register_chatgpt_tools(mcp: FastMCP) -> None:
+    register_result_tools(mcp)
     register_fetch_html_ui_tool(mcp)
     register_ai_scraper_ui_tools(mcp)
     register_manual_scraper_ui_tools(mcp)

@@ -11,7 +11,6 @@ def register_job_tools(mcp: FastMCP) -> None:
         meta=async_tool_meta(
             "Checking scraper job...",
             "Scraper job status loaded.",
-            visibility=["app"],
         ),
         annotations={"readOnlyHint": True, "idempotentHint": True},
     )
@@ -20,11 +19,11 @@ def register_job_tools(mcp: FastMCP) -> None:
         include_result: bool = False,
     ) -> ToolResult:
         """
-        Retrieves current status for a background scraper job created by asynchronous tools.
+        Get the current state of an asynchronous scraper job.
 
-        Args:
-            job_id: Background job ID returned by tools like create_ai_scraper, rerun_ai_scraper, or fetch_html.
-            include_result: If True, include full result payload when available (can be large).
+        Use this when a tool has returned a `job_id` and you need the latest job state.
+        Returns progress and terminal status information. If the job has succeeded,
+        `get_scrape_job_result(job_id)` can be used to retrieve the final structured result.
         """
         job = await JOB_STORE.get(job_id)
         if not job:
@@ -56,7 +55,6 @@ def register_job_tools(mcp: FastMCP) -> None:
         meta=async_tool_meta(
             "Loading scraper result...",
             "Scraper result loaded.",
-            visibility=["app"],
         ),
         annotations={"readOnlyHint": True, "idempotentHint": True},
     )
@@ -64,10 +62,11 @@ def register_job_tools(mcp: FastMCP) -> None:
         job_id: str,
     ) -> ToolResult:
         """
-        Retrieves the final result payload for a completed background scraper job.
+        Get the final structured result of an asynchronous scraper job.
 
-        Args:
-            job_id: Background job ID returned by asynchronous scraper tools.
+        Use this when a completed job's output is needed for downstream reasoning or
+        follow-up tool calls. If the job is not finished, this returns the current job
+        state without the final result payload.
         """
         job = await JOB_STORE.get(job_id)
         if not job:
@@ -96,7 +95,6 @@ def register_job_tools(mcp: FastMCP) -> None:
         meta=async_tool_meta(
             "Listing recent jobs...",
             "Recent jobs loaded.",
-            visibility=["app"],
         ),
         annotations={"readOnlyHint": True, "idempotentHint": True},
     )

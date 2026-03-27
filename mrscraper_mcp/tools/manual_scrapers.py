@@ -251,21 +251,19 @@ def register_manual_scraper_ui_tools(mcp: FastMCP) -> None:
         ),
         annotations={"openWorldHint": True},
     )
-    async def bulk_rerun_manual_scraper_with_ui(
+    async def bulk_rerun_manual(
         token: str,
         scraper_id: str,
         urls: list[str],
-    ) -> ToolResult:
+    ) -> dict:
         """
-        UI Tool version of bulk_rerun_manual_scraper. Reruns a manually configured scraper on multiple URLs simultaneously in a single batch operation.
+        Reruns a manually configured scraper on multiple URLs simultaneously in a single batch operation.
+        This is more efficient than calling rerun_manual_scraper multiple times, as it processes all URLs
+        in parallel and returns consolidated results. Ideal for scraping multiple pages, products, or
+        articles with the same extraction logic.
         """
-        job = await JOB_STORE.enqueue(
-            tool_name="bulk_rerun_manual_scraper_with_ui",
-            input_preview={"scraperId": scraper_id, "urls": urls},
-            work=_bulk_rerun_manual_scraper_impl(
-                token=token,
-                scraper_id=scraper_id,
-                urls=urls,
-            ),
+        return await _bulk_rerun_manual_scraper_impl(
+            token=token,
+            scraper_id=scraper_id,
+            urls=urls,
         )
-        return build_queued_tool_result(job)
