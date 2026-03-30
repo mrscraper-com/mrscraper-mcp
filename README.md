@@ -8,6 +8,8 @@ A simple MCP (Model Context Protocol) server built with FastMCP.
 - JavaScript rendering support
 - Geolocation-based scraping (country-specific content)
 - Configurable timeout and resource blocking
+- Background job orchestration for long-running tools
+- ChatGPT App SDK widget template for job progress
 - Built with FastMCP (latest version)
 - Easy to extend with additional tools
 
@@ -47,49 +49,30 @@ fastmcp run server.py:mcp --transport http --port 8000
 
 ### Available Tools
 
-#### `scrape_url`
+Core scraping tools:
+- `create_ai_scraper`
+- `rerun_ai_scraper`
+- `bulk_rerun_ai_scraper`
+- `rerun_manual_scraper`
+- `bulk_rerun_manual_scraper`
+- `fetch_html`
+- `get_all_results`
+- `get_result_by_id`
 
-Scrapes a web page using the MrScraper API with advanced features like JavaScript rendering, geolocation-based access, and resource management.
+Async orchestration tools (for ChatGPT App SDK and long-running calls):
+- `get_scrape_job_status`
+- `get_scrape_job_result`
+- `list_scrape_jobs`
 
-**Parameters:**
-- `url` (str, required): The target URL to scrape (e.g., 'https://www.example.com/page')
-- `token` (str, required): Your MrScraper API token for authentication
-- `timeout` (int, optional): Maximum time in seconds to wait for the page to load (default: 120)
-- `geo_code` (str, optional): ISO country code for geolocation-based scraping (default: 'ID' for Indonesia)
-  - Examples: 'US', 'GB', 'ID', 'SG', etc.
-- `block_resources` (bool, optional): Whether to block loading of images, CSS, fonts, and other resources to speed up scraping (default: False)
+### Asynchronous Job Flow (Recommended)
 
-**Returns:**
-- Dictionary containing:
-  - `status_code`: HTTP status code of the response
-  - `data`: The scraped HTML content or JSON response
-  - `headers`: Response headers from the API
-  - `error`: Error message if the request failed (if applicable)
+Long-running tools now return immediately with a local `jobId`, then continue in the background.
 
-**Example:**
+1. Call a long-running tool (for example `create_ai_scraper`).
+2. Poll `get_scrape_job_status(job_id=...)` every 2-5 seconds.
+3. When `status` is `succeeded` or `failed`, call `get_scrape_job_result(job_id=...)` for final payload.
 
-Using the FastMCP client:
-
-```python
-import asyncio
-from fastmcp import Client
-
-async def main():
-    async with Client("http://localhost:8000/mcp") as client:
-        result = await client.call_tool(
-            "scrape_url",
-            {
-                "url": "https://www.takapedia.com/id-id/magic-chess-go-go",
-                "token": "MRSCRAPER_API_TOKEN",
-                "geo_code": "ID",
-                "timeout": 120,
-                "block_resources": False
-            }
-        )
-        print(result)
-
-asyncio.run(main())
-```
+This pattern avoids tool-call timeouts in ChatGPT App SDK and enables progress UI widgets.
 
 ## Docker Deployment
 
