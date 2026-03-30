@@ -1,39 +1,34 @@
 """MCP resources for ChatGPT App SDK widgets."""
 
+import os
+
 from fastmcp import FastMCP
 
-from mrscraper_mcp.constants import (
-    SCRAPE_JOB_WIDGET_URI,
-    WIDGET_APP_ORIGIN,
-    WIDGET_CSP_CONNECT_DOMAINS,
-    WIDGET_CSP_RESOURCE_DOMAINS,
-)
+from mrscraper_mcp.constants import SCRAPE_JOB_WIDGET_URI
 
 
 def register_widget_resources(mcp: FastMCP) -> None:
+    widget_domain = os.getenv("OPENAI_WIDGET_DOMAIN", "https://mrscraper.com").strip()
+    widget_meta = {
+        "openai/widgetDescription": (
+            "Shows background scraper progress, status, and final result preview."
+        ),
+        "openai/widgetPrefersBorder": True,
+        "openai/widgetCSP": {
+            "connect_domains": [],
+            "resource_domains": [],
+        },
+    }
+    if widget_domain:
+        # ChatGPT app submission requires each widget template to declare
+        # a unique app-owned origin for the sandboxed widget host.
+        widget_meta["openai/widgetDomain"] = widget_domain
+
     @mcp.resource(
         SCRAPE_JOB_WIDGET_URI,
         name="MrScraper Job Status Widget",
         mime_type="text/html;profile=mcp-app",
-        meta={
-            "openai/widgetDescription": (
-                "Shows background scraper progress, status, and final result preview."
-            ),
-            "openai/widgetPrefersBorder": True,
-            "openai/widgetDomain": WIDGET_APP_ORIGIN,
-            "openai/widgetCSP": {
-                "connect_domains": list(WIDGET_CSP_CONNECT_DOMAINS),
-                "resource_domains": list(WIDGET_CSP_RESOURCE_DOMAINS),
-            },
-            "ui": {
-                "prefersBorder": True,
-                "domain": WIDGET_APP_ORIGIN,
-                "csp": {
-                    "connectDomains": list(WIDGET_CSP_CONNECT_DOMAINS),
-                    "resourceDomains": list(WIDGET_CSP_RESOURCE_DOMAINS),
-                },
-            },
-        },
+        meta=widget_meta,
     )
     def scrape_job_widget() -> str:
         return """<!doctype html>
@@ -112,9 +107,6 @@ def register_widget_resources(mcp: FastMCP) -> None:
       padding: 6px 10px;
       cursor: pointer;
       font-size: 12px;
-    }
-    #loadResult {
-      display: none;
     }
   </style>
 </head>
