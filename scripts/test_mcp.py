@@ -204,11 +204,11 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-'''
+"""
 Example usage:
 python scripts/test_mcp.py \
   --target http://localhost:8000/mcp \
   --call-tool fetch_html \
   --args '{"token":"atk_4177bdea4411adec9c33c8899c5aa6b4ee449dcc0454fc5a680a5c06a583480a","url":"https://www.walmart.com/search?q=iphone+&page=2&affinityOverride=default","timeout":120,"geo_code":"US","block_resources":false}'
 
-'''
+"""

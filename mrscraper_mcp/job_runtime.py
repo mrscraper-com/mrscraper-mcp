@@ -237,6 +237,21 @@ def async_tool_meta(
     }
 
 
+def plain_tool_meta(
+    invoking: str,
+    invoked: str,
+    *,
+    visibility: list[str] | None = None,
+) -> dict[str, Any]:
+    """ChatGPT Apps meta for tools that return JSON only (no job status widget)."""
+    effective_visibility = visibility or ["model", "app"]
+    return {
+        "openai/visibility": "private" if effective_visibility == ["app"] else "public",
+        "openai/toolInvocation/invoking": invoking,
+        "openai/toolInvocation/invoked": invoked,
+    }
+
+
 def build_queued_tool_result(job: JobRecord) -> ToolResult:
     structured = {
         "jobId": job.id,

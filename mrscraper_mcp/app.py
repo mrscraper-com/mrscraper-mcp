@@ -27,10 +27,14 @@ mcp = FastMCP(
 chatgpt_mcp = FastMCP(
     name="MrScraper ChatGPT Tools",
     instructions=(
-        "A specialized MCP server that provides tools for ChatGPT to interact with the MrScraper API. "
-        "This server includes tools designed for fetching HTML content in the background, allowing ChatGPT to "
-        "initiate web scraping tasks and retrieve results without blocking the main conversation flow. "
-        "Ideal for use cases where ChatGPT needs to access real-time web data or perform complex scraping operations."
+        "MrScraper API tools tuned for ChatGPT Apps: long-running work is exposed as "
+        "background jobs (tools whose names end with `_job`, e.g. `fetch_html_job`, "
+        "`create_ai_scraper_job`, `rerun_ai_scraper_job`, `rerun_manual_scraper_job`). "
+        "After starting a job, use `get_scrape_job_status` when the user follows up and "
+        "`get_scrape_job_result` when you need the finished API payload. "
+        "Synchronous-style tools (`bulk_rerun_ai_scraper`, `bulk_rerun_manual`, `get_all_results`, "
+        "`get_result_by_id`) return JSON directly. "
+        "Avoid tight polling loops; prefer user-driven follow-ups."
     ),
 )
 

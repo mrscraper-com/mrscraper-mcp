@@ -16,3 +16,11 @@ OPENAI_APPS_CHALLENGE_TOKEN = "UkKS1u5vKkqnhEPjgQC2mImFd4J0oNsjNHTfoL6df0s"
 
 SCRAPE_JOB_WIDGET_URI = "ui://widget/mrscraper-job-status-v2.html"
 MAX_ASYNC_JOB_HISTORY = 200
+
+# ChatGPT Apps SDK: resource _meta for the widget template. Submission requires a
+# dedicated app origin and a non-empty CSP (empty allowlists count as "not set").
+WIDGET_APP_ORIGIN = "https://mrscraper.com"
+WIDGET_CSP_CONNECT_DOMAINS = []
+WIDGET_CSP_RESOURCE_DOMAINS = [
+    "https://persistent.oaistatic.com",
+]

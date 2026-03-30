@@ -90,10 +90,11 @@ def register_fetch_html_tool(mcp: FastMCP) -> None:
                              to speed up scraping (default: False)
 
         Returns:
-            Starts a background job and immediately returns:
-            - jobId: Local MCP job ID to monitor progress
-            - status/progress: Current background state
-            - nextAction: Recommended poll call for get_scrape_job_status
+            A dictionary containing:
+            - status_code: HTTP status code of the response
+            - data: The scraped HTML content or JSON response
+            - headers: Response headers from the API
+            - error: Error message if the request failed (if applicable)
 
         Example:
             Fetch HTML content from a geolocation-restricted website:
@@ -129,14 +130,14 @@ def register_fetch_html_tool(mcp: FastMCP) -> None:
         )
 
 
-def register_fetch_html_ui_tool(mcp: FastMCP) -> None:
+def register_fetch_html_job_tool(mcp: FastMCP) -> None:
     @mcp.tool(
         meta=async_tool_meta(
             "Fetching HTML in background...", "HTML fetch job started."
         ),
         annotations={"openWorldHint": True},
     )
-    async def fetch_html_with_ui(
+    async def fetch_html_job(
         token: str,
         url: str,
         timeout: int = 120,
@@ -144,18 +145,61 @@ def register_fetch_html_ui_tool(mcp: FastMCP) -> None:
         block_resources: bool = False,
     ) -> ToolResult:
         """
-        Fetch HTML in a ChatGPT-App-compatible way.
+        MrScraper Fetch HTML (background job). Same behavior as `fetch_html`: stealth,
+        unblocking, rendering, configurable timeout, geolocation-based access, and optional
+        resource blocking. The scraped payload is still HTML (or JSON if the API returns it).
 
-        Use this tool instead of `fetch_html` in ChatGPT Apps.
-        This tool is preferred for ChatGPT because it starts a background job,
-        supports polling, and avoids timeouts for long-running fetches.
+        Use `fetch_html_job` in ChatGPT Apps (or any client that times out on long tool
+        calls). The tool returns immediately with a `jobId`; the actual fetch runs in the
+        background. Use `get_scrape_job_status` / `get_scrape_job_result` to read completion
+        and the same response shape as synchronous `fetch_html`.
 
-        Do NOT use `fetch_html` in ChatGPT Apps when the request may take more than a few seconds.
+        Args:
+            token: Your MrScraper API token (required for authentication)
+            url: The target URL to scrape (e.g., 'https://www.example.com/page')
+            timeout: Maximum time in seconds to wait for the page to load (default: 120)
+            geo_code: ISO country code for geolocation-based scraping (default: 'US' for United States)
+                      Examples: 'US', 'GB', 'ID', 'SG', etc.
+            block_resources: Whether to block loading of images, CSS, fonts, and other resources
+                             to speed up scraping (default: False)
 
         Returns:
-        - jobId
-        - status/progress
-        - polling metadata
+            Immediately, a ToolResult whose structured_content includes:
+            - jobId: Local MCP job id (pass to `get_scrape_job_status` / `get_scrape_job_result`)
+            - toolName: Identifies this tool for widgets/UI
+            - status, progress, message, isDone: Queue/run state (isDone false until terminal)
+
+            When the job finishes, `get_scrape_job_result(job_id=...)` returns structured content
+            equivalent to calling `fetch_html` directly:
+            - status_code: HTTP status code of the scrape response
+            - data: Scraped HTML string or JSON payload
+            - headers: Response headers from the API
+            - error: Error message if the request failed (if applicable)
+
+        Example:
+            Start a geo-targeted fetch as a job (then poll with job tools when the user follows up):
+            fetch_html_job(
+                token="MRSCRAPER_API_TOKEN",
+                url="https://stockx.com/air-jordan-1-retro-low-og-chicago-2025",
+                geo_code="US",
+                timeout=120,
+                block_resources=False
+            )
+
+            Faster job with resource blocking:
+            fetch_html_job(
+                token="MRSCRAPER_API_TOKEN",
+                url="https://www.example.com/page",
+                timeout=60,
+                geo_code="GB",
+                block_resources=True
+            )
+
+        Notes:
+            - Final `data` can be extremely large. Do not paste full HTML into the model context;
+              save externally, or extract/summarize only what you need.
+            - Prefer checking status when the user returns to the conversation, not in a tight poll loop.
+            - Jobs are stored in server memory and are lost if the MCP process restarts.
         """
         params = {
             "token": token,
@@ -166,7 +210,7 @@ def register_fetch_html_ui_tool(mcp: FastMCP) -> None:
         }
         full_url = f"{FETCH_HTML_API_BASE}?{urlencode(params)}"
         job = await JOB_STORE.enqueue(
-            tool_name="fetch_html",
+            tool_name="fetch_html_job",
             input_preview={
                 "url": url,
                 "timeout": timeout,

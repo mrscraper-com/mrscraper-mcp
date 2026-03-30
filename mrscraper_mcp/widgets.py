@@ -2,7 +2,12 @@
 
 from fastmcp import FastMCP
 
-from mrscraper_mcp.constants import SCRAPE_JOB_WIDGET_URI
+from mrscraper_mcp.constants import (
+    SCRAPE_JOB_WIDGET_URI,
+    WIDGET_APP_ORIGIN,
+    WIDGET_CSP_CONNECT_DOMAINS,
+    WIDGET_CSP_RESOURCE_DOMAINS,
+)
 
 
 def register_widget_resources(mcp: FastMCP) -> None:
@@ -15,9 +20,18 @@ def register_widget_resources(mcp: FastMCP) -> None:
                 "Shows background scraper progress, status, and final result preview."
             ),
             "openai/widgetPrefersBorder": True,
+            "openai/widgetDomain": WIDGET_APP_ORIGIN,
             "openai/widgetCSP": {
-                "connect_domains": [],
-                "resource_domains": [],
+                "connect_domains": list(WIDGET_CSP_CONNECT_DOMAINS),
+                "resource_domains": list(WIDGET_CSP_RESOURCE_DOMAINS),
+            },
+            "ui": {
+                "prefersBorder": True,
+                "domain": WIDGET_APP_ORIGIN,
+                "csp": {
+                    "connectDomains": list(WIDGET_CSP_CONNECT_DOMAINS),
+                    "resourceDomains": list(WIDGET_CSP_RESOURCE_DOMAINS),
+                },
             },
         },
     )
@@ -98,6 +112,9 @@ def register_widget_resources(mcp: FastMCP) -> None:
       padding: 6px 10px;
       cursor: pointer;
       font-size: 12px;
+    }
+    #loadResult {
+      display: none;
     }
   </style>
 </head>

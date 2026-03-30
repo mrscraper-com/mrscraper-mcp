@@ -5,10 +5,10 @@ from fastmcp import FastMCP
 
 from mrscraper_mcp.constants import RESULTS
 from mrscraper_mcp.http_helpers import api_get
+from mrscraper_mcp.job_runtime import plain_tool_meta
 
 
-def register_result_tools(mcp: FastMCP) -> None:
-    @mcp.tool
+def register_result_tools(mcp: FastMCP, *, chatgpt_plain_meta: bool = False) -> None:
     async def get_all_results(
         token: str,
         sort_field: Literal[
@@ -121,7 +121,6 @@ def register_result_tools(mcp: FastMCP) -> None:
         full_url = f"{RESULTS}?{urlencode(params)}"
         return await api_get(full_url, headers=headers)
 
-    @mcp.tool
     async def get_result_by_id(
         token: str,
         result_id: str,
@@ -135,8 +134,9 @@ def register_result_tools(mcp: FastMCP) -> None:
         Args:
             token: Your MrScraper API token (required for authentication)
             result_id: The unique identifier of the result to retrieve (required).
-                       Result IDs are returned in responses from scraper execution (rerun_scraper,
-                       bulk_rerun_scraper, etc.) and in the results array from get_all_results.
+                       Result IDs are returned from scraper runs (`rerun_ai_scraper`,
+                       `bulk_rerun_ai_scraper`, `rerun_manual_scraper`, etc.) and inside
+                       `get_all_results` rows.
 
         Returns:
             A dictionary containing:
@@ -165,3 +165,16 @@ def register_result_tools(mcp: FastMCP) -> None:
             "x-api-token": token,
         }
         return await api_get(endpoint_url, headers=headers)
+
+    if chatgpt_plain_meta:
+        mcp.tool(
+            meta=plain_tool_meta(
+                "Loading scraping results...", "Scraping results loaded."
+            )
+        )(get_all_results)
+        mcp.tool(
+            meta=plain_tool_meta("Loading result details...", "Result details loaded.")
+        )(get_result_by_id)
+    else:
+        mcp.tool(get_all_results)
+        mcp.tool(get_result_by_id)

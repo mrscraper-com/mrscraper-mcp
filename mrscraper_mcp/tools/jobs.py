@@ -19,11 +19,21 @@ def register_job_tools(mcp: FastMCP) -> None:
         include_result: bool = False,
     ) -> ToolResult:
         """
-        Get the current state of an asynchronous scraper job.
+        Returns the latest state of a background scraper job created by a `*_job` tool.
 
-        Use this when a tool has returned a `job_id` and you need the latest job state.
-        Returns progress and terminal status information. If the job has succeeded,
-        `get_scrape_job_result(job_id)` can be used to retrieve the final structured result.
+        Args:
+            job_id: The `jobId` value from the tool that started the job.
+            include_result: If True and the job finished, may embed result summary fields;
+                usually leave False and call `get_scrape_job_result` for the full payload.
+
+        Returns:
+            ToolResult with structured_content including jobId, toolName, status (queued |
+            running | succeeded | failed), progress (0–100), message, timestamps,
+            inputPreview, isDone, and optionally truncated result hints.
+
+        Notes:
+            - Jobs live in server memory and disappear after restart.
+            - Call when the user returns to the thread or asks for status—not on a tight timer.
         """
         job = await JOB_STORE.get(job_id)
         if not job:
@@ -62,11 +72,22 @@ def register_job_tools(mcp: FastMCP) -> None:
         job_id: str,
     ) -> ToolResult:
         """
-        Get the final structured result of an asynchronous scraper job.
+        Fetches the completed output for a background job (same dict the synchronous
+        counterpart tool would have returned: typically status_code, data, headers, error).
 
-        Use this when a completed job's output is needed for downstream reasoning or
-        follow-up tool calls. If the job is not finished, this returns the current job
-        state without the final result payload.
+        Args:
+            job_id: The `jobId` from the job-starting tool.
+
+        Returns:
+            If still queued or running: ToolResult explaining that the result is not ready,
+            with current job state in structured_content.
+            If succeeded or failed: ToolResult whose structured_content includes the full
+            `result` object from the MrScraper API call.
+
+        Notes:
+            - Prefer invoking after `get_scrape_job_status` shows isDone or when the user
+              asks for scraped output.
+            - Avoid polling this in a loop; jobs can run for minutes.
         """
         job = await JOB_STORE.get(job_id)
         if not job:
@@ -103,7 +124,20 @@ def register_job_tools(mcp: FastMCP) -> None:
         status: Literal["queued", "running", "succeeded", "failed"] | None = None,
     ) -> ToolResult:
         """
-        Lists recent background scraper jobs for quick monitoring and troubleshooting.
+        Lists recent in-memory jobs from this MCP process (newest first).
+
+        Args:
+            limit: Max jobs to return (capped by the server, default 20).
+            status: Optional filter: queued, running, succeeded, or failed.
+
+        Returns:
+            ToolResult with structured_content: count and jobs[] (each entry matches
+            `get_scrape_job_status`-style fields without full result bodies).
+
+        Notes:
+            - Useful for debugging or “what was running?” questions; not a substitute
+              for MrScraper’s `get_all_results` API.
+            - History is bounded and cleared on server restart.
         """
         jobs = await JOB_STORE.list_recent(limit=limit, status=status)
         payload = {
