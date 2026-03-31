@@ -1,6 +1,7 @@
 """FastMCP application instance and server instructions."""
 
 from contextlib import AsyncExitStack, asynccontextmanager
+import logging
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
@@ -13,6 +14,7 @@ from mrscraper_mcp.tools import register_chatgpt_tools, register_tools
 from mrscraper_mcp.widgets import register_widget_resources
 
 load_dotenv()
+logger = logging.getLogger("uvicorn.error")
 
 mcp = FastMCP(
     name="MrScraper MCP Server",
@@ -63,6 +65,11 @@ async def app_lifespan(_app: Starlette):
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(mcp_http_app.lifespan(_app))
         await stack.enter_async_context(chatgpt_http_app.lifespan(_app))
+        middleware_loaded = any(
+            middleware.cls is NormalizeMcpRootPathMiddleware
+            for middleware in _app.user_middleware
+        )
+        logger.info("startup: normalize-mcp-root-middleware=%s", middleware_loaded)
         yield
 
 
@@ -73,7 +80,4 @@ app = Starlette(
         Mount("/chatgpt", app=chatgpt_http_app),
     ],
 )
-
-# Prevent Starlette from auto-redirecting `/mcp` -> `/mcp/`.
-app.router.redirect_slashes = False
 app.add_middleware(NormalizeMcpRootPathMiddleware)
