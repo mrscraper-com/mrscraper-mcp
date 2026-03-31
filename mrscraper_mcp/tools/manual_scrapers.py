@@ -126,7 +126,13 @@ async def _bulk_rerun_manual_scraper_impl(
 
 
 def register_manual_scraper_tools(mcp: FastMCP) -> None:
-    @mcp.tool
+    @mcp.tool(
+        annotations={
+            "readOnlyHint": False,
+            "openWorldHint": False,
+            "destructiveHint": False,
+        }
+    )
     async def rerun_manual_scraper(
         token: str,
         scraper_id: str,
@@ -226,7 +232,11 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
 def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         meta=async_tool_meta("Starting manual rerun...", "Manual rerun started."),
-        annotations={"openWorldHint": True},
+        annotations={
+            "readOnlyHint": False,
+            "openWorldHint": True,
+            "destructiveHint": False,
+        },
     )
     async def rerun_manual_scraper_job(
         token: str,

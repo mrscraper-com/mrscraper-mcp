@@ -135,7 +135,11 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
         meta=async_tool_meta(
             "Fetching HTML in background...", "HTML fetch job started."
         ),
-        annotations={"openWorldHint": True},
+        annotations={
+            "openWorldHint": True,
+            "readOnlyHint": True,
+            "destructiveHint": False,
+        },
     )
     async def fetch_html_job(
         token: str,

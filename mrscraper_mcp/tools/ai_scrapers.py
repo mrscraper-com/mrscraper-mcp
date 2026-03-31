@@ -320,7 +320,13 @@ def register_ai_scraper_tools(mcp: FastMCP) -> None:
             exclude_patterns=exclude_patterns,
         )
 
-    @mcp.tool
+    @mcp.tool(
+        annotations={
+            "readOnlyHint": False,
+            "openWorldHint": False,
+            "destructiveHint": False,
+        }
+    )
     async def bulk_rerun_ai_scraper(
         token: str,
         scraper_id: str,
@@ -353,7 +359,11 @@ def register_ai_scraper_tools(mcp: FastMCP) -> None:
 def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         meta=async_tool_meta("Starting AI scraper job...", "AI scraper job started."),
-        annotations={"openWorldHint": True},
+        annotations={
+            "openWorldHint": True,
+            "readOnlyHint": False,
+            "destructiveHint": False,
+        },
     )
     async def create_ai_scraper_job(
         token: str,
@@ -468,7 +478,11 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(
         meta=async_tool_meta("Starting AI rerun job...", "AI rerun job started."),
-        annotations={"openWorldHint": True},
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "openWorldHint": True,
+        },
     )
     async def rerun_ai_scraper_job(
         token: str,
