@@ -12,7 +12,12 @@ def register_job_tools(mcp: FastMCP) -> None:
             "Checking scraper job...",
             "Scraper job status loaded.",
         ),
-        annotations={"readOnlyHint": True, "idempotentHint": True},
+        annotations={
+            "readOnlyHint": True,
+            "idempotentHint": True,
+            "openWorldHint": False,
+            "destructiveHint": False,
+        },
     )
     async def get_scrape_job_status(
         job_id: str,
@@ -66,7 +71,12 @@ def register_job_tools(mcp: FastMCP) -> None:
             "Loading scraper result...",
             "Scraper result loaded.",
         ),
-        annotations={"readOnlyHint": True, "idempotentHint": True},
+        annotations={
+            "readOnlyHint": True,
+            "idempotentHint": True,
+            "openWorldHint": False,
+            "destructiveHint": False,
+        },
     )
     async def get_scrape_job_result(
         job_id: str,
@@ -117,7 +127,12 @@ def register_job_tools(mcp: FastMCP) -> None:
             "Listing recent jobs...",
             "Recent jobs loaded.",
         ),
-        annotations={"readOnlyHint": True, "idempotentHint": True},
+        annotations={
+            "readOnlyHint": True,
+            "idempotentHint": True,
+            "openWorldHint": False,
+            "destructiveHint": False,
+        },
     )
     async def list_scrape_jobs(
         limit: int = 20,

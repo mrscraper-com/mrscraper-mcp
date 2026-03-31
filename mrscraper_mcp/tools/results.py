@@ -170,10 +170,20 @@ def register_result_tools(mcp: FastMCP, *, chatgpt_plain_meta: bool = False) -> 
         mcp.tool(
             meta=plain_tool_meta(
                 "Loading scraping results...", "Scraping results loaded."
-            )
+            ),
+            annotations={
+                "readOnlyHint": True,
+                "openWorldHint": False,
+                "destructiveHint": False,
+            },
         )(get_all_results)
         mcp.tool(
-            meta=plain_tool_meta("Loading result details...", "Result details loaded.")
+            meta=plain_tool_meta("Loading result details...", "Result details loaded."),
+            annotations={
+                "readOnlyHint": True,
+                "openWorldHint": False,
+                "destructiveHint": False,
+            },
         )(get_result_by_id)
     else:
         mcp.tool(get_all_results)
