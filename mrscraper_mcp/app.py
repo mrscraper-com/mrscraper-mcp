@@ -5,6 +5,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 from starlette.applications import Starlette
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Mount
 
 from mrscraper_mcp.routes import register_routes
@@ -49,6 +50,14 @@ mcp_http_app = mcp.http_app(path="/")
 chatgpt_http_app = chatgpt_mcp.http_app(path="/")
 
 
+class NormalizeMcpRootPathMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.url.path in {"/mcp", "/chatgpt"}:
+            request.scope["path"] = f"{request.url.path}/"
+            request.scope["raw_path"] = request.scope["path"].encode("ascii")
+        return await call_next(request)
+
+
 @asynccontextmanager
 async def app_lifespan(_app: Starlette):
     async with AsyncExitStack() as stack:
@@ -64,3 +73,7 @@ app = Starlette(
         Mount("/chatgpt", app=chatgpt_http_app),
     ],
 )
+
+# Prevent Starlette from auto-redirecting `/mcp` -> `/mcp/`.
+app.router.redirect_slashes = False
+app.add_middleware(NormalizeMcpRootPathMiddleware)
