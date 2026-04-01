@@ -99,15 +99,6 @@ def register_widget_resources(mcp: FastMCP) -> None:
       white-space: pre-wrap;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
-    button {
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-      border-radius: 8px;
-      background: transparent;
-      color: inherit;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-size: 12px;
-    }
   </style>
 </head>
 <body>
@@ -123,9 +114,6 @@ def register_widget_resources(mcp: FastMCP) -> None:
       <div>Tool</div><div id="toolName">-</div>
       <div>Progress</div><div id="progressText">0%</div>
     </div>
-    <div>
-      <button id="loadResult" type="button" disabled></button>
-    </div>
     <div id="result" class="result" hidden></div>
   </div>
 
@@ -136,7 +124,6 @@ def register_widget_resources(mcp: FastMCP) -> None:
     const jobIdEl = document.getElementById("jobId");
     const toolNameEl = document.getElementById("toolName");
     const messageEl = document.getElementById("message");
-    const loadResultBtn = document.getElementById("loadResult");
     const resultEl = document.getElementById("result");
 
     let last = {};
@@ -197,7 +184,6 @@ def register_widget_resources(mcp: FastMCP) -> None:
       toolNameEl.textContent = payload.toolName ?? "-";
       messageEl.textContent = payload.message ?? "Working...";
 
-      loadResultBtn.disabled = !(isDone && payload.jobId);
       if (isDone) {
         stopPolling();
         if (!finalLoaded && !loadingFinal && payload.jobId) {
@@ -243,7 +229,6 @@ def register_widget_resources(mcp: FastMCP) -> None:
     async function loadFinalResult() {
       if (!window.openai?.callTool || !last?.jobId) return;
       loadingFinal = true;
-      loadResultBtn.disabled = true;
       try {
         const raw = await window.openai.callTool("get_scrape_job_result", {
           job_id: last.jobId,
@@ -260,11 +245,8 @@ def register_widget_resources(mcp: FastMCP) -> None:
         resultEl.textContent = `Failed to load result: ${String(err)}`;
       } finally {
         loadingFinal = false;
-        loadResultBtn.disabled = false;
       }
     }
-
-    loadResultBtn.addEventListener("click", loadFinalResult);
 
     function syncFromRuntimeGlobals() {
       const merged = extractStateFromGlobals();
