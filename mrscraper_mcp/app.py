@@ -2,19 +2,66 @@
 
 from contextlib import AsyncExitStack, asynccontextmanager
 import logging
+import os
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 from starlette.routing import Mount
 
 from mrscraper_mcp.routes import register_routes
 from mrscraper_mcp.tools import register_chatgpt_tools, register_tools
 from mrscraper_mcp.widgets import register_widget_resources
 
+
 load_dotenv()
+_LOG_HTTP_PAYLOAD = os.environ.get("MRSCRAPER_LOG_HTTP_PAYLOAD", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+_PAYLOAD_LOG_MAX = int(os.environ.get("MRSCRAPER_LOG_HTTP_PAYLOAD_MAX", "8192"))
 logger = logging.getLogger("uvicorn.error")
+
+
+class LogRequestPayloadMiddleware(BaseHTTPMiddleware):
+    """Log request bodies for debugging. Uvicorn access logs do not include payloads.
+
+    Set MRSCRAPER_LOG_HTTP_PAYLOAD=1 to enable. Optionally set MRSCRAPER_LOG_HTTP_PAYLOAD_MAX
+    (default 8192) to cap logged characters. After reading the body for logging, the ASGI
+    receive stream is replayed so mounted apps (e.g. /mcp) still see the full body.
+
+    Warning: payloads may contain secrets (tokens, API keys); only enable in trusted environments.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if not _LOG_HTTP_PAYLOAD or request.method not in (
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+        ):
+            return await call_next(request)
+
+        body = await request.body()
+        if body:
+            text = body.decode("utf-8", errors="replace")
+            if len(text) > _PAYLOAD_LOG_MAX:
+                text = (
+                    text[:_PAYLOAD_LOG_MAX]
+                    + f"... (truncated for log, total {len(body)} bytes)"
+                )
+            logger.info("%s %s payload: %s", request.method, request.url.path, text)
+
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        request = Request(request.scope, receive)
+        return await call_next(request)
+
 
 mcp = FastMCP(
     name="MrScraper MCP Server",
@@ -33,8 +80,9 @@ chatgpt_mcp = FastMCP(
         "MrScraper API tools tuned for ChatGPT Apps: long-running work is exposed as "
         "background jobs (tools whose names end with `_job`, e.g. `fetch_html_job`, "
         "`create_ai_scraper_job`, `rerun_ai_scraper_job`, `rerun_manual_scraper_job`). "
-        "After starting a job, use `get_scrape_job_status` when the user follows up and "
-        "`get_scrape_job_result` when you need the finished API payload. "
+        "After starting a job, you can use `get_scrape_job_status` to get the status of the job. But in most cases, some jobs take < 10 seconds and some can take up to 1 minutes, so it is preferably not to spam it as it will be slow and costly. "
+        "Or it is better to use it after the next user message turn when the user follows up and asks about the status or the result in the next message. "
+        "`get_scrape_job_result` when you need the result of the job and you are pretty much sure that the job is finished. "
         "Synchronous-style tools (`bulk_rerun_ai_scraper`, `bulk_rerun_manual`, `get_all_results`, "
         "`get_result_by_id`) return JSON directly. "
         "Avoid tight polling loops; prefer user-driven follow-ups."
@@ -52,32 +100,19 @@ mcp_http_app = mcp.http_app(path="/")
 chatgpt_http_app = chatgpt_mcp.http_app(path="/")
 
 
-class NormalizeMcpRootPathMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        if request.url.path in {"/mcp", "/chatgpt"}:
-            request.scope["path"] = f"{request.url.path}/"
-            request.scope["raw_path"] = request.scope["path"].encode("ascii")
-        return await call_next(request)
-
-
 @asynccontextmanager
 async def app_lifespan(_app: Starlette):
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(mcp_http_app.lifespan(_app))
         await stack.enter_async_context(chatgpt_http_app.lifespan(_app))
-        middleware_loaded = any(
-            middleware.cls is NormalizeMcpRootPathMiddleware
-            for middleware in _app.user_middleware
-        )
-        logger.info("startup: normalize-mcp-root-middleware=%s", middleware_loaded)
         yield
 
 
 app = Starlette(
     lifespan=app_lifespan,
+    middleware=[Middleware(LogRequestPayloadMiddleware)],
     routes=[
         Mount("/mcp", app=mcp_http_app),
         Mount("/chatgpt", app=chatgpt_http_app),
     ],
 )
-app.add_middleware(NormalizeMcpRootPathMiddleware)
