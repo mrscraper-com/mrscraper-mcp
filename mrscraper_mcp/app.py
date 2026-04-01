@@ -10,9 +10,9 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.routing import Mount
+from starlette.routing import Mount, Route
 
-from mrscraper_mcp.routes import register_routes
+from mrscraper_mcp.routes import openai_apps_challenge, register_routes
 from mrscraper_mcp.tools import register_chatgpt_tools, register_tools
 from mrscraper_mcp.widgets import register_widget_resources
 
@@ -112,6 +112,11 @@ app = Starlette(
     lifespan=app_lifespan,
     middleware=[Middleware(LogRequestPayloadMiddleware)],
     routes=[
+        Route(
+            "/.well-known/openai-apps-challenge",
+            endpoint=openai_apps_challenge,
+            methods=["GET"],
+        ),
         Mount("/mcp", app=mcp_http_app),
         Mount("/chatgpt", app=chatgpt_http_app),
     ],
