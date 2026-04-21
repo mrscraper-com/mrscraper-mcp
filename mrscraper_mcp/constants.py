@@ -12,7 +12,7 @@ RESULTS = f"{API_APP_BASE}/api/v1/results"
 
 UNAUTHORIZED_ERROR = "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token."
 
-OPENAI_APPS_CHALLENGE_TOKEN = "UkKS1u5vKkqnhEPjgQC2mImFd4J0oNsjNHTfoL6df0s"
+OPENAI_APPS_CHALLENGE_TOKEN = "9WkUWd9sj6L2vESfRpJFdiWVsL2pI7UFZgsr1PVKec0"
 
 SCRAPE_JOB_WIDGET_URI = "ui://widget/mrscraper-job-status-v2.html"
 MAX_ASYNC_JOB_HISTORY = 200
