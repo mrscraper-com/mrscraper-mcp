@@ -155,7 +155,7 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
 
         Use `fetch_html_job` in ChatGPT Apps (or any client that times out on long tool
         calls). The tool returns immediately with a `jobId`; the actual fetch runs in the
-        background. Use `get_scrape_job_status` / `get_scrape_job_result` to read completion
+        background. Use `get_scrape_job` to read completion
         and the same response shape as synchronous `fetch_html`.
 
         Args:
@@ -169,11 +169,11 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
 
         Returns:
             Immediately, a ToolResult whose structured_content includes:
-            - jobId: Local MCP job id (pass to `get_scrape_job_status` / `get_scrape_job_result`)
+            - jobId: Local MCP job id (pass to `get_scrape_job`)
             - toolName: Identifies this tool for widgets/UI
             - status, progress, message, isDone: Queue/run state (isDone false until terminal)
 
-            When the job finishes, `get_scrape_job_result(job_id=...)` returns structured content
+            When the job finishes, `get_scrape_job(job_id=...)` returns structured content
             equivalent to calling `fetch_html` directly:
             - status_code: HTTP status code of the scrape response
             - data: Scraped HTML string or JSON payload

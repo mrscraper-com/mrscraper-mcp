@@ -267,7 +267,7 @@ def build_queued_tool_result(job: JobRecord) -> ToolResult:
         meta={
             "job": job.to_dict(include_result=False),
             "widgetPolling": {
-                "tool": "get_scrape_job_status",
+                "tool": "get_scrape_job",
                 "recommendedPollSeconds": 3,
             },
         },
