@@ -251,8 +251,8 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
         not an AI scraper created via `create_ai_scraper` / `create_ai_scraper_job`.
 
         Use `rerun_manual_scraper_job` in ChatGPT Apps so the host does not block on the API.
-        You receive a `jobId` immediately; `get_scrape_job_status` / `get_scrape_job_result`
-        surface the same response dict as synchronous `rerun_manual_scraper`.
+        You receive a `jobId` immediately; call `get_scrape_job` when the job finishes to read
+        the same response dict as synchronous `rerun_manual_scraper` (under `result`).
 
         Args:
             token: Your MrScraper API token (required for authentication)
@@ -267,7 +267,7 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
             Immediately, a ToolResult whose structured_content includes jobId, toolName,
             status, progress, message, isDone (false until the rerun finishes).
 
-            When complete, `get_scrape_job_result(job_id=...)` matches `rerun_manual_scraper`:
+            When complete, `get_scrape_job(job_id=...)` includes the same payload as `rerun_manual_scraper`:
             - status_code: HTTP status code of the response
             - data: Scraping job information (job id, status, result metadata)
             - headers: Response headers from the API

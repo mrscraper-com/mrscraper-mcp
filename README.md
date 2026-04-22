@@ -60,8 +60,7 @@ Core scraping tools:
 - `get_result_by_id`
 
 Async orchestration tools (for ChatGPT App SDK and long-running calls):
-- `get_scrape_job_status`
-- `get_scrape_job_result`
+- `get_scrape_job`
 - `list_scrape_jobs`
 
 ### Asynchronous Job Flow (Recommended)
@@ -69,8 +68,8 @@ Async orchestration tools (for ChatGPT App SDK and long-running calls):
 Long-running tools now return immediately with a local `jobId`, then continue in the background.
 
 1. Call a long-running tool (for example `create_ai_scraper`).
-2. Poll `get_scrape_job_status(job_id=...)` every 2-5 seconds.
-3. When `status` is `succeeded` or `failed`, call `get_scrape_job_result(job_id=...)` for final payload.
+2. Poll `get_scrape_job(job_id=...)` every 2-5 seconds (or on user follow-up).
+3. When `status` is `succeeded` or `failed`, the same call includes the full `result` payload.
 
 This pattern avoids tool-call timeouts in ChatGPT App SDK and enables progress UI widgets.
 

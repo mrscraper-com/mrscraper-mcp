@@ -384,8 +384,8 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
         over manual dashboard scrapers when the user has not pinned a specific manual scraper.
 
         Use `create_ai_scraper_job` in ChatGPT Apps so the host does not block while the
-        MrScraper API works. You receive a `jobId` immediately; call `get_scrape_job_status`
-        and `get_scrape_job_result` to obtain the same dictionary `create_ai_scraper` would
+        MrScraper API works. You receive a `jobId` immediately; call `get_scrape_job` to obtain
+        the same dictionary `create_ai_scraper` would
         return (status_code, data, headers, error).
 
         Args:
@@ -413,9 +413,9 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
         Returns:
             Immediately, a ToolResult whose structured_content includes jobId, toolName,
             status, progress, message, isDone (false until queued/running work finishes).
-            Meta may reference the job status widget and suggest polling `get_scrape_job_status`.
+            Meta may reference the job status widget and suggest polling `get_scrape_job`.
 
-            After success, `get_scrape_job_result` yields the same fields as `create_ai_scraper`:
+            After success, `get_scrape_job` yields the same fields as `create_ai_scraper`:
             - status_code: HTTP status from the API
             - data: Scraper creation payload (includes scraper id for `rerun_ai_scraper` / `_job`)
             - headers: Response headers
@@ -501,7 +501,7 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
         created with agent 'map'.
 
         Use `rerun_ai_scraper_job` in ChatGPT Apps to avoid tool timeouts. You get a `jobId`
-        immediately; when the job completes, `get_scrape_job_result` returns the same dict
+        immediately; when the job completes, `get_scrape_job` returns the same dict
         as synchronous `rerun_ai_scraper` (status_code, data, headers, error).
 
         Args:
@@ -525,7 +525,7 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
             Immediately, a ToolResult with structured_content: jobId, toolName, status,
             progress, message, isDone (false until finished).
 
-            On completion, `get_scrape_job_result` exposes the same payload as `rerun_ai_scraper`:
+            On completion, `get_scrape_job` exposes the same payload as `rerun_ai_scraper`:
             - status_code, data (run/job metadata from the API), headers, optional error.
             Use `get_all_results` / `get_result_by_id` for extracted rows when applicable.
 

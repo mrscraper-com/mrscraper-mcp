@@ -129,7 +129,6 @@ def register_widget_resources(mcp: FastMCP) -> None:
     let last = {};
     let pollTimer = null;
     let pollDelayMs = 1500;
-    let loadingFinal = false;
     let finalLoaded = false;
 
     function safeJsonParse(value) {
@@ -186,8 +185,11 @@ def register_widget_resources(mcp: FastMCP) -> None:
 
       if (isDone) {
         stopPolling();
-        if (!finalLoaded && !loadingFinal && payload.jobId) {
-          loadFinalResult();
+        if (!finalLoaded && payload.jobId) {
+          const text = JSON.stringify(payload, null, 2);
+          resultEl.hidden = false;
+          resultEl.textContent = text.length > 24000 ? `${text.slice(0, 24000)}\\n...truncated...` : text;
+          finalLoaded = true;
         }
       }
     }
@@ -208,9 +210,8 @@ def register_widget_resources(mcp: FastMCP) -> None:
     async function pollStatus() {
       if (!window.openai?.callTool || !last?.jobId) return;
       try {
-        const raw = await window.openai.callTool("get_scrape_job_status", {
+        const raw = await window.openai.callTool("get_scrape_job", {
           job_id: last.jobId,
-          include_result: false,
         });
         const payload = normalizeToolResult(raw);
         if (payload && typeof payload === "object") {
@@ -223,28 +224,6 @@ def register_widget_resources(mcp: FastMCP) -> None:
         pollDelayMs = Math.min(10000, Math.round(pollDelayMs * 1.5));
       } finally {
         scheduleNextPoll();
-      }
-    }
-
-    async function loadFinalResult() {
-      if (!window.openai?.callTool || !last?.jobId) return;
-      loadingFinal = true;
-      try {
-        const raw = await window.openai.callTool("get_scrape_job_result", {
-          job_id: last.jobId,
-        });
-        const payload = normalizeToolResult(raw);
-        if (payload && typeof payload === "object") {
-          const text = JSON.stringify(payload, null, 2);
-          resultEl.hidden = false;
-          resultEl.textContent = text.length > 24000 ? `${text.slice(0, 24000)}\\n...truncated...` : text;
-          finalLoaded = true;
-        }
-      } catch (err) {
-        resultEl.hidden = false;
-        resultEl.textContent = `Failed to load result: ${String(err)}`;
-      } finally {
-        loadingFinal = false;
       }
     }
 
