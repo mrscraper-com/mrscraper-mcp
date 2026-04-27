@@ -574,7 +574,11 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(
         meta=plain_tool_meta("Running AI bulk rerun...", "AI bulk rerun finished."),
-        annotations={"openWorldHint": True},
+        annotations={
+            "openWorldHint": True,
+            "readOnlyHint": False,
+            "destructiveHint": False,
+        },
     )
     async def bulk_rerun_ai_scraper(
         token: str,

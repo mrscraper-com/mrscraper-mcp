@@ -302,7 +302,11 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
         meta=plain_tool_meta(
             "Running bulk manual rerun...", "Bulk manual rerun finished."
         ),
-        annotations={"openWorldHint": True},
+        annotations={
+            "openWorldHint": True,
+            "readOnlyHint": False,
+            "destructiveHint": False,
+        },
     )
     async def bulk_rerun_manual(
         token: str,
