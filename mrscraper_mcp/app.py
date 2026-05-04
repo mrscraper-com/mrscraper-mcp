@@ -70,7 +70,9 @@ mcp = FastMCP(
         "This server allows you to scrape web pages with advanced features including "
         "geolocation-based scraping, configurable timeouts, and resource blocking options. "
         "Perfect for extracting content from websites that require JavaScript rendering, "
-        "geographic restrictions, or complex page structures."
+        "geographic restrictions, or complex page structures. "
+        "Google SERP extraction is available via `google_serp_sync` (sync API bearer token, "
+        "full Google search URL, optional `raw` and session cookie)."
     ),
 )
 
@@ -84,7 +86,9 @@ chatgpt_mcp = FastMCP(
         "the full API result in one response. Jobs often take under ten seconds but can run up "
         "to about a minute—prefer calling after the user follows up rather than tight polling. "
         "Synchronous-style tools (`bulk_rerun_ai_scraper`, `bulk_rerun_manual`, `get_all_results`, "
-        "`get_result_by_id`) return JSON directly. "
+        "`get_result_by_id`) return JSON directly. Google SERP sync is available as "
+        "`google_serp_sync_job` (background) on this stack; the main MCP also exposes "
+        "`google_serp_sync` for direct calls. "
         "Avoid tight polling loops; prefer user-driven follow-ups."
     ),
 )

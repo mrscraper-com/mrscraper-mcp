@@ -10,6 +10,8 @@ SCRAPERS_MANUAL_RERUN = f"{API_APP_BASE}/api/v1/scrapers-manual-rerun"
 SCRAPERS_MANUAL_RERUN_BULK = f"{API_APP_BASE}/api/v1/scrapers-manual-rerun/bulk"
 RESULTS = f"{API_APP_BASE}/api/v1/results"
 
+GOOGLE_SERP_SYNC = "https://sync.scraper.mrscraper.com/api/google/serp/sync"
+
 UNAUTHORIZED_ERROR = "Unauthorized or invalid token. Please go to https://app.mrscraper.com to get your token."
 
 OPENAI_APPS_CHALLENGE_TOKEN = "9WkUWd9sj6L2vESfRpJFdiWVsL2pI7UFZgsr1PVKec0"
