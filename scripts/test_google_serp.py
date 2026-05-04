@@ -1,14 +1,14 @@
 """Integration test for Google SERP sync: direct API (default) or via MCP `google_serp_sync`.
 
 Reads token from MRSCRAPER_GOOGLE_SERP_TOKEN unless --access-token is set.
-Does not log the full token; truncates large response bodies in stdout.
+Does not log the full token.
 
 Example (direct):
   export MRSCRAPER_GOOGLE_SERP_TOKEN='atk_...'
   python scripts/test_google_serp.py
 
 Example (MCP, server must be running):
-  python scripts/test_google_serp.py --mcp http://localhost:8000/mcp --access-token 'atk_...'
+  python scripts/test_google_serp.py --mcp http://localhost:8787/mcp --access-token 'atk_...'
 """
 
 from __future__ import annotations
@@ -22,36 +22,18 @@ from typing import Any
 
 
 DEFAULT_SEARCH_URL = "https://www.google.com/search?q=iphone+17"
-TRUNCATE_BODY = 4000
 
 
 def _print_json(label: str, value: Any) -> None:
     print(f"\n== {label} ==")
-    print(json.dumps(value, indent=2, default=str))
-
-
-def _summarize_result(result: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy safe to print (truncate huge string data)."""
-    out = dict(result)
-    data = out.get("data")
-    if isinstance(data, str) and len(data) > TRUNCATE_BODY:
-        out["data"] = (
-            f"{data[:TRUNCATE_BODY]}... "
-            f"(truncated for display, total {len(data)} chars)"
+    print(
+        json.dumps(
+            value,
+            indent=2,
+            ensure_ascii=False,
+            default=str,
         )
-    elif isinstance(data, (dict, list)):
-        dumped = json.dumps(data, default=str)
-        if len(dumped) > TRUNCATE_BODY:
-            out["data"] = (
-                f"{dumped[:TRUNCATE_BODY]}... "
-                f"(truncated for display, total {len(dumped)} chars)"
-            )
-    hdrs = out.get("headers")
-    if isinstance(hdrs, dict) and len(hdrs) > 40:
-        out["headers"] = {
-            k: hdrs[k] for k in list(hdrs.keys())[:40]
-        } | {"_truncated": f"{len(hdrs)} headers total, showing first 40 keys"}
-    return out
+    )
 
 
 def _resolve_token(args: argparse.Namespace) -> str | None:
@@ -80,13 +62,17 @@ async def _run_direct(
     )
 
 
-def _content_to_text(blocks: Any) -> list[str]:
-    texts: list[str] = []
+def _content_jsonable(blocks: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for block in blocks or []:
-        text = getattr(block, "text", None)
-        if text is not None:
-            texts.append(text)
-    return texts
+        row: dict[str, Any] = {}
+        for key in ("type", "text", "data", "mimeType", "uri"):
+            if hasattr(block, key):
+                row[key] = getattr(block, key)
+        if not row and block is not None:
+            row["_repr"] = repr(block)
+        out.append(row)
+    return out
 
 
 async def _run_mcp(
@@ -101,7 +87,9 @@ async def _run_mcp(
     try:
         from fastmcp import Client
     except ModuleNotFoundError:
-        print("fastmcp is not installed. Run `pip install -e .` first.", file=sys.stderr)
+        print(
+            "fastmcp is not installed. Run `pip install -e .` first.", file=sys.stderr
+        )
         raise SystemExit(1) from None
 
     arguments: dict[str, Any] = {
@@ -119,25 +107,29 @@ async def _run_mcp(
         names = [getattr(t, "name", "") for t in tools]
         if "google_serp_sync" not in names:
             print(
-                "Tool `google_serp_sync` not found on this server. "
-                f"Available: {names}",
+                f"Tool `google_serp_sync` not found on this server. Available: {names}",
                 file=sys.stderr,
             )
             raise SystemExit(2)
 
         result = await client.call_tool("google_serp_sync", arguments)
-        payload = getattr(result, "structured_content", None)
-        if payload is None and getattr(result, "data", None) is not None:
-            payload = result.data
-        if isinstance(payload, dict):
-            return payload
-        # Fall back: wrap text content
         return {
-            "status_code": None,
-            "data": _content_to_text(getattr(result, "content", None)),
-            "error": "Unexpected MCP tool result shape (no dict payload)",
             "is_error": getattr(result, "is_error", False),
+            "structured_content": getattr(result, "structured_content", None),
+            "data": getattr(result, "data", None),
+            "content": _content_jsonable(getattr(result, "content", None)),
         }
+
+
+def _effective_api_result(
+    args: argparse.Namespace, result: dict[str, Any]
+) -> dict[str, Any]:
+    """For pass/fail, use inner structured_content when MCP returns API-shaped dict."""
+    if args.mcp:
+        inner = result.get("structured_content")
+        if isinstance(inner, dict):
+            return inner
+    return result
 
 
 async def _async_main(args: argparse.Namespace) -> int:
@@ -171,12 +163,17 @@ async def _async_main(args: argparse.Namespace) -> int:
 
     print(f"Mode: {mode}")
     print(f"URL: {args.url}")
-    _print_json("result (summarized)", _summarize_result(result))
+    _print_json("result", result)
 
-    if result.get("error"):
+    if args.mcp and result.get("is_error"):
+        print("\nTest FAILED: MCP tool is_error=True.", file=sys.stderr)
+        return 1
+
+    check = _effective_api_result(args, result)
+    if check.get("error"):
         print("\nTest FAILED: error field set.", file=sys.stderr)
         return 1
-    sc = result.get("status_code")
+    sc = check.get("status_code")
     if sc is not None and int(sc) >= 400:
         print(f"\nTest FAILED: HTTP status {sc}.", file=sys.stderr)
         return 1
@@ -221,11 +218,11 @@ def main() -> int:
         metavar="URL",
         default="",
         help="If set, call tool google_serp_sync on this MCP base "
-        "(e.g. http://localhost:8000/mcp). Omit for direct API test.",
+        "(e.g. http://localhost:8787/mcp). Omit for direct API test.",
     )
     args = parser.parse_args()
 
-    # Normalize MCP URL: user may pass http://host:8000 without /mcp
+    # Normalize MCP URL: user may pass http://host:8787 without /mcp
     if args.mcp:
         u = args.mcp.rstrip("/")
         if not u.endswith("/mcp"):
