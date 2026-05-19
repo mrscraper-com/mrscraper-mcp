@@ -4,6 +4,7 @@ from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
 import httpx
 
+from mrscraper_mcp.auth import resolve_api_token
 from mrscraper_mcp.constants import FETCH_HTML_API_BASE
 from mrscraper_mcp.http_helpers import api_get
 from mrscraper_mcp.job_runtime import (
@@ -70,8 +71,8 @@ async def _fetch_html_impl(
 def register_fetch_html_tool(mcp: FastMCP) -> None:
     @mcp.tool
     async def fetch_html(
-        token: str,
         url: str,
+        token: str | None = None,
         timeout: int = 120,
         geo_code: str = "US",
         block_resources: bool = False,
@@ -81,8 +82,9 @@ def register_fetch_html_tool(mcp: FastMCP) -> None:
         It features timeout, geolocation-based access, and resource management.
 
         Args:
-            token: Your MrScraper API token (required for authentication)
             url: The target URL to scrape (e.g., 'https://www.example.com/page')
+            token: MrScraper API token (optional if set via MCP `Authorization` header or
+                   `MRSCRAPER_API_TOKEN`)
             timeout: Maximum time in seconds to wait for the page to load (default: 120)
             geo_code: ISO country code for geolocation-based scraping (default: 'US' for United States)
                       Examples: 'US', 'GB', 'ID', 'SG', etc.
@@ -122,7 +124,7 @@ def register_fetch_html_tool(mcp: FastMCP) -> None:
             - Consider preprocessing/extracting specific elements before feeding text to the LLM.
         """
         return await _fetch_html_impl(
-            token=token,
+            token=resolve_api_token(token),
             url=url,
             timeout=timeout,
             geo_code=geo_code,
@@ -142,8 +144,8 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
         },
     )
     async def fetch_html_job(
-        token: str,
         url: str,
+        token: str | None = None,
         timeout: int = 120,
         geo_code: str = "US",
         block_resources: bool = False,
@@ -159,7 +161,8 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
         and the same response shape as synchronous `fetch_html`.
 
         Args:
-            token: Your MrScraper API token (required for authentication)
+            token: MrScraper API token (optional if set via MCP `Authorization` header or
+                   `MRSCRAPER_API_TOKEN`)
             url: The target URL to scrape (e.g., 'https://www.example.com/page')
             timeout: Maximum time in seconds to wait for the page to load (default: 120)
             geo_code: ISO country code for geolocation-based scraping (default: 'US' for United States)
@@ -205,8 +208,9 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
             - Prefer checking status when the user returns to the conversation, not in a tight poll loop.
             - Jobs are stored in server memory and are lost if the MCP process restarts.
         """
+        api_token = resolve_api_token(token)
         params = {
-            "token": token,
+            "token": api_token,
             "timeout": timeout,
             "geoCode": geo_code,
             "url": url,

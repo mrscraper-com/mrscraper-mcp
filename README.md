@@ -131,11 +131,35 @@ docker-compose logs -f
 docker-compose down
 ```
 
+### HTTP authentication (Cursor, Claude, etc.)
+
+For remote HTTP connectors, pass your MrScraper API token in MCP **headers**, not in the server URL:
+
+```json
+{
+  "mcpServers": {
+    "mrscraper": {
+      "type": "http",
+      "url": "https://your-host.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_MRSCRAPER_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+`x-api-token` is also accepted. Tools no longer require a `token` argument when the header (or `MRSCRAPER_API_TOKEN`) is set.
+
+Set `MRSCRAPER_HTTP_AUTH=0` only for local debugging without Bearer auth on `/mcp` and `/chatgpt`.
+
 ### Environment Variables
 
 - `PORT`: Port to run the server on (default: 8000)
 - `HOST`: Host to bind to (default: 0.0.0.0)
 - `TRANSPORT`: `http` runs the full ASGI app (`/mcp` and `/chatgpt`); `stdio` runs the default MCP over stdio (default: `stdio` for local `python server.py`, typically `http` in Docker)
+- `MRSCRAPER_API_TOKEN`: API token for stdio transport or as a server-side fallback when tools omit `token`
+- `MRSCRAPER_HTTP_AUTH`: When `1` (default), HTTP mounts require `Authorization: Bearer …` (or `x-api-token`)
 
 ### Remote Server Deployment
 
@@ -169,9 +193,13 @@ docker-compose down
 5. **Connect to the remote server** (use `/mcp` for the default toolset, `/chatgpt` for ChatGPT job tools):
    ```python
    from fastmcp import Client
+   from fastmcp.client.auth import BearerAuth
 
-   async with Client("http://your-server.com:8000/mcp") as client:
-       result = await client.call_tool("fetch_html", {"token": "...", "url": "https://example.com"})
+   async with Client(
+       "http://your-server.com:8000/mcp",
+       auth=BearerAuth("YOUR_MRSCRAPER_API_TOKEN"),
+   ) as client:
+       result = await client.call_tool("fetch_html", {"url": "https://example.com"})
    ```
 
 ### Reverse Proxy Setup (Optional)

@@ -3,6 +3,7 @@ from urllib.parse import urlencode
 
 from fastmcp import FastMCP
 
+from mrscraper_mcp.auth import resolve_api_token
 from mrscraper_mcp.constants import RESULTS
 from mrscraper_mcp.http_helpers import api_get
 from mrscraper_mcp.job_runtime import plain_tool_meta
@@ -10,7 +11,6 @@ from mrscraper_mcp.job_runtime import plain_tool_meta
 
 def register_result_tools(mcp: FastMCP, *, chatgpt_plain_meta: bool = False) -> None:
     async def get_all_results(
-        token: str,
         sort_field: Literal[
             "createdAt",
             "updatedAt",
@@ -29,6 +29,7 @@ def register_result_tools(mcp: FastMCP, *, chatgpt_plain_meta: bool = False) -> 
         date_range_column: str = None,
         start_at: str = None,
         end_at: str = None,
+        token: str | None = None,
     ) -> dict:
         """
         Retrieves a paginated list of all scraping results with advanced filtering, sorting, and search capabilities.
@@ -37,7 +38,8 @@ def register_result_tools(mcp: FastMCP, *, chatgpt_plain_meta: bool = False) -> 
         of large datasets.
 
         Args:
-            token: Your MrScraper API token (required for authentication)
+            token: MrScraper API token (optional if set via MCP `Authorization` header or
+                   `MRSCRAPER_API_TOKEN`)
             sort_field: Field name to sort results by (default: 'updatedAt').
                         Valid options: 'createdAt', 'updatedAt', 'id', 'type', 'url', 'status', 'error', 'tokenUsage', 'runtime'.
                         Use 'updatedAt' or 'createdAt' for time-based sorting, 'id' for ID-based sorting,
@@ -98,10 +100,11 @@ def register_result_tools(mcp: FastMCP, *, chatgpt_plain_meta: bool = False) -> 
                 page_size=50
             )
         """
+        api_token = resolve_api_token(token)
         headers = {
             "Content-Type": "application/json",
             "accept": "application/json",
-            "x-api-token": token,
+            "x-api-token": api_token,
         }
         params = {
             "sortField": sort_field,
@@ -122,8 +125,8 @@ def register_result_tools(mcp: FastMCP, *, chatgpt_plain_meta: bool = False) -> 
         return await api_get(full_url, headers=headers)
 
     async def get_result_by_id(
-        token: str,
         result_id: str,
+        token: str | None = None,
     ) -> dict:
         """
         Retrieves detailed information for a specific scraping result by its unique result ID.
@@ -132,8 +135,9 @@ def register_result_tools(mcp: FastMCP, *, chatgpt_plain_meta: bool = False) -> 
         or scraper execution responses) and need the full details of that specific result.
 
         Args:
-            token: Your MrScraper API token (required for authentication)
             result_id: The unique identifier of the result to retrieve (required).
+            token: MrScraper API token (optional if set via MCP `Authorization` header or
+                   `MRSCRAPER_API_TOKEN`)
                        Result IDs are returned from scraper runs (`rerun_ai_scraper`,
                        `bulk_rerun_ai_scraper`, `rerun_manual_scraper`, etc.) and inside
                        `get_all_results` rows.
@@ -159,10 +163,11 @@ def register_result_tools(mcp: FastMCP, *, chatgpt_plain_meta: bool = False) -> 
             )
         """
         endpoint_url = f"{RESULTS}/{result_id}"
+        api_token = resolve_api_token(token)
         headers = {
             "Content-Type": "application/json",
             "accept": "application/json",
-            "x-api-token": token,
+            "x-api-token": api_token,
         }
         return await api_get(endpoint_url, headers=headers)
 

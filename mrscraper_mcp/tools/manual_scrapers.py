@@ -2,6 +2,7 @@ from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
 import httpx
 
+from mrscraper_mcp.auth import resolve_api_token
 from mrscraper_mcp.constants import SCRAPERS_MANUAL_RERUN, SCRAPERS_MANUAL_RERUN_BULK
 from mrscraper_mcp.job_runtime import (
     JOB_STORE,
@@ -134,9 +135,9 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
         }
     )
     async def rerun_manual_scraper(
-        token: str,
         scraper_id: str,
         url: str,
+        token: str | None = None,
     ) -> dict:
         """
         Reruns a manually configured scraper (created with custom selectors/rules) on a new URL.
@@ -174,16 +175,16 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
             - This tool is specifically to rerun manually configured scrapers. It is not applicable for AI scrapers. Call this tool when the user specifies a manual scraper.
         """
         return await _rerun_manual_scraper_impl(
-            token=token,
+            token=resolve_api_token(token),
             scraper_id=scraper_id,
             url=url,
         )
 
     @mcp.tool
     async def bulk_rerun_manual_scraper(
-        token: str,
         scraper_id: str,
         urls: list[str],
+        token: str | None = None,
     ) -> dict:
         """
         Reruns a manually configured scraper on multiple URLs simultaneously in a single batch operation.
@@ -223,7 +224,7 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
             )
         """
         return await _bulk_rerun_manual_scraper_impl(
-            token=token,
+            token=resolve_api_token(token),
             scraper_id=scraper_id,
             urls=urls,
         )
@@ -239,9 +240,9 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
         },
     )
     async def rerun_manual_scraper_job(
-        token: str,
         scraper_id: str,
         url: str,
+        token: str | None = None,
     ) -> ToolResult:
         """
         Reruns a manually configured scraper on a new URL (background job). Same behavior
@@ -291,7 +292,7 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
             tool_name="rerun_manual_scraper_job",
             input_preview={"scraperId": scraper_id, "url": url},
             work=_rerun_manual_scraper_impl(
-                token=token,
+                token=resolve_api_token(token),
                 scraper_id=scraper_id,
                 url=url,
             ),
@@ -309,9 +310,9 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
         },
     )
     async def bulk_rerun_manual(
-        token: str,
         scraper_id: str,
         urls: list[str],
+        token: str | None = None,
     ) -> dict:
         """
         Same as `bulk_rerun_manual_scraper` on the main MCP server: batch reruns a
@@ -327,7 +328,7 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
             status_code, data (bulk job metadata), headers, optional error.
         """
         return await _bulk_rerun_manual_scraper_impl(
-            token=token,
+            token=resolve_api_token(token),
             scraper_id=scraper_id,
             urls=urls,
         )

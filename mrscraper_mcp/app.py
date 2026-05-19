@@ -12,6 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.routing import Mount, Route
 
+from mrscraper_mcp.auth import http_auth_enabled, mrscraper_token_verifier
 from mrscraper_mcp.routes import openai_apps_challenge, register_routes
 from mrscraper_mcp.tools import register_chatgpt_tools, register_tools
 from mrscraper_mcp.widgets import register_widget_resources
@@ -63,6 +64,15 @@ class LogRequestPayloadMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+def _fastmcp_kwargs() -> dict:
+    kwargs: dict = {}
+    if http_auth_enabled():
+        kwargs["auth"] = mrscraper_token_verifier()
+    return kwargs
+
+
+_mcp_common = _fastmcp_kwargs()
+
 mcp = FastMCP(
     name="MrScraper MCP Server",
     instructions=(
@@ -72,8 +82,12 @@ mcp = FastMCP(
         "Perfect for extracting content from websites that require JavaScript rendering, "
         "geographic restrictions, or complex page structures. "
         "Google SERP extraction is available via `google_serp_sync` (sync API bearer token, "
-        "full Google search URL, optional `raw` and session cookie)."
+        "full Google search URL, optional `raw` and session cookie). "
+        "When connected over HTTP, configure the MCP client with "
+        '`headers.Authorization: "Bearer <MRSCRAPER_API_TOKEN>"` instead of passing '
+        "token on every tool call."
     ),
+    **_mcp_common,
 )
 
 chatgpt_mcp = FastMCP(
@@ -89,8 +103,11 @@ chatgpt_mcp = FastMCP(
         "`get_result_by_id`) return JSON directly. Google SERP sync is available as "
         "`google_serp_sync_job` (background) on this stack; the main MCP also exposes "
         "`google_serp_sync` for direct calls. "
-        "Avoid tight polling loops; prefer user-driven follow-ups."
+        "Avoid tight polling loops; prefer user-driven follow-ups. "
+        "When connected over HTTP, set `headers.Authorization` to "
+        '`Bearer <MRSCRAPER_API_TOKEN>` on the MCP connector.'
     ),
+    **_mcp_common,
 )
 
 register_routes(mcp)
