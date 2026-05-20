@@ -84,8 +84,8 @@ mcp = FastMCP(
         "Google SERP extraction is available via `google_serp_sync` (sync API bearer token, "
         "full Google search URL, optional `raw` and session cookie). "
         "When connected over HTTP, configure the MCP client with "
-        '`headers.Authorization: "Bearer <MRSCRAPER_API_TOKEN>"` instead of passing '
-        "token on every tool call."
+        '`headers.Authorization: "Bearer <MRSCRAPER_API_TOKEN>"`. Tools do not accept '
+        "API tokens as arguments."
     ),
     **_mcp_common,
 )
@@ -105,7 +105,7 @@ chatgpt_mcp = FastMCP(
         "`google_serp_sync` for direct calls. "
         "Avoid tight polling loops; prefer user-driven follow-ups. "
         "When connected over HTTP, set `headers.Authorization` to "
-        '`Bearer <MRSCRAPER_API_TOKEN>` on the MCP connector.'
+        '`Bearer <MRSCRAPER_API_TOKEN>` on the MCP connector. Tools do not accept API tokens as arguments.'
     ),
     **_mcp_common,
 )

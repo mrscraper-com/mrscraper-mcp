@@ -4,7 +4,7 @@ from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
 import httpx
 
-from mrscraper_mcp.auth import normalize_bearer_token, resolve_api_token
+from mrscraper_mcp.auth import normalize_bearer_token, resolve_serp_api_token
 from mrscraper_mcp.constants import GOOGLE_SERP_SYNC
 from mrscraper_mcp.job_runtime import (
     JOB_STORE,
@@ -81,7 +81,6 @@ def register_google_serp_sync_tool(mcp: FastMCP) -> None:
     @mcp.tool
     async def google_serp_sync(
         url: str,
-        access_token: str | None = None,
         raw: bool = True,
         session_cookie: str = "",
         timeout: float = 600.0,
@@ -93,8 +92,6 @@ def register_google_serp_sync_tool(mcp: FastMCP) -> None:
 
         Args:
             url: Full Google search URL to fetch (e.g. `https://www.google.com/search?q=iphone+17`).
-            access_token: Sync API bearer token (e.g. `atk_...`; optional if set via MCP
-                `Authorization` header or `MRSCRAPER_API_TOKEN`).
             raw: When true, requests raw response from the API (default: True).
             session_cookie: Optional `Cookie` header value (e.g. `sl-session=...`) if your
                 deployment requires it.
@@ -104,11 +101,12 @@ def register_google_serp_sync_tool(mcp: FastMCP) -> None:
             Dict with `status_code`, `data`, `headers`, or `error` on failure.
 
         Notes:
+            - API token is set on the MCP connection (`Authorization: Bearer …`), not tool args.
             - SERP/HTML responses can be very large; avoid loading entire `data` into the model
               context—save externally or summarize.
         """
         return await _google_serp_sync_impl(
-            access_token=resolve_api_token(access_token),
+            access_token=resolve_serp_api_token(),
             url=url,
             raw=raw,
             session_cookie=session_cookie,
@@ -130,7 +128,6 @@ def register_google_serp_sync_job_tool(mcp: FastMCP) -> None:
     )
     async def google_serp_sync_job(
         url: str,
-        access_token: str | None = None,
         raw: bool = True,
         session_cookie: str = "",
         timeout: float = 600.0,
@@ -142,13 +139,14 @@ def register_google_serp_sync_job_tool(mcp: FastMCP) -> None:
 
         Args:
             url: Full Google search URL.
-            access_token: Sync API bearer token (`atk_...`; optional if set via MCP
-                `Authorization` header or `MRSCRAPER_API_TOKEN`).
             raw: Request raw API output (default: True).
             session_cookie: Optional Cookie header if required.
             timeout: HTTP timeout in seconds (default: 600).
+
+        Notes:
+            - API token is set on the MCP connection (`Authorization: Bearer …`), not tool args.
         """
-        api_token = resolve_api_token(access_token)
+        api_token = resolve_serp_api_token()
         job = await JOB_STORE.enqueue(
             tool_name="google_serp_sync_job",
             input_preview={"url": url, "raw": raw},

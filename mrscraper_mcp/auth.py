@@ -11,7 +11,7 @@ from fastmcp.server.dependencies import get_access_token, get_http_headers
 _MISSING_TOKEN_MESSAGE = (
     "MrScraper API token is required. Configure the MCP client with "
     '"headers": {"Authorization": "Bearer <your-token>"} (or "x-api-token"), '
-    "set MRSCRAPER_API_TOKEN for stdio, or pass token / access_token on the tool call."
+    "or set MRSCRAPER_API_TOKEN for stdio transport."
 )
 
 
@@ -47,15 +47,12 @@ def mrscraper_token_verifier() -> DebugTokenVerifier:
     )
 
 
-def resolve_api_token(token: str | None = None) -> str:
+def resolve_api_token() -> str:
     """Resolve the MrScraper API token for the current request.
 
-    Precedence: explicit tool argument, MCP Bearer auth, ``x-api-token`` header,
+    Precedence: MCP Bearer auth, ``x-api-token`` / ``Authorization`` headers,
     then ``MRSCRAPER_API_TOKEN``.
     """
-    if token and token.strip():
-        return normalize_bearer_token(token)
-
     access = get_access_token()
     if access is not None and access.token.strip():
         return normalize_bearer_token(access.token)
@@ -71,3 +68,14 @@ def resolve_api_token(token: str | None = None) -> str:
         return env_token
 
     raise ToolError(_MISSING_TOKEN_MESSAGE)
+
+
+def resolve_serp_api_token() -> str:
+    """Resolve the Google SERP sync API bearer token.
+
+    Precedence: ``MRSCRAPER_GOOGLE_SERP_TOKEN``, then :func:`resolve_api_token`.
+    """
+    value = os.environ.get("MRSCRAPER_GOOGLE_SERP_TOKEN", "").strip()
+    if value:
+        return normalize_bearer_token(value)
+    return resolve_api_token()

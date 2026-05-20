@@ -226,7 +226,6 @@ def register_ai_scraper_tools(mcp: FastMCP) -> None:
         limit: int = 1000,
         include_patterns: str = "",
         exclude_patterns: str = "",
-        token: str | None = None,
     ) -> dict:
         """
         Creates an AI-powered scraper that intelligently extracts structured data from a
@@ -235,7 +234,6 @@ def register_ai_scraper_tools(mcp: FastMCP) -> None:
         selector scrapers when the user does not already have a dashboard-defined manual scraper.
 
         Args:
-            token: Your MrScraper API token (required for authentication)
             url: The target URL to scrape (e.g., 'https://www.example.com/products')
             message: What to extract, in plain language (e.g., product names and prices,
                 article titles and dates, job listings with company and location).
@@ -268,7 +266,7 @@ def register_ai_scraper_tools(mcp: FastMCP) -> None:
               specific manual/dashboard scraper.
         """
         return await _create_ai_scraper_impl(
-            token=resolve_api_token(token),
+            token=resolve_api_token(),
             url=url,
             message=message,
             agent=agent,
@@ -289,14 +287,12 @@ def register_ai_scraper_tools(mcp: FastMCP) -> None:
         limit: int = 1000,
         include_patterns: str = "",
         exclude_patterns: str = "",
-        token: str | None = None,
     ) -> dict:
         """
         Reruns an existing AI scraper (created with `create_ai_scraper`) on a new URL.
         Crawl-related arguments apply when the scraper was created with agent 'map'.
 
         Args:
-            token: Your MrScraper API token
             scraper_id: Scraper id from `create_ai_scraper` (agent type is fixed to how
                 the scraper was created).
             url: URL to run against (can differ from the original).
@@ -311,7 +307,7 @@ def register_ai_scraper_tools(mcp: FastMCP) -> None:
             - For many URLs with the same scraper, prefer `bulk_rerun_ai_scraper`.
         """
         return await _rerun_ai_scraper_impl(
-            token=resolve_api_token(token),
+            token=resolve_api_token(),
             scraper_id=scraper_id,
             url=url,
             max_depth=max_depth,
@@ -331,7 +327,6 @@ def register_ai_scraper_tools(mcp: FastMCP) -> None:
     async def bulk_rerun_ai_scraper(
         scraper_id: str,
         urls: list[str],
-        token: str | None = None,
     ) -> dict:
         """
         Reruns an existing AI scraper on many URLs in one request (more efficient than
@@ -339,7 +334,6 @@ def register_ai_scraper_tools(mcp: FastMCP) -> None:
         each URL.
 
         Args:
-            token: Your MrScraper API token
             scraper_id: Scraper id from `create_ai_scraper`
             urls: Non-empty list of URLs, each compatible with that scraper's instructions
 
@@ -351,7 +345,7 @@ def register_ai_scraper_tools(mcp: FastMCP) -> None:
             - Same as `rerun_ai_scraper`, but batched.
         """
         return await _bulk_rerun_ai_scraper_impl(
-            token=resolve_api_token(token),
+            token=resolve_api_token(),
             scraper_id=scraper_id,
             urls=urls,
         )
@@ -376,7 +370,6 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
         limit: int = 1000,
         include_patterns: str = "",
         exclude_patterns: str = "",
-        token: str | None = None,
     ) -> ToolResult:
         """
         Creates an AI-powered scraper (background job). Same API as `create_ai_scraper`:
@@ -390,7 +383,6 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
         return (status_code, data, headers, error).
 
         Args:
-            token: Your MrScraper API token (required for authentication)
             url: The target URL to scrape (e.g., 'https://www.example.com/products')
             message: What to extract, in plain language (e.g., product names and prices,
                 article titles and dates, job listings with company and location).
@@ -425,7 +417,6 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
         Example:
             General extraction as a job:
             create_ai_scraper_job(
-                token="MRSCRAPER_API_TOKEN",
                 url="https://www.example.com/products",
                 message="Extract all product names, prices, and ratings from the listings",
                 agent="general",
@@ -434,7 +425,6 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
 
             Map crawl as a job:
             create_ai_scraper_job(
-                token="MRSCRAPER_API_TOKEN",
                 url="https://www.example.com",
                 message="",
                 agent="map",
@@ -463,7 +453,7 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
                 "excludePatterns": exclude_patterns,
             },
             work=_create_ai_scraper_impl(
-                token=resolve_api_token(token),
+                token=resolve_api_token(),
                 url=url,
                 message=message,
                 agent=agent,
@@ -493,7 +483,6 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
         limit: int = 1000,
         include_patterns: str = "",
         exclude_patterns: str = "",
-        token: str | None = None,
     ) -> ToolResult:
         """
         Reruns an existing AI scraper on a new URL (background job). Same API as
@@ -506,7 +495,6 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
         as synchronous `rerun_ai_scraper` (status_code, data, headers, error).
 
         Args:
-            token: Your MrScraper API token (required for authentication)
             scraper_id: The scraper id returned when the scraper was created (from
                 `create_ai_scraper` / `create_ai_scraper_job` response `data`). The agent type
                 is fixed to how the scraper was originally created.
@@ -533,7 +521,6 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
         Example:
             Rerun a map-style scraper on another branch of the site:
             rerun_ai_scraper_job(
-                token="MRSCRAPER_API_TOKEN",
                 scraper_id="scraper_12345",
                 url="https://www.example.com/category/electronics",
                 max_depth=3,
@@ -561,7 +548,7 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
                 "excludePatterns": exclude_patterns,
             },
             work=_rerun_ai_scraper_impl(
-                token=resolve_api_token(token),
+                token=resolve_api_token(),
                 scraper_id=scraper_id,
                 url=url,
                 max_depth=max_depth,
@@ -584,7 +571,6 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
     async def bulk_rerun_ai_scraper(
         scraper_id: str,
         urls: list[str],
-        token: str | None = None,
     ) -> dict:
         """
         Same as the standard `bulk_rerun_ai_scraper` tool: one API call reruns an AI
@@ -592,7 +578,6 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
         main server; returns the HTTP response dict directly (not a background job).
 
         Args:
-            token: MrScraper API token
             scraper_id: Id from `create_ai_scraper`
             urls: Non-empty list of target URLs
 
@@ -600,7 +585,7 @@ def register_ai_scraper_job_tools(mcp: FastMCP) -> None:
             status_code, data (bulk job metadata), headers, optional error.
         """
         return await _bulk_rerun_ai_scraper_impl(
-            token=resolve_api_token(token),
+            token=resolve_api_token(),
             scraper_id=scraper_id,
             urls=urls,
         )

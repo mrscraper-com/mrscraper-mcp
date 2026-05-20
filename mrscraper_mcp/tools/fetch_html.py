@@ -72,7 +72,6 @@ def register_fetch_html_tool(mcp: FastMCP) -> None:
     @mcp.tool
     async def fetch_html(
         url: str,
-        token: str | None = None,
         timeout: int = 120,
         geo_code: str = "US",
         block_resources: bool = False,
@@ -83,8 +82,6 @@ def register_fetch_html_tool(mcp: FastMCP) -> None:
 
         Args:
             url: The target URL to scrape (e.g., 'https://www.example.com/page')
-            token: MrScraper API token (optional if set via MCP `Authorization` header or
-                   `MRSCRAPER_API_TOKEN`)
             timeout: Maximum time in seconds to wait for the page to load (default: 120)
             geo_code: ISO country code for geolocation-based scraping (default: 'US' for United States)
                       Examples: 'US', 'GB', 'ID', 'SG', etc.
@@ -101,7 +98,6 @@ def register_fetch_html_tool(mcp: FastMCP) -> None:
         Example:
             Fetch HTML content from a geolocation-restricted website:
             fetch_html(
-                token="MRSCRAPER_API_TOKEN",
                 url="https://stockx.com/air-jordan-1-retro-low-og-chicago-2025",
                 geo_code="US",
                 timeout=120,
@@ -110,7 +106,6 @@ def register_fetch_html_tool(mcp: FastMCP) -> None:
 
             Fast scraping with resource blocking enabled:
             fetch_html(
-                token="MRSCRAPER_API_TOKEN",
                 url="https://www.example.com/page",
                 timeout=60,
                 geo_code="GB",
@@ -118,13 +113,14 @@ def register_fetch_html_tool(mcp: FastMCP) -> None:
             )
 
         Notes:
+            - API token is configured on the MCP connection (`Authorization: Bearer …`), not tool args.
             - This MCP directly returns the raw HTML content. The HTML can be extremely large (both in character count and token size).
             - For LLMs calling this endpoint, it is NOT recommended to pass the entire result into your prompt/context, as it may overwhelm context length and degrade performance.
             - Instead, consider saving the HTML to a file without reading it into the LLM, or use external storage methods. Only process or summarize essential parts.
             - Consider preprocessing/extracting specific elements before feeding text to the LLM.
         """
         return await _fetch_html_impl(
-            token=resolve_api_token(token),
+            token=resolve_api_token(),
             url=url,
             timeout=timeout,
             geo_code=geo_code,
@@ -145,7 +141,6 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
     )
     async def fetch_html_job(
         url: str,
-        token: str | None = None,
         timeout: int = 120,
         geo_code: str = "US",
         block_resources: bool = False,
@@ -161,8 +156,6 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
         and the same response shape as synchronous `fetch_html`.
 
         Args:
-            token: MrScraper API token (optional if set via MCP `Authorization` header or
-                   `MRSCRAPER_API_TOKEN`)
             url: The target URL to scrape (e.g., 'https://www.example.com/page')
             timeout: Maximum time in seconds to wait for the page to load (default: 120)
             geo_code: ISO country code for geolocation-based scraping (default: 'US' for United States)
@@ -186,7 +179,6 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
         Example:
             Start a geo-targeted fetch as a job (then poll with job tools when the user follows up):
             fetch_html_job(
-                token="MRSCRAPER_API_TOKEN",
                 url="https://stockx.com/air-jordan-1-retro-low-og-chicago-2025",
                 geo_code="US",
                 timeout=120,
@@ -195,7 +187,6 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
 
             Faster job with resource blocking:
             fetch_html_job(
-                token="MRSCRAPER_API_TOKEN",
                 url="https://www.example.com/page",
                 timeout=60,
                 geo_code="GB",
@@ -203,12 +194,13 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
             )
 
         Notes:
+            - API token is configured on the MCP connection (`Authorization: Bearer …`), not tool args.
             - Final `data` can be extremely large. Do not paste full HTML into the model context;
               save externally, or extract/summarize only what you need.
             - Prefer checking status when the user returns to the conversation, not in a tight poll loop.
             - Jobs are stored in server memory and are lost if the MCP process restarts.
         """
-        api_token = resolve_api_token(token)
+        api_token = resolve_api_token()
         params = {
             "token": api_token,
             "timeout": timeout,
