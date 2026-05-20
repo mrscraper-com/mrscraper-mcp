@@ -4,7 +4,7 @@ from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
 import httpx
 
-from mrscraper_mcp.auth import normalize_bearer_token, resolve_serp_api_token
+from mrscraper_mcp.auth import normalize_bearer_token, resolve_api_token
 from mrscraper_mcp.constants import GOOGLE_SERP_SYNC
 from mrscraper_mcp.job_runtime import (
     JOB_STORE,
@@ -106,7 +106,7 @@ def register_google_serp_sync_tool(mcp: FastMCP) -> None:
               context—save externally or summarize.
         """
         return await _google_serp_sync_impl(
-            access_token=resolve_serp_api_token(),
+            access_token=resolve_api_token(),
             url=url,
             raw=raw,
             session_cookie=session_cookie,
@@ -146,7 +146,7 @@ def register_google_serp_sync_job_tool(mcp: FastMCP) -> None:
         Notes:
             - API token is set on the MCP connection (`Authorization: Bearer …`), not tool args.
         """
-        api_token = resolve_serp_api_token()
+        api_token = resolve_api_token()
         job = await JOB_STORE.enqueue(
             tool_name="google_serp_sync_job",
             input_preview={"url": url, "raw": raw},

@@ -151,18 +151,13 @@ For remote HTTP connectors, pass your MrScraper API token in MCP **headers**, no
 
 `x-api-token` is also accepted. **Tools do not expose `token` or `access_token` parameters** — the LLM never receives your API key; only the MCP client sends it in connection headers (or via `MRSCRAPER_API_TOKEN` for stdio).
 
-For Google SERP only, you may set `MRSCRAPER_GOOGLE_SERP_TOKEN` on the server when the SERP bearer differs from your platform token.
-
-Set `MRSCRAPER_HTTP_AUTH=0` only for local debugging without Bearer auth on `/mcp` and `/chatgpt`.
-
 ### Environment Variables
 
 - `PORT`: Port to run the server on (default: 8000)
 - `HOST`: Host to bind to (default: 0.0.0.0)
 - `TRANSPORT`: `http` runs the full ASGI app (`/mcp` and `/chatgpt`); `stdio` runs the default MCP over stdio (default: `stdio` for local `python server.py`, typically `http` in Docker)
 - `MRSCRAPER_API_TOKEN`: API token for stdio transport or server-side fallback (not passed to the LLM)
-- `MRSCRAPER_GOOGLE_SERP_TOKEN`: Optional SERP-only bearer when it differs from `MRSCRAPER_API_TOKEN`
-- `MRSCRAPER_HTTP_AUTH`: When `1` (default), HTTP mounts require `Authorization: Bearer …` (or `x-api-token`)
+
 
 ### Remote Server Deployment
 

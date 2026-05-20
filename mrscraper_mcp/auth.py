@@ -68,14 +68,3 @@ def resolve_api_token() -> str:
         return env_token
 
     raise ToolError(_MISSING_TOKEN_MESSAGE)
-
-
-def resolve_serp_api_token() -> str:
-    """Resolve the Google SERP sync API bearer token.
-
-    Precedence: ``MRSCRAPER_GOOGLE_SERP_TOKEN``, then :func:`resolve_api_token`.
-    """
-    value = os.environ.get("MRSCRAPER_GOOGLE_SERP_TOKEN", "").strip()
-    if value:
-        return normalize_bearer_token(value)
-    return resolve_api_token()
