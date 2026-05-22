@@ -1,7 +1,7 @@
 """API endpoints and shared messages."""
 
-MRSCRAPER_API_BASE_URL = "https://api.mrscraper.com"
-SUBSCRIPTION_ACCOUNTS = f"{MRSCRAPER_API_BASE_URL}/subscription-accounts"
+API_BASE = "https://api.mrscraper.com"
+SUBSCRIPTION_ACCOUNTS = f"{API_BASE}/subscription-accounts"
 
 API_APP_BASE = "https://api.app.mrscraper.com"
 SCRAPERS_AI = f"{API_APP_BASE}/api/v1/scrapers-ai"
