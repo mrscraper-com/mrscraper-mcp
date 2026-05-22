@@ -1,6 +1,7 @@
 """API endpoints and shared messages."""
 
 FETCH_HTML_API_BASE = "https://api.mrscraper.com"
+SUBSCRIPTION_ACCOUNTS = f"{FETCH_HTML_API_BASE}/subscription-accounts"
 
 API_APP_BASE = "https://api.app.mrscraper.com"
 SCRAPERS_AI = f"{API_APP_BASE}/api/v1/scrapers-ai"

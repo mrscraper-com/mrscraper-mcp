@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import os
 
+import httpx
 from fastmcp.exceptions import ToolError
 from fastmcp.server.auth.providers.debug import DebugTokenVerifier
 from fastmcp.server.dependencies import get_access_token, get_http_headers
+
+from mrscraper_mcp.constants import SUBSCRIPTION_ACCOUNTS
+
+_TOKEN_VALIDATE_TIMEOUT = 15.0
 
 _MISSING_TOKEN_MESSAGE = (
     "MrScraper API token is required. Configure the MCP client with "
@@ -34,15 +39,37 @@ def http_auth_enabled() -> bool:
     return value not in ("0", "false", "no", "off")
 
 
-def mrscraper_token_verifier() -> DebugTokenVerifier:
-    """Accept any non-empty token as the MrScraper API credential.
+async def validate_api_token(token: str) -> bool:
+    """Return True when ``token`` is accepted by the MrScraper API."""
+    api_token = normalize_bearer_token(token)
+    if not api_token:
+        return False
+
+    headers = {
+        "accept": "application/json",
+        "x-api-token": api_token,
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                SUBSCRIPTION_ACCOUNTS,
+                headers=headers,
+                timeout=_TOKEN_VALIDATE_TIMEOUT,
+            )
+        return response.status_code == 200
+    except httpx.HTTPError:
+        return False
+
+
+def token_verifier() -> DebugTokenVerifier:
+    """Verify MCP Bearer tokens against the MrScraper subscription API.
 
     The MCP client sends the same API key used for MrScraper APIs in the
-    ``Authorization: Bearer`` header. Upstream APIs validate the key; this
-    verifier only ensures a credential was provided for the MCP session.
+    ``Authorization: Bearer`` header. Validation calls
+    ``GET /subscription-accounts`` with ``x-api-token``.
     """
     return DebugTokenVerifier(
-        validate=lambda token: bool(token and token.strip()),
+        validate=validate_api_token,
         client_id="mrscraper-mcp",
     )
 
