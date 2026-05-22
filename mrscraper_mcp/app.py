@@ -10,9 +10,17 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from mrscraper_mcp.auth import http_auth_enabled, mrscraper_token_verifier
+from mrscraper_mcp.oauth_server import (
+    _build_protected_resource,
+    oauth_authorization_server,
+    oauth_authorize,
+    oauth_protected_resource,
+    oauth_token,
+)
 from mrscraper_mcp.routes import openai_apps_challenge, register_routes
 from mrscraper_mcp.tools import register_chatgpt_tools, register_tools
 from mrscraper_mcp.widgets import register_widget_resources
@@ -138,6 +146,28 @@ app = Starlette(
             endpoint=openai_apps_challenge,
             methods=["GET"],
         ),
+        Route(
+            "/.well-known/oauth-protected-resource",
+            endpoint=oauth_protected_resource,
+            methods=["GET"],
+        ),
+        Route(
+            "/.well-known/oauth-protected-resource/mcp",
+            endpoint=lambda req: JSONResponse(_build_protected_resource(str(req.base_url).rstrip("/") + "/mcp", str(req.base_url).rstrip("/"))),
+            methods=["GET"],
+        ),
+        Route(
+            "/.well-known/oauth-protected-resource/chatgpt",
+            endpoint=lambda req: JSONResponse(_build_protected_resource(str(req.base_url).rstrip("/") + "/chatgpt", str(req.base_url).rstrip("/"))),
+            methods=["GET"],
+        ),
+        Route(
+            "/.well-known/oauth-authorization-server",
+            endpoint=oauth_authorization_server,
+            methods=["GET"],
+        ),
+        Route("/oauth/authorize", endpoint=oauth_authorize, methods=["GET", "POST"]),
+        Route("/oauth/token", endpoint=oauth_token, methods=["POST"]),
         Mount("/mcp", app=mcp_http_app),
         Mount("/chatgpt", app=chatgpt_http_app),
     ],

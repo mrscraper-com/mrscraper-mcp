@@ -158,6 +158,32 @@ For remote HTTP connectors, pass your MrScraper API token in MCP **headers**, no
 - `TRANSPORT`: `http` runs the full ASGI app (`/mcp` and `/chatgpt`); `stdio` runs the default MCP over stdio (default: `stdio` for local `python server.py`, typically `http` in Docker)
 - `MRSCRAPER_API_TOKEN`: API token for stdio transport or server-side fallback (not passed to the LLM)
 
+### ChatGPT Apps OAuth Setup
+
+The server implements OAuth 2.0 with PKCE for ChatGPT Apps compatibility. When registering the server in ChatGPT, use **User-Defined OAuth Client** mode.
+
+**Required environment variables:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OAUTH_CLIENT_ID` | Client ID you enter in ChatGPT | `mrscraper-mcp-client` |
+| `OAUTH_CLIENT_SECRET` | Optional secret for added security | *(none)* |
+| `OAUTH_JWT_SECRET` | JWT signing key (auto-generated if unset) | random |
+| `OAUTH_SERVER_URL` | Public server URL for metadata | inferred from request |
+
+**ChatGPT App registration steps:**
+
+1. Deploy the server with `TRANSPORT=http` and expose it via ngrok or a reverse proxy.
+2. In ChatGPT Apps, enter your public URL with the `/chatgpt` path, e.g. `https://your-domain.ngrok-free.dev/chatgpt`.
+3. Select **OAuth** as the authentication method.
+4. Choose **User-Defined OAuth Client**.
+5. Enter the `OAUTH_CLIENT_ID` (default: `mrscraper-mcp-client`).
+6. Enter the `OAUTH_CLIENT_SECRET` if you configured one.
+7. ChatGPT will discover the OAuth endpoints automatically.
+8. On first connection, you will be redirected to an authorization page where you enter your **MrScraper API token**.
+9. After authorizing, ChatGPT receives an OAuth access token and can call MCP tools.
+
+The OAuth flow wraps your existing MrScraper API token in a JWT. Both OAuth tokens and direct Bearer tokens continue to work.
 
 ### Remote Server Deployment
 

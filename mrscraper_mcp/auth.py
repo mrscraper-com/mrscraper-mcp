@@ -8,6 +8,8 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.auth.providers.debug import DebugTokenVerifier
 from fastmcp.server.dependencies import get_access_token, get_http_headers
 
+from mrscraper_mcp.oauth_server import verify_oauth_token
+
 _MISSING_TOKEN_MESSAGE = (
     "MrScraper API token is required. Configure the MCP client with "
     '"headers": {"Authorization": "Bearer <your-token>"} (or "x-api-token"), '
@@ -35,33 +37,42 @@ def http_auth_enabled() -> bool:
 
 
 def mrscraper_token_verifier() -> DebugTokenVerifier:
-    """Accept any non-empty token as the MrScraper API credential.
+    """Accept any non-empty token or a valid OAuth JWT as the MrScraper API credential."""
+    def _validate(token: str) -> bool:
+        if not token or not token.strip():
+            return False
+        if len(token) < 100:
+            return True
+        return verify_oauth_token(token) is not None
 
-    The MCP client sends the same API key used for MrScraper APIs in the
-    ``Authorization: Bearer`` header. Upstream APIs validate the key; this
-    verifier only ensures a credential was provided for the MCP session.
-    """
     return DebugTokenVerifier(
-        validate=lambda token: bool(token and token.strip()),
+        validate=_validate,
         client_id="mrscraper-mcp",
     )
+
+
+def _extract_api_token(raw_token: str) -> str:
+    normalized = normalize_bearer_token(raw_token)
+    api_token = verify_oauth_token(normalized)
+    return api_token if api_token is not None else normalized
 
 
 def resolve_api_token() -> str:
     """Resolve the MrScraper API token for the current request.
 
     Precedence: MCP Bearer auth, ``x-api-token`` / ``Authorization`` headers,
-    then ``MRSCRAPER_API_TOKEN``.
+    then ``MRSCRAPER_API_TOKEN``. OAuth JWTs are transparently decoded to
+    extract the embedded API token.
     """
     access = get_access_token()
     if access is not None and access.token.strip():
-        return normalize_bearer_token(access.token)
+        return _extract_api_token(access.token)
 
     headers = get_http_headers()
     for header_name in ("x-api-token", "authorization"):
         header_value = headers.get(header_name, "").strip()
         if header_value:
-            return normalize_bearer_token(header_value)
+            return _extract_api_token(header_value)
 
     env_token = _env_api_token()
     if env_token:
