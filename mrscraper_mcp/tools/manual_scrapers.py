@@ -2,6 +2,7 @@ from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
 import httpx
 
+from mrscraper_mcp.auth import resolve_api_token
 from mrscraper_mcp.constants import SCRAPERS_MANUAL_RERUN, SCRAPERS_MANUAL_RERUN_BULK
 from mrscraper_mcp.job_runtime import (
     JOB_STORE,
@@ -134,7 +135,6 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
         }
     )
     async def rerun_manual_scraper(
-        token: str,
         scraper_id: str,
         url: str,
     ) -> dict:
@@ -146,7 +146,6 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
         `create_ai_scraper`.
 
         Args:
-            token: Your MrScraper API token (required for authentication)
             scraper_id: The ID of the manual scraper to rerun (obtained from the MrScraper dashboard).
                         This must be a scraper created manually through the web interface, not an AI scraper.
                         The scraper ID can be found in your scraper list at https://app.mrscraper.com
@@ -165,7 +164,6 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
         Example:
             Rerun a manually configured scraper on a new product page:
             rerun_manual_scraper(
-                token="MRSCRAPER_API_TOKEN",
                 scraper_id="manual_scraper_67890",
                 url="https://www.example.com/products/new-item"
             )
@@ -174,14 +172,13 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
             - This tool is specifically to rerun manually configured scrapers. It is not applicable for AI scrapers. Call this tool when the user specifies a manual scraper.
         """
         return await _rerun_manual_scraper_impl(
-            token=token,
+            token=resolve_api_token(),
             scraper_id=scraper_id,
             url=url,
         )
 
     @mcp.tool
     async def bulk_rerun_manual_scraper(
-        token: str,
         scraper_id: str,
         urls: list[str],
     ) -> dict:
@@ -192,7 +189,6 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
         articles with the same extraction logic.
 
         Args:
-            token: Your MrScraper API token (required for authentication)
             scraper_id: The ID of the manual scraper to rerun (obtained from the MrScraper dashboard).
                         This must be a scraper created manually through the web interface, not an AI scraper.
                         The scraper ID can be found in your scraper list at https://app.mrscraper.com
@@ -213,7 +209,6 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
         Example:
             Bulk scrape multiple product pages with the same manual scraper:
             bulk_rerun_manual_scraper(
-                token="MRSCRAPER_API_TOKEN",
                 scraper_id="scraper_12345",
                 urls=[
                     "https://www.example.com/products/item1",
@@ -223,7 +218,7 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
             )
         """
         return await _bulk_rerun_manual_scraper_impl(
-            token=token,
+            token=resolve_api_token(),
             scraper_id=scraper_id,
             urls=urls,
         )
@@ -239,7 +234,6 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
         },
     )
     async def rerun_manual_scraper_job(
-        token: str,
         scraper_id: str,
         url: str,
     ) -> ToolResult:
@@ -255,7 +249,6 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
         the same response dict as synchronous `rerun_manual_scraper` (under `result`).
 
         Args:
-            token: Your MrScraper API token (required for authentication)
             scraper_id: The ID of the manual scraper to rerun (from the MrScraper dashboard).
                         Must be a scraper created manually through the web interface, not an AI scraper.
                         The scraper ID can be found in your scraper list at https://app.mrscraper.com
@@ -276,7 +269,6 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
 
         Example:
             rerun_manual_scraper_job(
-                token="MRSCRAPER_API_TOKEN",
                 scraper_id="manual_scraper_67890",
                 url="https://www.example.com/products/new-item"
             )
@@ -291,7 +283,7 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
             tool_name="rerun_manual_scraper_job",
             input_preview={"scraperId": scraper_id, "url": url},
             work=_rerun_manual_scraper_impl(
-                token=token,
+                token=resolve_api_token(),
                 scraper_id=scraper_id,
                 url=url,
             ),
@@ -309,7 +301,6 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
         },
     )
     async def bulk_rerun_manual(
-        token: str,
         scraper_id: str,
         urls: list[str],
     ) -> dict:
@@ -319,7 +310,6 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
         dict directly (not a background job).
 
         Args:
-            token: MrScraper API token
             scraper_id: Manual scraper id from the dashboard
             urls: Non-empty list of URLs compatible with that scraper
 
@@ -327,7 +317,7 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
             status_code, data (bulk job metadata), headers, optional error.
         """
         return await _bulk_rerun_manual_scraper_impl(
-            token=token,
+            token=resolve_api_token(),
             scraper_id=scraper_id,
             urls=urls,
         )

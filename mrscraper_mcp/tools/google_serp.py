@@ -4,19 +4,13 @@ from fastmcp import FastMCP
 from fastmcp.tools.tool import ToolResult
 import httpx
 
+from mrscraper_mcp.auth import normalize_bearer_token, resolve_api_token
 from mrscraper_mcp.constants import GOOGLE_SERP_SYNC
 from mrscraper_mcp.job_runtime import (
     JOB_STORE,
     async_tool_meta,
     build_queued_tool_result,
 )
-
-
-def _normalize_bearer_token(token: str) -> str:
-    t = token.strip()
-    if t.lower().startswith("bearer "):
-        return t[7:].strip()
-    return t
 
 
 async def _google_serp_sync_impl(
@@ -26,7 +20,7 @@ async def _google_serp_sync_impl(
     session_cookie: str = "",
     timeout: float = 600.0,
 ) -> dict:
-    bearer = _normalize_bearer_token(access_token)
+    bearer = normalize_bearer_token(access_token)
     headers: dict[str, str] = {
         "Authorization": f"Bearer {bearer}",
         "Content-Type": "application/json",
@@ -86,7 +80,6 @@ async def _google_serp_sync_impl(
 def register_google_serp_sync_tool(mcp: FastMCP) -> None:
     @mcp.tool
     async def google_serp_sync(
-        access_token: str,
         url: str,
         raw: bool = True,
         session_cookie: str = "",
@@ -98,8 +91,6 @@ def register_google_serp_sync_tool(mcp: FastMCP) -> None:
         `raw` is true, depending on API behavior).
 
         Args:
-            access_token: Bearer token for the sync API (e.g. `atk_...`). A leading
-                `Bearer ` prefix is stripped if present.
             url: Full Google search URL to fetch (e.g. `https://www.google.com/search?q=iphone+17`).
             raw: When true, requests raw response from the API (default: True).
             session_cookie: Optional `Cookie` header value (e.g. `sl-session=...`) if your
@@ -110,11 +101,12 @@ def register_google_serp_sync_tool(mcp: FastMCP) -> None:
             Dict with `status_code`, `data`, `headers`, or `error` on failure.
 
         Notes:
+            - API token is set on the MCP connection (`Authorization: Bearer …`), not tool args.
             - SERP/HTML responses can be very large; avoid loading entire `data` into the model
               context—save externally or summarize.
         """
         return await _google_serp_sync_impl(
-            access_token=access_token,
+            access_token=resolve_api_token(),
             url=url,
             raw=raw,
             session_cookie=session_cookie,
@@ -135,7 +127,6 @@ def register_google_serp_sync_job_tool(mcp: FastMCP) -> None:
         },
     )
     async def google_serp_sync_job(
-        access_token: str,
         url: str,
         raw: bool = True,
         session_cookie: str = "",
@@ -147,17 +138,20 @@ def register_google_serp_sync_job_tool(mcp: FastMCP) -> None:
         same `status_code` / `data` / `headers` / `error` shape as the synchronous tool.
 
         Args:
-            access_token: Sync API bearer token (`atk_...`); optional `Bearer ` prefix allowed.
             url: Full Google search URL.
             raw: Request raw API output (default: True).
             session_cookie: Optional Cookie header if required.
             timeout: HTTP timeout in seconds (default: 600).
+
+        Notes:
+            - API token is set on the MCP connection (`Authorization: Bearer …`), not tool args.
         """
+        api_token = resolve_api_token()
         job = await JOB_STORE.enqueue(
             tool_name="google_serp_sync_job",
             input_preview={"url": url, "raw": raw},
             work=_google_serp_sync_impl(
-                access_token=access_token,
+                access_token=api_token,
                 url=url,
                 raw=raw,
                 session_cookie=session_cookie,

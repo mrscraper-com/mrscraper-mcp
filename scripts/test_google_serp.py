@@ -1,10 +1,10 @@
 """Integration test for Google SERP sync: direct API (default) or via MCP `google_serp_sync`.
 
-Reads token from MRSCRAPER_GOOGLE_SERP_TOKEN unless --access-token is set.
+Reads token from MRSCRAPER_API_TOKEN unless --access-token is set.
 Does not log the full token.
 
 Example (direct):
-  export MRSCRAPER_GOOGLE_SERP_TOKEN='atk_...'
+  export MRSCRAPER_API_TOKEN='atk_...'
   python scripts/test_google_serp.py
 
 Example (MCP, server must be running):
@@ -39,7 +39,7 @@ def _print_json(label: str, value: Any) -> None:
 def _resolve_token(args: argparse.Namespace) -> str | None:
     if args.access_token:
         return args.access_token.strip()
-    env = os.environ.get("MRSCRAPER_GOOGLE_SERP_TOKEN", "").strip()
+    env = os.environ.get("MRSCRAPER_API_TOKEN", "").strip()
     return env or None
 
 
@@ -136,7 +136,7 @@ async def _async_main(args: argparse.Namespace) -> int:
     token = _resolve_token(args)
     if not token:
         print(
-            "Missing token: set MRSCRAPER_GOOGLE_SERP_TOKEN or pass --access-token.",
+            "Missing token: set MRSCRAPER_API_TOKEN or pass --access-token.",
             file=sys.stderr,
         )
         return 2
@@ -189,7 +189,7 @@ def main() -> int:
     parser.add_argument(
         "--access-token",
         default="",
-        help="Sync API bearer token (atk_...). Overrides MRSCRAPER_GOOGLE_SERP_TOKEN.",
+        help="Sync API bearer token (atk_...). Overrides MRSCRAPER_API_TOKEN.",
     )
     parser.add_argument(
         "--url",

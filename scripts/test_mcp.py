@@ -11,6 +11,7 @@ from typing import Any
 
 try:
     from fastmcp import Client
+    from fastmcp.client.auth import BearerAuth
 except ModuleNotFoundError:
     print("fastmcp is not installed. Run `pip install -e .` first.", file=sys.stderr)
     raise SystemExit(1)
@@ -54,9 +55,11 @@ async def run_checks(
     read_widget: bool,
     call_tool: str | None,
     arguments: dict[str, Any] | None,
+    token: str | None,
 ) -> int:
     print(f"Testing MCP target: {target}")
-    client = Client(target)
+    auth = BearerAuth(token) if token else None
+    client = Client(target, auth=auth)
 
     async with client:
         await client.ping()
@@ -108,6 +111,7 @@ async def run_route_checks(
     read_widget: bool,
     call_tool: str | None,
     arguments: dict[str, Any] | None,
+    token: str | None,
 ) -> int:
     exit_code = 0
 
@@ -121,6 +125,7 @@ async def run_route_checks(
                 read_widget=read_widget,
                 call_tool=call_tool,
                 arguments=arguments,
+                token=token,
             )
         except Exception as exc:
             print(f"route {clean_route}: failed to connect or initialize: {exc}")
@@ -158,6 +163,10 @@ def main() -> int:
         help="Skip reading the widget resource.",
     )
     parser.add_argument(
+        "--token",
+        help="MrScraper API token sent as Authorization: Bearer (overrides MRSCRAPER_API_TOKEN).",
+    )
+    parser.add_argument(
         "--call-tool",
         help="Optional tool name to invoke after listing tools.",
     )
@@ -167,6 +176,10 @@ def main() -> int:
         help="JSON arguments for --call-tool. Example: '{\"limit\": 5}'",
     )
     args = parser.parse_args()
+
+    import os
+
+    token = (args.token or os.environ.get("MRSCRAPER_API_TOKEN", "")).strip() or None
 
     try:
         parsed_args = json.loads(args.args)
@@ -186,6 +199,7 @@ def main() -> int:
                 read_widget=not args.no_widget,
                 call_tool=args.call_tool,
                 arguments=parsed_args,
+                token=token,
             )
         )
 
@@ -196,6 +210,7 @@ def main() -> int:
             read_widget=not args.no_widget,
             call_tool=args.call_tool,
             arguments=parsed_args,
+            token=token,
         )
     )
 
@@ -209,6 +224,7 @@ Example usage:
 python scripts/test_mcp.py \
   --target http://localhost:8000/mcp \
   --call-tool fetch_html \
-  --args '{"token":"atk_4177bdea4411adec9c33c8899c5aa6b4ee449dcc0454fc5a680a5c06a583480a","url":"https://www.walmart.com/search?q=iphone+&page=2&affinityOverride=default","timeout":120,"geo_code":"US","block_resources":false}'
+  --token "$MRSCRAPER_API_TOKEN" \
+  --args '{"url":"https://www.walmart.com/search?q=iphone+&page=2&affinityOverride=default","timeout":120,"geo_code":"US","block_resources":false}'
 
 """
