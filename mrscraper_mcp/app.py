@@ -12,7 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.routing import Mount, Route
 
-from mrscraper_mcp.auth import http_auth_enabled, mrscraper_token_verifier
+from mrscraper_mcp.auth import http_auth_enabled, token_verifier
 from mrscraper_mcp.routes import openai_apps_challenge, register_routes
 from mrscraper_mcp.tools import register_chatgpt_tools, register_tools
 from mrscraper_mcp.widgets import register_widget_resources
@@ -67,7 +67,7 @@ class LogRequestPayloadMiddleware(BaseHTTPMiddleware):
 def _fastmcp_kwargs() -> dict:
     kwargs: dict = {}
     if http_auth_enabled():
-        kwargs["auth"] = mrscraper_token_verifier()
+        kwargs["auth"] = token_verifier()
     return kwargs
 
 
