@@ -5,7 +5,7 @@ from fastmcp.tools.tool import ToolResult
 import httpx
 
 from mrscraper_mcp.auth import resolve_api_token
-from mrscraper_mcp.constants import MRSCRAPER_API_BASE_URL
+from mrscraper_mcp.constants import API_BASE
 from mrscraper_mcp.http_helpers import api_get
 from mrscraper_mcp.job_runtime import (
     JOB_STORE,
@@ -29,7 +29,7 @@ async def _fetch_html_impl(
         "blockResources": str(block_resources).lower(),
     }
 
-    full_url = f"{MRSCRAPER_API_BASE_URL}?{urlencode(params)}"
+    full_url = f"{API_BASE}?{urlencode(params)}"
 
     async with httpx.AsyncClient() as client:
         try:
@@ -208,7 +208,7 @@ def register_fetch_html_job_tool(mcp: FastMCP) -> None:
             "url": url,
             "blockResources": str(block_resources).lower(),
         }
-        full_url = f"{MRSCRAPER_API_BASE_URL}?{urlencode(params)}"
+        full_url = f"{API_BASE}?{urlencode(params)}"
         job = await JOB_STORE.enqueue(
             tool_name="fetch_html_job",
             input_preview={
