@@ -13,6 +13,7 @@ from starlette.requests import Request
 from starlette.routing import Mount, Route
 
 from mrscraper_mcp.auth import http_auth_enabled, token_verifier
+from mrscraper_mcp.compliance import MANUAL_SCRAPER_SERVER_INSTRUCTIONS
 from mrscraper_mcp.routes import openai_apps_challenge, register_routes
 from mrscraper_mcp.tools import register_chatgpt_tools, register_tools
 from mrscraper_mcp.widgets import register_widget_resources
@@ -85,7 +86,8 @@ mcp = FastMCP(
         "full Google search URL, optional `raw` and session cookie). "
         "When connected over HTTP, configure the MCP client with "
         '`headers.Authorization: "Bearer <MRSCRAPER_API_TOKEN>"`. Tools do not accept '
-        "API tokens as arguments."
+        "API tokens as arguments. "
+        + MANUAL_SCRAPER_SERVER_INSTRUCTIONS
     ),
     **_mcp_common,
 )
@@ -105,7 +107,8 @@ chatgpt_mcp = FastMCP(
         "`google_serp_sync` for direct calls. "
         "Avoid tight polling loops; prefer user-driven follow-ups. "
         "When connected over HTTP, set `headers.Authorization` to "
-        '`Bearer <MRSCRAPER_API_TOKEN>` on the MCP connector. Tools do not accept API tokens as arguments.'
+        '`Bearer <MRSCRAPER_API_TOKEN>` on the MCP connector. Tools do not accept API tokens as arguments. '
+        + MANUAL_SCRAPER_SERVER_INSTRUCTIONS
     ),
     **_mcp_common,
 )

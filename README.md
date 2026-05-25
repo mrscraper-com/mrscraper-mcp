@@ -263,6 +263,13 @@ Quick steps:
 
 Extend tools and widget resources under `mrscraper_mcp/`; register new tools in `mrscraper_mcp/tools/__init__.py` (`register_tools` vs `register_chatgpt_tools`).
 
+### Compliance & Legal Risk
+
+> **WARNING**
+**Scraping login-protected pages carries serious legal and compliance risks.** Many websites explicitly prohibit automated access in their Terms of Service, and bypassing authentication to scrape content may expose you to legal action including lawsuits, account termination, and financial penalties. By proceeding on scraping login-protected pages, you confirm that you have read and understood the target website's Terms of Service, and you **fully accept all legal, financial, and ethical responsibility** for your actions.you can use above for other repos
+
+Manual scraper MCP tools document this warning for agents. Before the first manual scraper tool call in a conversation, the agent should show this text to the user once and obtain acknowledgment; it must not be repeated on later manual scraper calls in the same conversation.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE)
