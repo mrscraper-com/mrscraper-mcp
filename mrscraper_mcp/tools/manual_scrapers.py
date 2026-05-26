@@ -3,6 +3,7 @@ from fastmcp.tools.tool import ToolResult
 import httpx
 
 from mrscraper_mcp.auth import resolve_api_token
+from mrscraper_mcp.compliance import MANUAL_SCRAPER_AGENT_COMPLIANCE_NOTES
 from mrscraper_mcp.constants import SCRAPERS_MANUAL_RERUN, SCRAPERS_MANUAL_RERUN_BULK
 from mrscraper_mcp.job_runtime import (
     JOB_STORE,
@@ -170,7 +171,7 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
 
         Notes:
             - This tool is specifically to rerun manually configured scrapers. It is not applicable for AI scrapers. Call this tool when the user specifies a manual scraper.
-        """
+        """ + MANUAL_SCRAPER_AGENT_COMPLIANCE_NOTES
         return await _rerun_manual_scraper_impl(
             token=resolve_api_token(),
             scraper_id=scraper_id,
@@ -216,7 +217,7 @@ def register_manual_scraper_tools(mcp: FastMCP) -> None:
                     "https://www.example.com/products/item3"
                 ]
             )
-        """
+        """ + MANUAL_SCRAPER_AGENT_COMPLIANCE_NOTES
         return await _bulk_rerun_manual_scraper_impl(
             token=resolve_api_token(),
             scraper_id=scraper_id,
@@ -278,7 +279,7 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
               `rerun_ai_scraper` or `rerun_ai_scraper_job`.
             - Prefer checking job status when the user continues the conversation, not on a tight timer.
             - Jobs are in-memory only; they disappear if the MCP server restarts.
-        """
+        """ + MANUAL_SCRAPER_AGENT_COMPLIANCE_NOTES
         job = await JOB_STORE.enqueue(
             tool_name="rerun_manual_scraper_job",
             input_preview={"scraperId": scraper_id, "url": url},
@@ -315,7 +316,7 @@ def register_manual_scraper_job_tools(mcp: FastMCP) -> None:
 
         Returns:
             status_code, data (bulk job metadata), headers, optional error.
-        """
+        """ + MANUAL_SCRAPER_AGENT_COMPLIANCE_NOTES
         return await _bulk_rerun_manual_scraper_impl(
             token=resolve_api_token(),
             scraper_id=scraper_id,
