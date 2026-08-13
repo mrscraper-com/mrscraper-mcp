@@ -78,8 +78,8 @@ not accept a schema.
 
 Structured scrape supports `proxy_country`. It does not accept fetch-only
 rendering, selector, homepage, resource, retry, token-cap, or timeout controls.
-Promptless `scrape` is only a deprecated HTML-fetch compatibility path; use
-`fetch` directly.
+When no AI extraction option is supplied, `scrape` returns fetch-style HTML;
+use `fetch` directly for page content.
 
 ## Discover pages with Google
 

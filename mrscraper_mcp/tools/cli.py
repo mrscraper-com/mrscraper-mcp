@@ -51,6 +51,9 @@ SortField = Literal[
 ]
 SortOrder = Literal["ASC", "DESC"]
 RerunType = Literal["ai", "manual"]
+PositiveInt = Annotated[int, Field(ge=1)]
+NonNegativeInt = Annotated[int, Field(ge=0)]
+NonEmptyString = Annotated[str, Field(min_length=1)]
 
 
 def _response_properties() -> dict[str, Any]:
@@ -313,22 +316,43 @@ async def _fetch_with_token(
 
 
 async def fetch(
-    url: str,
+    url: NonEmptyString,
     format: FetchFormat = "markdown",
     unblock: UnblockPolicy = "auto",
     geo: str | None = None,
     wait_for: str | None = None,
     homepage: bool = False,
     block_resources: bool = False,
-    retries: int = 3,
-    token_cap: int | None = None,
-    timeout: int = 30,
+    retries: NonNegativeInt = 3,
+    token_cap: PositiveInt | None = None,
+    timeout: PositiveInt = 30,
 ) -> dict[str, Any]:
     """Fetch a known URL as Markdown, HTML, or a clean page-document object.
 
     ``unblock='auto'`` starts without browser rendering and escalates when a
     challenge or retryable block is detected. Use ``always`` for dynamic or
     blocked pages and ``wait_for`` for a CSS selector that must appear.
+
+    Args:
+        url: Absolute HTTP or HTTPS page URL to retrieve.
+        format: Response content format. ``markdown`` returns readable page
+            text, ``html`` returns page HTML, and ``json`` returns a clean
+            page-document object.
+        unblock: Browser-rendering policy. ``auto`` escalates only after a
+            challenge or retryable block, ``always`` renders immediately, and
+            ``never`` forbids rendering.
+        geo: Optional ISO 3166-1 alpha-2 proxy country code, such as ``US`` or
+            ``ID``.
+        wait_for: Optional CSS selector that must appear before capture. This
+            requires browser rendering and cannot be combined with
+            ``unblock='never'``.
+        homepage: Visit the target site's home page before loading ``url``.
+        block_resources: Block non-essential browser resources during a
+            rendered request.
+        retries: Maximum API retry attempts after escalation. Use ``0`` to
+            disable retries.
+        token_cap: Optional maximum token usage allowed across retries.
+        timeout: Maximum page-load duration in seconds.
     """
     return _raise_for_api_error(
         await _fetch_with_token(
@@ -435,14 +459,14 @@ async def _scrape_with_token(
 
 
 async def scrape(
-    url: str,
+    url: NonEmptyString,
     prompt: str | None = None,
     schema: dict[str, Any] | None = None,
     agent: Agent | None = None,
     proxy_country: str | None = None,
-    max_pages: int | None = None,
-    max_depth: int = 2,
-    limit: int = 1000,
+    max_pages: PositiveInt | None = None,
+    max_depth: PositiveInt = 2,
+    limit: PositiveInt = 1000,
     include_patterns: str = "",
     exclude_patterns: str = "",
     format: FetchFormat | None = None,
@@ -451,17 +475,58 @@ async def scrape(
     wait_for: str | None = None,
     homepage: bool | None = None,
     block_resources: bool | None = None,
-    retries: int | None = None,
-    token_cap: int | None = None,
-    timeout: int | None = None,
+    retries: NonNegativeInt | None = None,
+    token_cap: PositiveInt | None = None,
+    timeout: PositiveInt | None = None,
 ) -> dict[str, Any]:
     """Extract structured data from a URL using a prompt, JSON Schema, or both.
 
     Use ``general`` for one page, ``listing`` for repeated records and bounded
     pagination, and ``map`` to discover URLs within a known site. ``schema`` is
-    passed directly as a JSON object because an MCP server cannot read a local
-    CLI schema path from the caller's machine. Promptless use remains the CLI's
-    deprecated HTML-fetch compatibility path; prefer ``fetch`` for page content.
+    passed directly as a JSON object because an MCP server cannot read a schema
+    path from the caller's machine. When no AI extraction option is supplied,
+    the tool returns fetch-style HTML; prefer ``fetch`` for page content.
+
+    Args:
+        url: Absolute HTTP or HTTPS URL to extract data from.
+        prompt: Natural-language extraction instructions. Supplying this
+            enables AI extraction.
+        schema: JSON Schema object describing the requested structured output.
+            Supplying this enables AI extraction. It is not supported by the
+            ``map`` agent.
+        agent: Extraction mode. ``general`` handles a normal page, ``listing``
+            extracts repeated records across bounded pages, and ``map``
+            discovers URLs within the target site. AI extraction defaults to
+            ``general``.
+        proxy_country: Optional proxy country supported by the AI scrape API.
+        max_pages: Maximum pages for listing or map extraction. When omitted,
+            the effective default is ``1`` for ``listing`` and ``50`` for the
+            other AI modes.
+        max_depth: Maximum link depth for the ``map`` agent.
+        limit: Maximum number of URL results for the ``map`` agent.
+        include_patterns: Regular expression limiting URLs included by the
+            ``map`` agent. An empty string applies no include filter.
+        exclude_patterns: Regular expression excluding URLs from the ``map``
+            agent. An empty string applies no exclude filter.
+        format: Page format used only when ``prompt``, ``schema``, ``agent``,
+            and ``proxy_country`` are all omitted. The effective default is
+            ``html``.
+        unblock: Browser-rendering policy used only in promptless page-fetch
+            mode. The effective default is ``auto``.
+        geo_code: Proxy region used only in promptless page-fetch mode. The
+            effective default is ``US``.
+        wait_for: CSS selector to await, used only in promptless page-fetch
+            mode.
+        homepage: Whether to visit the site home page first, used only in
+            promptless page-fetch mode.
+        block_resources: Whether to block non-essential browser resources,
+            used only in promptless page-fetch mode.
+        retries: Retry limit used only in promptless page-fetch mode. The
+            effective default is ``3``.
+        token_cap: Optional retry token cap used only in promptless page-fetch
+            mode.
+        timeout: Page-load timeout in seconds used only in promptless
+            page-fetch mode. The effective default is ``120``.
     """
     return _raise_for_api_error(
         await _scrape_with_token(
@@ -521,19 +586,37 @@ async def _serp_with_token(
 
 
 async def serp(
-    query_or_url: str,
+    query_or_url: NonEmptyString,
     region: str | None = None,
     language: str | None = None,
-    page: int | None = None,
+    page: PositiveInt | None = None,
     format: SerpFormat = "json",
     render_js: bool = False,
     raw: bool = False,
-    timeout: int = 120,
+    timeout: PositiveInt = 120,
 ) -> dict[str, Any]:
     """Return Google results for a query or full Google search URL.
 
     JSON is the default. Use HTML only for the raw result page and enable
     ``render_js`` only for dynamic SERP features such as AI Overview.
+
+    Args:
+        query_or_url: Google search phrase or full Google search URL. For a URL,
+            the ``q`` parameter supplies the query and ``gl``, ``hl``, and
+            ``start`` provide optional region, language, and page defaults.
+        region: Optional Google result country code, such as ``us`` or ``id``.
+            This overrides a ``gl`` value in ``query_or_url``.
+        language: Optional Google result language code, such as ``en`` or
+            ``id``. This overrides an ``hl`` value in ``query_or_url``.
+        page: Optional one-based result page. This overrides the page derived
+            from ``start`` in a Google search URL.
+        format: ``json`` for parsed search results or ``html`` for the raw
+            result page.
+        render_js: Wait for JavaScript rendering, including dynamic SERP
+            features such as AI Overview.
+        raw: Request raw HTML output. When true, this takes precedence over
+            ``format``.
+        timeout: Maximum request duration in seconds.
     """
     return _raise_for_api_error(
         await _serp_with_token(
@@ -609,7 +692,17 @@ async def _status_with_token(
 
 async def status(
     domain: str | None = None,
-    from_: Annotated[str, Field(alias="from")] = "24h",
+    from_: Annotated[
+        str,
+        Field(
+            alias="from",
+            description=(
+                "Analytics range start as ISO 8601, `now`, or a relative "
+                "duration such as `30m`, `24h`, or `7d`. Relative values are "
+                "measured backward from `to`."
+            ),
+        ),
+    ] = "24h",
     to: str = "now",
     action: str | None = None,
     api_token_name: str | None = None,
@@ -619,6 +712,15 @@ async def status(
     ``from`` and ``to`` accept ISO 8601 values, ``now``, or relative durations
     such as ``30m``, ``24h``, and ``7d``. Domain analytics describe MrScraper
     request outcomes; they are not traffic or SEO analytics.
+
+    Args:
+        domain: Optional domain name or URL. When supplied, include MrScraper
+            request-outcome analytics for its normalized hostname.
+        from_: Analytics range start. Relative durations are measured backward
+            from ``to``. Exposed to MCP clients as ``from``.
+        to: Analytics range end as ISO 8601, ``now``, or a relative duration.
+        action: Optional exact action filter for domain analytics.
+        api_token_name: Optional API-token-name filter for domain analytics.
     """
     return _raise_for_api_error(
         await _status_with_token(
@@ -695,9 +797,9 @@ async def rerun(
     bulk: bool = False,
     scraper_id: str | None = None,
     id: str | None = None,
-    max_depth: int = 2,
-    max_pages: int = 50,
-    limit: int = 1000,
+    max_depth: PositiveInt = 2,
+    max_pages: PositiveInt = 50,
+    limit: PositiveInt = 1000,
     include_patterns: str = "",
     exclude_patterns: str = "",
 ) -> dict[str, Any]:
@@ -706,6 +808,26 @@ async def rerun(
     Single reruns require ``scraper_id``. Bulk reruns require ``bulk=true`` and
     ``id``; ``target`` may be an array or comma/newline-separated string. Before
     a manual rerun, show the server's compliance warning and obtain acknowledgment.
+
+    Args:
+        target: One target URL for a single rerun. For a bulk rerun, pass an
+            array of URLs or a string separated by commas, pipes, or newlines.
+        type: Saved scraper type: ``ai`` or ``manual``.
+        bulk: Submit all parsed target URLs through the bulk rerun endpoint.
+        scraper_id: Saved scraper UUID required for a single rerun. Do not use
+            this field for a bulk rerun.
+        id: Saved scraper UUID required when ``bulk`` is true. Do not use this
+            field for a single rerun.
+        max_depth: Maximum crawl depth for a single AI rerun. Ignored by manual
+            and bulk reruns.
+        max_pages: Maximum pages for a single AI rerun. Ignored by manual and
+            bulk reruns.
+        limit: Maximum results for a single AI rerun. Ignored by manual and
+            bulk reruns.
+        include_patterns: URL include regular expression for a single AI
+            rerun. An empty string applies no include filter.
+        exclude_patterns: URL exclude regular expression for a single AI
+            rerun. An empty string applies no exclude filter.
     """
     return _raise_for_api_error(
         await _rerun_with_token(
@@ -754,14 +876,28 @@ async def _results_with_token(
 async def results(
     sort_field: SortField = "updatedAt",
     sort_order: SortOrder = "DESC",
-    page_size: int = 10,
-    page: int = 1,
+    page_size: PositiveInt = 10,
+    page: PositiveInt = 1,
     search: str | None = None,
     date_range_column: str | None = None,
     start_at: str | None = None,
     end_at: str | None = None,
 ) -> dict[str, Any]:
-    """List stored scrape results with pagination, sorting, search, and dates."""
+    """List stored scrape results with pagination, sorting, search, and dates.
+
+    Args:
+        sort_field: Result field used for sorting. Supported values are
+            ``createdAt``, ``updatedAt``, ``id``, ``type``, ``url``, ``status``,
+            ``error``, ``tokenUsage``, and ``runtime``.
+        sort_order: Sort direction: ``ASC`` or ``DESC``.
+        page_size: Number of rows requested per page.
+        page: One-based page index.
+        search: Optional free-text result search filter.
+        date_range_column: Result column to which ``start_at`` and ``end_at``
+            apply.
+        start_at: Optional inclusive ISO 8601 range start.
+        end_at: Optional inclusive ISO 8601 range end.
+    """
     return _raise_for_api_error(
         await _results_with_token(
             resolve_api_token(),
@@ -783,8 +919,12 @@ async def _result_with_token(token: str, *, result_id: str) -> dict[str, Any]:
     return await get_result_by_id_api(token=token, result_id=result_id.strip())
 
 
-async def result(result_id: str) -> dict[str, Any]:
-    """Return one stored scrape result by its result UUID."""
+async def result(result_id: NonEmptyString) -> dict[str, Any]:
+    """Return one stored scrape result by its result UUID.
+
+    Args:
+        result_id: UUID of the stored MrScraper result to retrieve.
+    """
     return _raise_for_api_error(
         await _result_with_token(resolve_api_token(), result_id=result_id)
     )
@@ -815,7 +955,14 @@ def register_cli_tools(mcp: FastMCP) -> None:
             "destructiveHint": False,
         },
     )(serp)
-    mcp.tool(output_schema=STATUS_OUTPUT_SCHEMA)(status)
+    mcp.tool(
+        output_schema=STATUS_OUTPUT_SCHEMA,
+        annotations={
+            "readOnlyHint": True,
+            "openWorldHint": True,
+            "destructiveHint": False,
+        },
+    )(status)
     mcp.tool(
         output_schema=RERUN_OUTPUT_SCHEMA,
         annotations={
@@ -824,5 +971,19 @@ def register_cli_tools(mcp: FastMCP) -> None:
             "destructiveHint": False,
         },
     )(rerun)
-    mcp.tool(output_schema=RESULTS_OUTPUT_SCHEMA)(results)
-    mcp.tool(output_schema=RESULT_OUTPUT_SCHEMA)(result)
+    mcp.tool(
+        output_schema=RESULTS_OUTPUT_SCHEMA,
+        annotations={
+            "readOnlyHint": True,
+            "openWorldHint": True,
+            "destructiveHint": False,
+        },
+    )(results)
+    mcp.tool(
+        output_schema=RESULT_OUTPUT_SCHEMA,
+        annotations={
+            "readOnlyHint": True,
+            "openWorldHint": True,
+            "destructiveHint": False,
+        },
+    )(result)

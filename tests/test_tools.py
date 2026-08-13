@@ -271,6 +271,53 @@ def test_tool_schema_is_json_serializable():
         }
 
 
+def test_every_tool_parameter_has_a_model_facing_description():
+    async def schema_descriptions():
+        tools = await mcp.list_tools(run_middleware=False)
+        return {
+            tool.name: {
+                name: property_schema.get("description", "").strip()
+                for name, property_schema in tool.parameters.get(
+                    "properties", {}
+                ).items()
+            }
+            for tool in tools
+        }
+
+    descriptions = run(schema_descriptions())
+    missing = {
+        tool_name: [name for name, description in properties.items() if not description]
+        for tool_name, properties in descriptions.items()
+        if any(not description for description in properties.values())
+    }
+
+    assert missing == {}
+
+
+def test_tool_input_schemas_publish_enforceable_numeric_limits():
+    async def input_schemas():
+        tools = await mcp.list_tools(run_middleware=False)
+        return {tool.name: tool.parameters for tool in tools}
+
+    schemas = run(input_schemas())
+    assert schemas["fetch"]["properties"]["retries"]["minimum"] == 0
+    assert schemas["fetch"]["properties"]["timeout"]["minimum"] == 1
+    assert schemas["rerun"]["properties"]["max_pages"]["minimum"] == 1
+    assert schemas["results"]["properties"]["page"]["minimum"] == 1
+    assert schemas["result"]["properties"]["result_id"]["minLength"] == 1
+
+
+def test_read_only_tools_publish_safety_annotations():
+    async def annotations_by_tool():
+        tools = await mcp.list_tools(run_middleware=False)
+        return {tool.name: tool.annotations for tool in tools}
+
+    annotations = run(annotations_by_tool())
+    for tool_name in ("fetch", "serp", "status", "results", "result"):
+        assert annotations[tool_name].readOnlyHint is True
+        assert annotations[tool_name].destructiveHint is False
+
+
 def test_upstream_failure_is_an_mcp_tool_error(monkeypatch):
     async def fake_fetch(**_kwargs):
         return {

@@ -31,6 +31,12 @@ Successful tool calls publish command-specific MCP output schemas. Input
 validation and upstream MrScraper failures are returned as MCP tool errors
 (`isError=true`), which is the protocol equivalent of the CLI's nonzero exit.
 
+Each tool parameter includes a model-facing description in its MCP input
+schema, together with its type, default, allowed values, and enforceable limits
+where applicable. The schema returned by `tools/list` is the authoritative tool
+contract; this README provides selection guidance, examples, and operational
+context for people using or deploying the server.
+
 MCP-specific behavior:
 
 - `scrape.schema` accepts the JSON Schema object directly. A server cannot read
