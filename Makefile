@@ -4,16 +4,16 @@
 all: help
 
 # Define a variable for the test file path.
-TEST_FILE ?= tests/unit_tests/
+TEST_FILE ?= tests/
 
 test:
 	python -m pytest $(TEST_FILE)
 
 test_watch:
-	python -m ptw --snapshot-update --now . -- -vv tests/unit_tests
+	python -m ptw --snapshot-update --now . -- -vv tests
 
 test_profile:
-	python -m pytest -vv tests/unit_tests/ --profile-svg
+	python -m pytest -vv tests/ --profile-svg
 
 extended_tests:
 	python -m pytest --only-extended $(TEST_FILE)
@@ -24,11 +24,11 @@ extended_tests:
 ######################
 
 # Define a variable for Python and notebook files.
-PYTHON_FILES=src/
+PYTHON_FILES=mrscraper_mcp/
 MYPY_CACHE=.mypy_cache
 lint format: PYTHON_FILES=.
 lint_diff format_diff: PYTHON_FILES=$(shell git diff --name-only --diff-filter=d main | grep -E '\.py$$|\.ipynb$$')
-lint_package: PYTHON_FILES=src
+lint_package: PYTHON_FILES=mrscraper_mcp
 lint_tests: PYTHON_FILES=tests
 lint_tests: MYPY_CACHE=.mypy_cache_test
 
@@ -71,4 +71,3 @@ help:
 	@echo 'tests                        - run unit tests'
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
 	@echo 'test_watch                   - run unit tests in watch mode'
-

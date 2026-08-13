@@ -16,7 +16,7 @@ _TOKEN_VALIDATE_TIMEOUT = 15.0
 _MISSING_TOKEN_MESSAGE = (
     "MrScraper API token is required. Configure the MCP client with "
     '"headers": {"Authorization": "Bearer <your-token>"} (or "x-api-token"), '
-    "or set MRSCRAPER_API_TOKEN for stdio transport."
+    "or set MRSCRAPER_API_KEY / MRSCRAPER_API_TOKEN for stdio transport."
 )
 
 
@@ -29,8 +29,11 @@ def normalize_bearer_token(token: str) -> str:
 
 
 def _env_api_token() -> str | None:
-    value = os.environ.get("MRSCRAPER_API_TOKEN", "").strip()
-    return value or None
+    for name in ("MRSCRAPER_API_KEY", "MRSCRAPER_API_TOKEN"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return None
 
 
 def http_auth_enabled() -> bool:
@@ -78,7 +81,7 @@ def resolve_api_token() -> str:
     """Resolve the MrScraper API token for the current request.
 
     Precedence: MCP Bearer auth, ``x-api-token`` / ``Authorization`` headers,
-    then ``MRSCRAPER_API_TOKEN``.
+    then ``MRSCRAPER_API_KEY`` / ``MRSCRAPER_API_TOKEN``.
     """
     access = get_access_token()
     if access is not None and access.token.strip():

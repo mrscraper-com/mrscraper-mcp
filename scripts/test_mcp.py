@@ -1,4 +1,10 @@
-"""Small integration test client for the MrScraper MCP servers."""
+"""Small integration test client for the MrScraper MCP server.
+
+Example:
+  python scripts/test_mcp.py --target http://localhost:8000/mcp \
+    --call-tool fetch --token "$MRSCRAPER_API_KEY" \
+    --args '{"url":"https://example.com","format":"markdown"}'
+"""
 
 from __future__ import annotations
 
@@ -19,7 +25,6 @@ except ModuleNotFoundError:
 
 DEFAULT_BASE_URL = "http://localhost:8000"
 DEFAULT_TARGET = f"{DEFAULT_BASE_URL}/mcp"
-DEFAULT_WIDGET_URI = "ui://widget/mrscraper-job-status-v2.html"
 
 
 def _print_json(label: str, value: Any) -> None:
@@ -52,7 +57,6 @@ def _content_to_text(blocks: Any) -> list[str]:
 async def run_checks(
     *,
     target: str,
-    read_widget: bool,
     call_tool: str | None,
     arguments: dict[str, Any] | None,
     token: str | None,
@@ -73,20 +77,6 @@ async def run_checks(
         resource_uris = _resource_uris(resources)
         _print_json("resources", resource_uris)
 
-        if read_widget:
-            if DEFAULT_WIDGET_URI in resource_uris:
-                widget = await client.read_resource(DEFAULT_WIDGET_URI)
-                texts = _content_to_text(widget)
-                print("\n== widget resource ==")
-                if texts:
-                    print(f"loaded {DEFAULT_WIDGET_URI} ({len(texts[0])} chars)")
-                else:
-                    print(f"loaded {DEFAULT_WIDGET_URI}")
-            else:
-                print(
-                    f"\n== widget resource ==\nmissing {DEFAULT_WIDGET_URI} on this server"
-                )
-
         if call_tool:
             if call_tool not in tool_names:
                 print(f"\nTool `{call_tool}` is not exposed by this server.")
@@ -104,40 +94,6 @@ async def run_checks(
     return 0
 
 
-async def run_route_checks(
-    *,
-    base_url: str,
-    routes: list[str],
-    read_widget: bool,
-    call_tool: str | None,
-    arguments: dict[str, Any] | None,
-    token: str | None,
-) -> int:
-    exit_code = 0
-
-    for route in routes:
-        clean_route = route if route.startswith("/") else f"/{route}"
-        target = f"{base_url.rstrip('/')}{clean_route}"
-        print(f"\n## Checking route {clean_route}")
-        try:
-            code = await run_checks(
-                target=target,
-                read_widget=read_widget,
-                call_tool=call_tool,
-                arguments=arguments,
-                token=token,
-            )
-        except Exception as exc:
-            print(f"route {clean_route}: failed to connect or initialize: {exc}")
-            exit_code = 1
-            continue
-
-        if code != 0:
-            exit_code = code
-
-    return exit_code
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Smoke test an MCP server exposed by this repo."
@@ -148,23 +104,8 @@ def main() -> int:
         help="MCP server URL. Example: http://localhost:8000/mcp",
     )
     parser.add_argument(
-        "--base-url",
-        default=DEFAULT_BASE_URL,
-        help="Base server URL used with --routes. Example: http://localhost:8000",
-    )
-    parser.add_argument(
-        "--routes",
-        nargs="+",
-        help="Route paths to check on one server. Example: /mcp /chatgpt",
-    )
-    parser.add_argument(
-        "--no-widget",
-        action="store_true",
-        help="Skip reading the widget resource.",
-    )
-    parser.add_argument(
         "--token",
-        help="MrScraper API token sent as Authorization: Bearer (overrides MRSCRAPER_API_TOKEN).",
+        help="MrScraper API key sent as Authorization: Bearer (overrides environment).",
     )
     parser.add_argument(
         "--call-tool",
@@ -179,7 +120,11 @@ def main() -> int:
 
     import os
 
-    token = (args.token or os.environ.get("MRSCRAPER_API_TOKEN", "")).strip() or None
+    token = (
+        args.token
+        or os.environ.get("MRSCRAPER_API_KEY", "")
+        or os.environ.get("MRSCRAPER_API_TOKEN", "")
+    ).strip() or None
 
     try:
         parsed_args = json.loads(args.args)
@@ -191,23 +136,10 @@ def main() -> int:
         print("--args must decode to a JSON object.", file=sys.stderr)
         return 2
 
-    if args.routes:
-        return asyncio.run(
-            run_route_checks(
-                base_url=args.base_url,
-                routes=args.routes,
-                read_widget=not args.no_widget,
-                call_tool=args.call_tool,
-                arguments=parsed_args,
-                token=token,
-            )
-        )
-
     target = args.target or DEFAULT_TARGET
     return asyncio.run(
         run_checks(
             target=target,
-            read_widget=not args.no_widget,
             call_tool=args.call_tool,
             arguments=parsed_args,
             token=token,
@@ -217,14 +149,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-"""
-Example usage:
-python scripts/test_mcp.py \
-  --target http://localhost:8000/mcp \
-  --call-tool fetch_html \
-  --token "$MRSCRAPER_API_TOKEN" \
-  --args '{"url":"https://www.walmart.com/search?q=iphone+&page=2&affinityOverride=default","timeout":120,"geo_code":"US","block_resources":false}'
-
-"""

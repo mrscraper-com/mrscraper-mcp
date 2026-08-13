@@ -1,14 +1,9 @@
-"""Integration test for Google SERP sync: direct API (default) or via MCP `google_serp_sync`.
+"""Smoke-test the canonical ``serp`` implementation directly or over MCP.
 
-Reads token from MRSCRAPER_API_TOKEN unless --access-token is set.
-Does not log the full token.
-
-Example (direct):
-  export MRSCRAPER_API_TOKEN='atk_...'
-  python scripts/test_google_serp.py
-
-Example (MCP, server must be running):
-  python scripts/test_google_serp.py --mcp http://localhost:8787/mcp --access-token 'atk_...'
+Examples:
+  MRSCRAPER_API_KEY='atk_...' python scripts/test_google_serp.py
+  python scripts/test_google_serp.py --mcp http://localhost:8000/mcp \
+    --access-token 'atk_...' --query-or-url 'iphone 17'
 """
 
 from __future__ import annotations
@@ -20,99 +15,101 @@ import os
 import sys
 from typing import Any
 
-
-DEFAULT_SEARCH_URL = "https://www.google.com/search?q=iphone+17"
+DEFAULT_QUERY = "iphone 17"
 
 
 def _print_json(label: str, value: Any) -> None:
     print(f"\n== {label} ==")
-    print(
-        json.dumps(
-            value,
-            indent=2,
-            ensure_ascii=False,
-            default=str,
-        )
-    )
+    print(json.dumps(value, indent=2, ensure_ascii=False, default=str))
 
 
 def _resolve_token(args: argparse.Namespace) -> str | None:
-    if args.access_token:
-        return args.access_token.strip()
-    env = os.environ.get("MRSCRAPER_API_TOKEN", "").strip()
-    return env or None
+    for value in (
+        args.access_token,
+        os.environ.get("MRSCRAPER_API_KEY", ""),
+        os.environ.get("MRSCRAPER_API_TOKEN", ""),
+    ):
+        if value and value.strip():
+            return value.strip()
+    return None
 
 
 async def _run_direct(
     *,
     access_token: str,
-    url: str,
-    raw: bool,
-    session_cookie: str,
-    timeout: float,
+    query_or_url: str,
+    region: str | None,
+    language: str | None,
+    page: int | None,
+    format: str,
+    render_js: bool,
+    timeout: int,
 ) -> dict[str, Any]:
-    from mrscraper_mcp.tools.google_serp import _google_serp_sync_impl
+    from mrscraper_mcp.api import google_serp_sync_api
 
-    return await _google_serp_sync_impl(
-        access_token=access_token,
-        url=url,
-        raw=raw,
-        session_cookie=session_cookie,
+    return await google_serp_sync_api(
+        token=access_token,
+        query_or_url=query_or_url,
+        region=region,
+        language=language,
+        page=page,
+        format=format,
+        render_js=render_js,
         timeout=timeout,
     )
 
 
 def _content_jsonable(blocks: Any) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
+    output: list[dict[str, Any]] = []
     for block in blocks or []:
-        row: dict[str, Any] = {}
-        for key in ("type", "text", "data", "mimeType", "uri"):
-            if hasattr(block, key):
-                row[key] = getattr(block, key)
-        if not row and block is not None:
-            row["_repr"] = repr(block)
-        out.append(row)
-    return out
+        row = {
+            key: getattr(block, key)
+            for key in ("type", "text", "data", "mimeType", "uri")
+            if hasattr(block, key)
+        }
+        output.append(row or {"_repr": repr(block)})
+    return output
 
 
 async def _run_mcp(
     *,
     mcp_url: str,
     access_token: str,
-    url: str,
-    raw: bool,
-    session_cookie: str,
-    timeout: float,
+    query_or_url: str,
+    region: str | None,
+    language: str | None,
+    page: int | None,
+    format: str,
+    render_js: bool,
+    timeout: int,
 ) -> dict[str, Any]:
     try:
         from fastmcp import Client
+        from fastmcp.client.auth import BearerAuth
     except ModuleNotFoundError:
-        print(
-            "fastmcp is not installed. Run `pip install -e .` first.", file=sys.stderr
-        )
+        print("fastmcp is not installed. Run `pip install -e .`.", file=sys.stderr)
         raise SystemExit(1) from None
 
-    arguments: dict[str, Any] = {
-        "access_token": access_token,
-        "url": url,
-        "raw": raw,
+    arguments = {
+        "query_or_url": query_or_url,
+        "format": format,
+        "render_js": render_js,
         "timeout": timeout,
     }
-    if session_cookie:
-        arguments["session_cookie"] = session_cookie
+    if region:
+        arguments["region"] = region
+    if language:
+        arguments["language"] = language
+    if page:
+        arguments["page"] = page
 
-    client = Client(mcp_url)
-    async with client:
+    async with Client(mcp_url, auth=BearerAuth(access_token)) as client:
         tools = await client.list_tools()
-        names = [getattr(t, "name", "") for t in tools]
-        if "google_serp_sync" not in names:
-            print(
-                f"Tool `google_serp_sync` not found on this server. Available: {names}",
-                file=sys.stderr,
-            )
+        names = [getattr(tool, "name", "") for tool in tools]
+        if "serp" not in names:
+            print(f"Tool `serp` not found. Available: {names}", file=sys.stderr)
             raise SystemExit(2)
-
-        result = await client.call_tool("google_serp_sync", arguments)
+        result = await client.call_tool("serp", arguments)
         return {
             "is_error": getattr(result, "is_error", False),
             "structured_content": getattr(result, "structured_content", None),
@@ -121,61 +118,49 @@ async def _run_mcp(
         }
 
 
-def _effective_api_result(
-    args: argparse.Namespace, result: dict[str, Any]
-) -> dict[str, Any]:
-    """For pass/fail, use inner structured_content when MCP returns API-shaped dict."""
-    if args.mcp:
-        inner = result.get("structured_content")
-        if isinstance(inner, dict):
-            return inner
-    return result
-
-
 async def _async_main(args: argparse.Namespace) -> int:
     token = _resolve_token(args)
     if not token:
         print(
-            "Missing token: set MRSCRAPER_API_TOKEN or pass --access-token.",
+            "Missing token: set MRSCRAPER_API_KEY / MRSCRAPER_API_TOKEN or "
+            "pass --access-token.",
             file=sys.stderr,
         )
         return 2
 
+    options = {
+        "access_token": token,
+        "query_or_url": args.query_or_url,
+        "region": args.region,
+        "language": args.language,
+        "page": args.page,
+        "format": args.format,
+        "render_js": args.render_js,
+        "timeout": args.timeout,
+    }
     if args.mcp:
-        result = await _run_mcp(
-            mcp_url=args.mcp,
-            access_token=token,
-            url=args.url,
-            raw=args.raw,
-            session_cookie=args.session_cookie or "",
-            timeout=args.timeout,
-        )
+        result = await _run_mcp(mcp_url=args.mcp, **options)
         mode = f"MCP {args.mcp}"
     else:
-        result = await _run_direct(
-            access_token=token,
-            url=args.url,
-            raw=args.raw,
-            session_cookie=args.session_cookie or "",
-            timeout=args.timeout,
-        )
-        mode = "direct API (_google_serp_sync_impl)"
+        result = await _run_direct(**options)
+        mode = "direct v2 SERP API"
 
     print(f"Mode: {mode}")
-    print(f"URL: {args.url}")
+    print(f"Query or URL: {args.query_or_url}")
     _print_json("result", result)
 
     if args.mcp and result.get("is_error"):
         print("\nTest FAILED: MCP tool is_error=True.", file=sys.stderr)
         return 1
-
-    check = _effective_api_result(args, result)
+    check = result.get("structured_content") if args.mcp else result
+    if not isinstance(check, dict):
+        check = result
     if check.get("error"):
         print("\nTest FAILED: error field set.", file=sys.stderr)
         return 1
-    sc = check.get("status_code")
-    if sc is not None and int(sc) >= 400:
-        print(f"\nTest FAILED: HTTP status {sc}.", file=sys.stderr)
+    status_code = check.get("status_code")
+    if status_code is not None and int(status_code) >= 400:
+        print(f"\nTest FAILED: HTTP status {status_code}.", file=sys.stderr)
         return 1
 
     print("\nTest OK.")
@@ -184,51 +169,26 @@ async def _async_main(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Smoke test Google SERP sync (direct or via MCP google_serp_sync)."
+        description="Smoke-test the canonical MrScraper `serp` tool."
     )
-    parser.add_argument(
-        "--access-token",
-        default="",
-        help="Sync API bearer token (atk_...). Overrides MRSCRAPER_API_TOKEN.",
-    )
-    parser.add_argument(
-        "--url",
-        default=DEFAULT_SEARCH_URL,
-        help="Full Google search URL to request.",
-    )
-    parser.add_argument(
-        "--raw",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Request raw API payload (default: true).",
-    )
-    parser.add_argument(
-        "--session-cookie",
-        default="",
-        help="Optional Cookie header value (e.g. sl-session=...).",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=float,
-        default=600.0,
-        help="HTTP timeout in seconds (default: 600).",
-    )
+    parser.add_argument("--access-token", default="")
+    parser.add_argument("--query-or-url", "--url", default=DEFAULT_QUERY)
+    parser.add_argument("--region")
+    parser.add_argument("--language")
+    parser.add_argument("--page", type=int)
+    parser.add_argument("--format", choices=("json", "html"), default="json")
+    parser.add_argument("--render-js", action="store_true")
+    parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument(
         "--mcp",
         metavar="URL",
         default="",
-        help="If set, call tool google_serp_sync on this MCP base "
-        "(e.g. http://localhost:8787/mcp). Omit for direct API test.",
+        help="Call the synchronous `/mcp` surface instead of the API helper.",
     )
     args = parser.parse_args()
-
-    # Normalize MCP URL: user may pass http://host:8787 without /mcp
     if args.mcp:
-        u = args.mcp.rstrip("/")
-        if not u.endswith("/mcp"):
-            u = f"{u}/mcp"
-        args.mcp = u
-
+        base = args.mcp.rstrip("/")
+        args.mcp = base if base.endswith("/mcp") else f"{base}/mcp"
     return asyncio.run(_async_main(args))
 
 

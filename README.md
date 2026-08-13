@@ -1,139 +1,102 @@
 # MrScraper MCP
 
-An MCP (Model Context Protocol) server built with FastMCP that wraps the [MrScraper](https://mrscraper.com) API—scraping, results APIs, and Google SERP extraction.
+An MCP server for the [MrScraper](https://mrscraper.com) service. Its public
+data tools follow the current `@mrscraper/cli` command contract:
 
-## Features
+```text
+fetch  scrape  serp  status  rerun  results  result
+```
 
-- **Web scraping** via MrScraper API (AI scrapers, manual scrapers, unblocker HTML fetch)
-- **Google SERP** via MrScraper SERP API
-- **MrScraper platform** statistics and results
-- **Two MCP surfaces over HTTP**: a general-purpose server (`/mcp`) and a **ChatGPT App SDK** profile (`/chatgpt`)
+The MCP owns connector authentication and transport. CLI machine-management
+commands such as `login`, `logout`, `init`, and `setup skills` are intentionally
+not MCP tools because they modify the machine running the CLI rather than query
+the MrScraper service.
 
-### HTTP: which URL to use
+## Tool contract
 
-When `TRANSPORT=http`, Starlette mounts **two** MCP apps:
+| Tool | Purpose |
+| --- | --- |
+| `fetch` | Return a known page as Markdown, HTML, or a clean document object, with adaptive unblocking. |
+| `scrape` | Extract requested structured data with a prompt, JSON Schema, and `general`, `listing`, or `map` mode. |
+| `serp` | Return Google results from a plain query or Google search URL. |
+| `status` | Return subscription/quota information and optional domain outcome analytics. |
+| `rerun` | Rerun an existing AI or manual scraper for one or many URLs. |
+| `results` | List stored runs with pagination, sorting, search, and date filters. |
+| `result` | Retrieve one stored run by result ID. |
 
-| Mount path | Use case |
-|------------|----------|
-| `/mcp` | Default connector URL: synchronous tools (same surface as stdio). |
-| `/chatgpt` | ChatGPT Apps / OpenAI Apps SDK: tools ending in `_job`, plus `get_scrape_job`, `list_scrape_jobs`, and sync-style helpers tuned for the host (see below). |
+The API payloads, defaults, validation, response redaction, environment
+overrides, and v2 SERP endpoint follow `@mrscraper/cli`.
 
-Example base URLs: `http://localhost:8000/mcp`, `http://localhost:8000/chatgpt`.
+Successful tool calls publish command-specific MCP output schemas. Input
+validation and upstream MrScraper failures are returned as MCP tool errors
+(`isError=true`), which is the protocol equivalent of the CLI's nonzero exit.
 
-## Installation
+MCP-specific behavior:
+
+- `scrape.schema` accepts the JSON Schema object directly. A server cannot read
+  a schema filepath located on the MCP client's machine.
+- The CLI's `scrape --output <path>` is not exposed. MCP returns the extraction
+  response to its client rather than writing into the server's filesystem.
+
+Use `fetch` for page content and `scrape` for defined fields or records.
+
+## MCP endpoint
+
+When `TRANSPORT=http`, the process exposes one Streamable HTTP MCP endpoint at
+`/mcp`. It provides exactly the seven canonical tools listed above. `/mcp` is
+the common path convention for MCP servers, although clients ultimately use
+the full server URL and the MCP protocol does not require a particular path.
+
+HTTP is stateless, so replicas do not require sticky sessions. Requests that
+include an `Origin` header are rejected unless the origin is a trusted local
+origin or appears in `MRSCRAPER_ALLOWED_ORIGINS`. Service-to-service MCP clients
+normally omit `Origin`.
+
+The same tool surface is available over stdio. Kubernetes-style liveness and
+readiness checks are available at `/health` and `/ready`; readiness confirms
+that all seven tools are registered and intentionally does not call an upstream
+service that requires a user's credential. Probe responses include the service
+name and version, which is also advertised through MCP `serverInfo`.
+
+## Installation and running
+
+Python 3.11 or newer is required.
 
 ```bash
+python -m venv .venv
+. .venv/bin/activate
 pip install -e .
 ```
 
-Or install dependencies directly:
+Installation creates a `mrscraper-mcp` executable. Run it over stdio:
 
 ```bash
-pip install fastmcp httpx
+mrscraper-mcp
 ```
 
-## Usage
-
-### Running the Server
-
-**stdio (default)** — single MCP instance (`mcp`), same tools as HTTP `/mcp`:
+Run the HTTP endpoint:
 
 ```bash
-python server.py
+TRANSPORT=http mrscraper-mcp
+# Defaults: HOST=127.0.0.1 PORT=8000
 ```
 
-**HTTP with both `/mcp` and `/chatgpt`** — use the Starlette app (recommended for ChatGPT Apps):
+From a source checkout, `python server.py` is another development entry point
+for both modes.
+
+The ASGI application can also be run directly:
 
 ```bash
-TRANSPORT=http python server.py
-# Optional: PORT=8000 HOST=0.0.0.0
+uvicorn mrscraper_mcp.app:app --host 127.0.0.1 --port 8000
 ```
 
-You can also run the ASGI app directly:
+`fastmcp run server.py:mcp` runs the same canonical FastMCP application.
 
-```bash
-uvicorn mrscraper_mcp.app:app --host 0.0.0.0 --port 8000
-```
+## Authentication
 
-The FastMCP CLI targets **`server.py:mcp` only**, so it exposes the default tool surface—not the separate ChatGPT MCP mounted at `/chatgpt`. Use it for quick checks on the main connector:
-
-```bash
-fastmcp run server.py:mcp --transport http --port 8000
-```
-
-### Available Tools
-
-Tool registration depends on **which MCP instance** you connect to.
-
-**Default MCP** (`stdio`, or HTTP `…/mcp`) — synchronous API-style tools:
-
-- `google_serp_sync` — Google SERP via the sync API (bearer token, full Google search URL; optional `raw`, `session_cookie`, `timeout`)
-- `fetch_html`
-- `create_ai_scraper`, `rerun_ai_scraper`, `bulk_rerun_ai_scraper`
-- `rerun_manual_scraper`, `bulk_rerun_manual_scraper`
-- `get_all_results`, `get_result_by_id`
-
-There are **no** `*_job` tools and **no** `get_scrape_job` / `list_scrape_jobs` on this surface.
-
-**ChatGPT MCP** (HTTP only: `…/chatgpt`) — tuned for the ChatGPT / OpenAI Apps SDK:
-
-- Job tools (return immediately with a `jobId`): `fetch_html_job`, `google_serp_sync_job`, `create_ai_scraper_job`, `rerun_ai_scraper_job`, `rerun_manual_scraper_job`
-- Job orchestration: `get_scrape_job`, `list_scrape_jobs`
-- Fast, direct JSON tools (same APIs as the main server, different ChatGPT-oriented metadata): `get_all_results`, `get_result_by_id`, `bulk_rerun_ai_scraper`, `bulk_rerun_manual` (same behavior as `bulk_rerun_manual_scraper`)
-
-### Google SERP
-
-SERP calls hit MrScraper’s sync SERP endpoint. Use **`google_serp_sync`** on the default MCP for a single blocking response. In ChatGPT Apps, prefer **`google_serp_sync_job`** plus **`get_scrape_job`**, since hosts often time out long tool calls. Responses can be large (HTML or JSON); avoid dumping full payloads into the model—summarize or store externally.
-
-### ChatGPT App SDK: background jobs
-
-On **`/chatgpt`**, long-running work uses tools whose names end with **`_job`**. Each returns right away with a local **`jobId`** (jobs live in server memory only until the process exits).
-
-1. Start work with a `*_job` tool (for example `create_ai_scraper_job` or `google_serp_sync_job`).
-2. Call **`get_scrape_job(job_id=…)`** when you need status; after the user follows up is ideal. Avoid tight polling loops—many jobs finish in seconds but some run closer to a minute. The bundled job-status widget uses progressive backoff between polls.
-3. When **`status`** is `succeeded` or `failed`, **`get_scrape_job`** includes the full **`result`** object (the same shape the synchronous tool would return: typically `status_code`, `data`, `headers`, and `error` when applicable).
-
-`get_scrape_job` is intentionally “plain” so repeated status checks do not keep reopening the progress widget.
-
-For local development you can smoke-test SERP via `scripts/test_google_serp.py` (direct implementation or MCP).
-
-## Docker Deployment
-
-### Building the Docker Image
-
-```bash
-docker build -t mrscraper-mcp .
-```
-
-### Running with Docker
-
-```bash
-docker run -d \
-  --name mrscraper-mcp \
-  -p 8000:8000 \
-  -e PORT=8000 \
-  -e HOST=0.0.0.0 \
-  -e TRANSPORT=http \
-  --restart unless-stopped \
-  mrscraper-mcp
-```
-
-### Using Docker Compose
-
-```bash
-# Start the service
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop the service
-docker-compose down
-```
-
-### HTTP authentication (Cursor, Claude, etc.)
-
-For remote HTTP connectors, pass your MrScraper API token in MCP **headers**, not in the server URL:
+For HTTP connectors with the default `MRSCRAPER_HTTP_AUTH=1`, send the
+MrScraper API key as a Bearer header. Tool schemas never expose token arguments.
+For clients that use an `mcpServers` configuration, the connection resembles:
 
 ```json
 {
@@ -142,132 +105,199 @@ For remote HTTP connectors, pass your MrScraper API token in MCP **headers**, no
       "type": "http",
       "url": "https://your-host.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_MRSCRAPER_API_TOKEN"
+        "Authorization": "Bearer YOUR_MRSCRAPER_API_KEY"
       }
     }
   }
 }
 ```
 
-`x-api-token` is also accepted. **Tools do not expose `token` or `access_token` parameters** — the LLM never receives your API key; only the MCP client sends it in connection headers (or via `MRSCRAPER_API_TOKEN` for stdio).
+Credential behavior depends on the transport mode:
 
-### Environment Variables
+| Mode | Accepted credential |
+| --- | --- |
+| HTTP with `MRSCRAPER_HTTP_AUTH=1` (default) | `Authorization: Bearer <MrScraper API key>` is required and verified before MCP requests run. |
+| HTTP with `MRSCRAPER_HTTP_AUTH=0` | Intended only for trusted local debugging. Tools resolve `x-api-token`, then `Authorization`, then `MRSCRAPER_API_KEY`, then `MRSCRAPER_API_TOKEN`. |
+| stdio | `MRSCRAPER_API_KEY`, then `MRSCRAPER_API_TOKEN`. |
 
-- `PORT`: Port to run the server on (default: 8000)
-- `HOST`: Host to bind to (default: 0.0.0.0)
-- `TRANSPORT`: `http` runs the full ASGI app (`/mcp` and `/chatgpt`); `stdio` runs the default MCP over stdio (default: `stdio` for local `python server.py`, typically `http` in Docker)
-- `MRSCRAPER_API_TOKEN`: API token for stdio transport or server-side fallback (not passed to the LLM)
+In particular, `x-api-token` and an environment-only key do not bypass the
+default HTTP Bearer middleware. Disable HTTP authentication only on a trusted
+local interface when testing those fallback paths.
 
+The server removes credential-bearing response headers and recursively redacts
+API tokens, cookies, signed query parameters, and generated curl credentials
+before returning MrScraper data.
 
-### Remote Server Deployment
+## Tool behavior
 
-1. **Build the image on your local machine:**
-   ```bash
-   docker build -t mrscraper-mcp .
-   ```
+### `fetch`
 
-2. **Save the image:**
-   ```bash
-   docker save mrscraper-mcp | gzip > mrscraper-mcp.tar.gz
-   ```
+Markdown is the default. Set `format` to `html` or `json` for raw HTML or the
+clean page-document representation.
 
-3. **Transfer to remote server:**
-   ```bash
-   scp mrscraper-mcp.tar.gz user@your-server.com:/path/to/destination/
-   ```
+`unblock="auto"` first makes the less expensive non-rendered request and
+retries with browser rendering when it detects a challenge or retryable block.
+Use `always` for known dynamic/blocked pages or `never` to forbid rendering.
+The remaining controls match the CLI:
 
-4. **On remote server, load and run:**
-   ```bash
-   docker load < mrscraper-mcp.tar.gz
-   docker run -d --name mrscraper-mcp -p 8000:8000 mrscraper-mcp
-   ```
+- `geo`
+- `wait_for` CSS selector
+- `homepage`
+- `block_resources`
+- `retries`
+- `token_cap`
+- `timeout`
 
-   Or use docker-compose:
-   ```bash
-   # Copy docker-compose.yml to remote server
-   docker-compose up -d
-   ```
+### `scrape`
 
-5. **Connect to the remote server** (use `/mcp` for the default toolset, `/chatgpt` for ChatGPT job tools):
-   ```python
-   from fastmcp import Client
-   from fastmcp.client.auth import BearerAuth
+Pass `prompt`, `schema`, or both. Modes are:
 
-   async with Client(
-       "http://your-server.com:8000/mcp",
-       auth=BearerAuth("YOUR_MRSCRAPER_API_TOKEN"),
-   ) as client:
-       result = await client.call_tool("fetch_html", {"url": "https://example.com"})
-   ```
+- `general` for one page or normal extraction;
+- `listing` for repeated records and bounded pagination; and
+- `map` for URL discovery within one known site.
 
-### Reverse Proxy Setup (Optional)
+`listing` sends `max_pages` to the API. `map` supports `max_depth`,
+`max_pages`, `limit`, `include_patterns`, and `exclude_patterns`, and does not
+accept a schema. Structured scraping accepts `proxy_country`; fetch-only
+browser controls are rejected in AI mode.
 
-For production, consider using a reverse proxy like Nginx. Proxy **`/mcp`** and **`/chatgpt`** (and **`/.well-known/openai-apps-challenge`** if you use OpenAI Apps verification) to the same upstream:
+### `serp`
 
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
+`query_or_url` accepts either a search phrase or a Google search URL. Google
+URL parameters such as `q`, `gl`, `hl`, and `start` are normalized into the v2
+SERP payload. Optional arguments are `region`, `language`, `page`, `format`,
+`render_js`, `raw`, and `timeout`. Setting `raw=true` requests HTML output.
 
-    location /mcp {
-        proxy_pass http://localhost:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 75s;
-    }
+### `status`
 
-    location /chatgpt {
-        proxy_pass http://localhost:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 75s;
-    }
-}
+Without a domain, `status` returns subscription, quota, token use, rate-limit,
+renewal, and account fields. With a domain it also returns stored MrScraper
+request outcomes for the requested interval.
+
+The JSON property `from` and `to` accept ISO 8601 timestamps, `now`, or
+durations such as `30m`, `24h`, and `7d`. Domain outcomes are not traffic, SEO,
+audience, or market analytics.
+
+### `rerun`, `results`, and `result`
+
+A single `rerun` requires `scraper_id`. A bulk rerun requires `bulk=true` and
+`id`; `target` can be an array or a comma/newline-separated string. `type` is
+`ai` or `manual`.
+
+`results` supports the same fields as the CLI: `sort_field`, `sort_order`,
+`page_size`, `page`, `search`, `date_range_column`, `start_at`, and `end_at`.
+Pass a result UUID to `result.result_id` for the full row.
+
+## Client example
+
+```python
+from fastmcp import Client
+from fastmcp.client.auth import BearerAuth
+
+async with Client(
+    "http://localhost:8000/mcp",
+    auth=BearerAuth("YOUR_MRSCRAPER_API_KEY"),
+) as client:
+    response = await client.call_tool(
+        "fetch",
+        {
+            "url": "https://example.com",
+            "format": "markdown",
+            "unblock": "auto",
+        },
+    )
 ```
 
-## Connecting to Claude Desktop
+## Environment variables
 
-### Local Setup (stdio transport)
+- `PORT`: HTTP port, default `8000`.
+- `HOST`: HTTP bind address, default `127.0.0.1`. Docker overrides this to
+  `0.0.0.0` so published container ports are reachable.
+- `TRANSPORT`: `stdio` or `http`. Any other value fails at startup.
+- `MRSCRAPER_API_KEY`: preferred stdio credential, or a tool credential when
+  trusted local HTTP authentication is disabled.
+- `MRSCRAPER_API_TOKEN`: alternate credential environment variable.
+- `MRSCRAPER_HTTP_AUTH`: set to `0` only for trusted local HTTP debugging.
+- `MRSCRAPER_ALLOWED_ORIGINS`: comma-separated browser origins allowed to send
+  Origin-bearing requests. Leave empty for service-to-service clients.
+- `MRSCRAPER_API_BASE_URL`: platform API override for development/tests.
+- `MRSCRAPER_FETCH_BASE_URL`: Web Unblocker override.
+- `MRSCRAPER_SYNC_BASE_URL`: sync/SERP API override.
 
-To connect this MCP server to Claude Desktop locally, see the detailed setup guide:
+## Docker
 
-**[📖 Claude Desktop Setup Guide](./CLAUDE_SETUP.md)**
+```bash
+docker build -f docker/Dockerfile -t mrscraper-mcp .
+docker run --rm \
+  -p 8000:8000 \
+  -e TRANSPORT=http \
+  mrscraper-mcp
+```
 
-Quick steps:
-1. Edit Claude Desktop config: `~/Library/Application Support/Claude/claude_desktop_config.json`
-2. Add the server configuration (see `CLAUDE_SETUP.md` for details)
-3. Restart Claude Desktop completely
-4. Look for the 🔨 icon in Claude's chat interface
-
-### Remote Setup via ngrok (HTTP transport)
-
-To connect Claude Desktop via ngrok:
-
-**[🚀 Quick ngrok Setup Guide](./NGROK_SETUP.md)**
-
-Quick steps:
-1. Start server with HTTP transport: `TRANSPORT=http python server.py`
-2. Start ngrok: `ngrok http 8000 --domain=your-domain.ngrok-free.dev`
-3. Configure in Claude Desktop: **Settings** → **Connectors** → Add connector with your ngrok base URL plus **`/mcp`** (for example `https://your-domain.ngrok-free.dev/mcp`)
-4. Test connection
+For stdio credentials inside a trusted container, add
+`-e MRSCRAPER_API_KEY`. HTTP clients should normally supply their own Bearer
+header instead. The image sets `HOST=0.0.0.0`; protect published deployments
+with network controls and HTTP authentication.
 
 ## Development
 
-Extend tools and widget resources under `mrscraper_mcp/`; register new tools in `mrscraper_mcp/tools/__init__.py` (`register_tools` vs `register_chatgpt_tools`).
+Install the development dependencies and run the local checks:
 
-## Compliance & Legal Risk
+```bash
+pip install -e '.[dev]'
+ruff format --check .
+ruff check .
+pytest -q
+```
 
-> **WARNING**
-> Scraping login-protected pages carries serious legal and compliance risks. Many websites explicitly prohibit automated access in their Terms of Service, and bypassing authentication to scrape content may expose you to legal action including lawsuits, account termination, and financial penalties. By proceeding on scraping login-protected pages, you confirm that you have read and understood the target website's Terms of Service, and you fully accept all legal, financial, and ethical responsibility for your actions.
+Canonical behavior lives in:
+
+- `mrscraper_mcp/api.py` for service requests;
+- `mrscraper_mcp/content.py` for fetch formatting;
+- `mrscraper_mcp/status.py` for account/date handling; and
+- `mrscraper_mcp/tools/cli.py` for the MCP schemas and routing.
+
+### MCP Inspector
+
+The official MCP Inspector requires Node.js 22.19 or newer and runs without a
+global installation. Start the HTTP server, then launch the Inspector against
+the Streamable HTTP endpoint:
+
+```bash
+TRANSPORT=http mrscraper-mcp
+
+npx @modelcontextprotocol/inspector \
+  --server-url http://127.0.0.1:8000/mcp \
+  --transport http \
+  --header "Authorization: Bearer YOUR_MRSCRAPER_API_KEY"
+```
+
+The web UI can list the seven tools, inspect their input and output schemas,
+and call them interactively. For trusted local testing without a connection
+header, set `MRSCRAPER_HTTP_AUTH=0` and provide the tool credential through the
+local environment instead.
+
+For a repeatable command-line smoke test, `scripts/test_mcp.py` reads
+`MRSCRAPER_API_KEY` or `MRSCRAPER_API_TOKEN` from the environment:
+
+```bash
+python scripts/test_mcp.py \
+  --target http://127.0.0.1:8000/mcp \
+  --call-tool fetch \
+  --args '{"url":"https://example.com","format":"markdown"}'
+```
+
+The Inspector is documented at
+<https://modelcontextprotocol.io/docs/tools/inspector>.
+
+## Compliance
+
+Scrape only content you are authorized to access. Review target-site terms and
+applicable privacy, copyright, and computer-access laws before collecting or
+reusing data. Before invoking a saved manual scraper for login-protected pages,
+the calling agent must display the server's compliance warning and obtain the
+user's acknowledgment.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE)
+MIT — see [LICENSE](./LICENSE).
