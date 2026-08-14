@@ -7,16 +7,20 @@ import os
 import httpx
 from fastmcp.exceptions import ToolError
 from fastmcp.server.auth.providers.debug import DebugTokenVerifier
-from fastmcp.server.dependencies import get_access_token, get_http_headers
+from fastmcp.server.dependencies import (
+    get_access_token,
+    get_http_headers,
+    get_http_request,
+)
 
 from mrscraper_mcp.constants import SUBSCRIPTION_ACCOUNTS
 
 _TOKEN_VALIDATE_TIMEOUT = 15.0
 
 _MISSING_TOKEN_MESSAGE = (
-    "MrScraper API token is required. Configure the MCP client with "
-    '"headers": {"Authorization": "Bearer <your-token>"} (or "x-api-token"), '
-    "or set MRSCRAPER_API_KEY / MRSCRAPER_API_TOKEN for stdio transport."
+    "MrScraper API token is required. For HTTP, configure the MCP client with "
+    '"headers": {"Authorization": "Bearer <your-token>"}. For stdio, set '
+    "MRSCRAPER_API_KEY or MRSCRAPER_API_TOKEN."
 )
 
 
@@ -80,18 +84,26 @@ def token_verifier() -> DebugTokenVerifier:
 def resolve_api_token() -> str:
     """Resolve the MrScraper API token for the current request.
 
-    Precedence: MCP Bearer auth, ``x-api-token`` / ``Authorization`` headers,
-    then ``MRSCRAPER_API_KEY`` / ``MRSCRAPER_API_TOKEN``.
+    HTTP requests use only credentials supplied by that request. Process-level
+    environment credentials are reserved for stdio transport so a hosted HTTP
+    server can never lend its own API key to a caller.
     """
     access = get_access_token()
     if access is not None and access.token.strip():
         return normalize_bearer_token(access.token)
 
-    headers = get_http_headers()
-    for header_name in ("x-api-token", "authorization"):
-        header_value = headers.get(header_name, "").strip()
-        if header_value:
-            return normalize_bearer_token(header_value)
+    try:
+        get_http_request()
+    except RuntimeError:
+        pass
+    else:
+        headers = get_http_headers(include={"authorization"})
+        for header_name in ("x-api-token", "authorization"):
+            header_value = headers.get(header_name, "").strip()
+            if header_value:
+                return normalize_bearer_token(header_value)
+
+        raise ToolError(_MISSING_TOKEN_MESSAGE)
 
     env_token = _env_api_token()
     if env_token:
