@@ -46,6 +46,14 @@ MCP-specific behavior:
 
 Use `fetch` for page content and `scrape` for defined fields or records.
 
+Common workflows:
+
+- Known URL: use `fetch` to read the page or `scrape` to extract specific data.
+- Unknown URL: use `serp` to find candidates, then `fetch` or `scrape` the
+  relevant pages.
+- Saved scraper: use `rerun`, find the stored run with `results`, then retrieve
+  its complete record with `result`.
+
 ## MCP endpoint
 
 When `TRANSPORT=http`, the process exposes one Streamable HTTP MCP endpoint at
@@ -64,9 +72,11 @@ that all seven tools are registered and intentionally does not call an upstream
 service that requires a user's credential. Probe responses include the service
 name and version, which is also advertised through MCP `serverInfo`.
 
-## Installation and running
+## Quick start
 
 Python 3.11 or newer is required.
+
+### Install
 
 ```bash
 python -m venv .venv
@@ -74,18 +84,56 @@ python -m venv .venv
 pip install -e .
 ```
 
-Installation creates a `mrscraper-mcp` executable. Run it over stdio:
+Installation creates the `mrscraper-mcp` executable.
 
-```bash
-mrscraper-mcp
+### Connect over stdio
+
+The default transport is stdio. Add this configuration to an MCP client that
+uses the common `mcpServers` format:
+
+```json
+{
+  "mcpServers": {
+    "mrscraper": {
+      "command": "mrscraper-mcp",
+      "env": {
+        "MRSCRAPER_API_KEY": "YOUR_MRSCRAPER_API_KEY"
+      }
+    }
+  }
+}
 ```
 
-Run the HTTP endpoint:
+If a desktop client cannot find the executable, replace `mrscraper-mcp` with
+its absolute path, such as `/absolute/path/to/.venv/bin/mrscraper-mcp`.
+
+### Connect over Streamable HTTP
+
+Start the local HTTP server:
 
 ```bash
 TRANSPORT=http mrscraper-mcp
-# Defaults: HOST=127.0.0.1 PORT=8000
+# Endpoint: http://127.0.0.1:8000/mcp
 ```
+
+Then configure the MCP client. Replace the URL when connecting to a deployed
+server:
+
+```json
+{
+  "mcpServers": {
+    "mrscraper": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_MRSCRAPER_API_KEY"
+      }
+    }
+  }
+}
+```
+
+### Other development entry points
 
 From a source checkout, `python server.py` is another development entry point
 for both modes.
@@ -100,35 +148,19 @@ uvicorn mrscraper_mcp.app:app --host 127.0.0.1 --port 8000
 
 ## Authentication
 
-For HTTP connectors with the default `MRSCRAPER_HTTP_AUTH=1`, send the
-MrScraper API key as a Bearer header. Tool schemas never expose token arguments.
-For clients that use an `mcpServers` configuration, the connection resembles:
-
-```json
-{
-  "mcpServers": {
-    "mrscraper": {
-      "type": "http",
-      "url": "https://your-host.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_MRSCRAPER_API_KEY"
-      }
-    }
-  }
-}
-```
+For HTTP connectors, send the MrScraper API key as a Bearer header. The server
+verifies it before processing MCP requests and uses that same caller-provided
+key for MrScraper API calls. Tool schemas never expose token arguments.
 
 Credential behavior depends on the transport mode:
 
 | Mode | Accepted credential |
 | --- | --- |
-| HTTP with `MRSCRAPER_HTTP_AUTH=1` (default) | `Authorization: Bearer <MrScraper API key>` is required and verified before MCP requests run. |
-| HTTP with `MRSCRAPER_HTTP_AUTH=0` | Intended only for trusted local debugging. Tools resolve `x-api-token`, then `Authorization`, then `MRSCRAPER_API_KEY`, then `MRSCRAPER_API_TOKEN`. |
+| HTTP | `Authorization: Bearer <MrScraper API key>` is required and verified before MCP requests run. |
 | stdio | `MRSCRAPER_API_KEY`, then `MRSCRAPER_API_TOKEN`. |
 
-In particular, `x-api-token` and an environment-only key do not bypass the
-default HTTP Bearer middleware. Disable HTTP authentication only on a trusted
-local interface when testing those fallback paths.
+Environment credentials are stdio-only. They are never used to authorize an
+HTTP tool call, so every HTTP client uses its own MrScraper API key.
 
 The server removes credential-bearing response headers and recursively redacts
 API tokens, cookies, signed query parameters, and generated curl credentials
@@ -154,6 +186,16 @@ The remaining controls match the CLI:
 - `token_cap`
 - `timeout`
 
+Example arguments:
+
+```json
+{
+  "url": "https://example.com",
+  "format": "markdown",
+  "unblock": "auto"
+}
+```
+
 ### `scrape`
 
 Pass `prompt`, `schema`, or both. Modes are:
@@ -167,12 +209,40 @@ Pass `prompt`, `schema`, or both. Modes are:
 accept a schema. Structured scraping accepts `proxy_country`; fetch-only
 browser controls are rejected in AI mode.
 
+Example arguments for structured extraction:
+
+```json
+{
+  "url": "https://example.com/product",
+  "prompt": "Extract the product name and price",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string" },
+      "price": { "type": "string" }
+    },
+    "required": ["name", "price"]
+  }
+}
+```
+
 ### `serp`
 
 `query_or_url` accepts either a search phrase or a Google search URL. Google
 URL parameters such as `q`, `gl`, `hl`, and `start` are normalized into the v2
 SERP payload. Optional arguments are `region`, `language`, `page`, `format`,
 `render_js`, `raw`, and `timeout`. Setting `raw=true` requests HTML output.
+
+Example arguments:
+
+```json
+{
+  "query_or_url": "best coffee shops in Jakarta",
+  "region": "id",
+  "language": "en",
+  "page": 1
+}
+```
 
 ### `status`
 
@@ -184,6 +254,16 @@ The JSON property `from` and `to` accept ISO 8601 timestamps, `now`, or
 durations such as `30m`, `24h`, and `7d`. Domain outcomes are not traffic, SEO,
 audience, or market analytics.
 
+Example arguments for the last seven days of domain outcomes:
+
+```json
+{
+  "domain": "example.com",
+  "from": "7d",
+  "to": "now"
+}
+```
+
 ### `rerun`, `results`, and `result`
 
 A single `rerun` requires `scraper_id`. A bulk rerun requires `bulk=true` and
@@ -193,6 +273,35 @@ A single `rerun` requires `scraper_id`. A bulk rerun requires `bulk=true` and
 `results` supports the same fields as the CLI: `sort_field`, `sort_order`,
 `page_size`, `page`, `search`, `date_range_column`, `start_at`, and `end_at`.
 Pass a result UUID to `result.result_id` for the full row.
+
+Example single AI rerun:
+
+```json
+{
+  "target": "https://example.com/product",
+  "type": "ai",
+  "scraper_id": "YOUR_SCRAPER_UUID"
+}
+```
+
+Example result listing:
+
+```json
+{
+  "sort_field": "updatedAt",
+  "sort_order": "DESC",
+  "page_size": 10,
+  "page": 1
+}
+```
+
+Example single-result lookup:
+
+```json
+{
+  "result_id": "YOUR_RESULT_UUID"
+}
+```
 
 ## Client example
 
@@ -220,10 +329,13 @@ async with Client(
 - `HOST`: HTTP bind address, default `127.0.0.1`. Docker overrides this to
   `0.0.0.0` so published container ports are reachable.
 - `TRANSPORT`: `stdio` or `http`. Any other value fails at startup.
-- `MRSCRAPER_API_KEY`: preferred stdio credential, or a tool credential when
-  trusted local HTTP authentication is disabled.
-- `MRSCRAPER_API_TOKEN`: alternate credential environment variable.
-- `MRSCRAPER_HTTP_AUTH`: set to `0` only for trusted local HTTP debugging.
+- `MRSCRAPER_API_KEY`: preferred stdio credential. It is never used by HTTP
+  tool calls.
+- `MRSCRAPER_API_TOKEN`: alternate stdio credential environment variable.
+- `MRSCRAPER_HTTP_AUTH`: HTTP Bearer verification is enabled by default. Keep
+  it enabled for deployments. Setting it to `0` skips boundary verification
+  for isolated protocol debugging, but each HTTP tool call must still provide
+  its own `Authorization` or `x-api-token` header.
 - `MRSCRAPER_ALLOWED_ORIGINS`: comma-separated browser origins allowed to send
   Origin-bearing requests. Leave empty for service-to-service clients.
 - `MRSCRAPER_API_BASE_URL`: platform API override for development/tests.
@@ -245,6 +357,16 @@ For stdio credentials inside a trusted container, add
 header instead. The image sets `HOST=0.0.0.0`; protect published deployments
 with network controls and HTTP authentication.
 
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| `All connection attempts failed` | No server is listening at the configured URL. Start it with `TRANSPORT=http mrscraper-mcp` and verify the host, port, and `/mcp` path. |
+| `401 Unauthorized` | HTTP requires `Authorization: Bearer <MrScraper API key>`. A key in the server environment is intentionally ignored for HTTP requests. |
+| `403 Forbidden Origin` | Add the client's exact browser origin to `MRSCRAPER_ALLOWED_ORIGINS`. Service-to-service clients normally send no `Origin` header. |
+| `Unsupported TRANSPORT` | Set `TRANSPORT` to exactly `stdio` or `http`. |
+| Upstream request timeout | The MCP connection succeeded, but MrScraper or the target page did not finish in time. Retry, increase the tool's `timeout` where available, and call `status` to confirm authentication independently. |
+
 ## Development
 
 Install the development dependencies and run the local checks:
@@ -262,47 +384,6 @@ Canonical behavior lives in:
 - `mrscraper_mcp/content.py` for fetch formatting;
 - `mrscraper_mcp/status.py` for account/date handling; and
 - `mrscraper_mcp/tools/cli.py` for the MCP schemas and routing.
-
-### MCP Inspector
-
-The official MCP Inspector requires Node.js 22.19 or newer and runs without a
-global installation. Start the HTTP server, then launch the Inspector against
-the Streamable HTTP endpoint:
-
-```bash
-TRANSPORT=http mrscraper-mcp
-
-npx @modelcontextprotocol/inspector \
-  --server-url http://127.0.0.1:8000/mcp \
-  --transport http \
-  --header "Authorization: Bearer YOUR_MRSCRAPER_API_KEY"
-```
-
-The web UI can list the seven tools, inspect their input and output schemas,
-and call them interactively. For trusted local testing without a connection
-header, set `MRSCRAPER_HTTP_AUTH=0` and provide the tool credential through the
-local environment instead.
-
-For a repeatable command-line smoke test, `scripts/test_mcp.py` reads
-`MRSCRAPER_API_KEY` or `MRSCRAPER_API_TOKEN` from the environment:
-
-```bash
-python scripts/test_mcp.py \
-  --target http://127.0.0.1:8000/mcp \
-  --call-tool fetch \
-  --args '{"url":"https://example.com","format":"markdown"}'
-```
-
-The Inspector is documented at
-<https://modelcontextprotocol.io/docs/tools/inspector>.
-
-## Compliance
-
-Scrape only content you are authorized to access. Review target-site terms and
-applicable privacy, copyright, and computer-access laws before collecting or
-reusing data. Before invoking a saved manual scraper for login-protected pages,
-the calling agent must display the server's compliance warning and obtain the
-user's acknowledgment.
 
 ## License
 
