@@ -1,32 +1,31 @@
-# Use Python 3.11 slim image
-FROM python:3.11-slim
+FROM node:22-slim AS build
 
-# Set working directory
 WORKDIR /app
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY tsconfig.json tsconfig.build.json ./
+COPY src ./src
+RUN npm run build && npm prune --omit=dev
+
+FROM node:22-slim
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
     PORT=8000 \
-    HOST=0.0.0.0
+    HOST=0.0.0.0 \
+    TRANSPORT=http
 
-# Install system dependencies if needed
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY package.json LICENSE README.md ./
 
-# Copy project files
-COPY pyproject.toml README.md ./
-COPY server.py ./
-COPY mrscraper_mcp ./mrscraper_mcp/
+USER node
+EXPOSE 8000
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -e .
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:8000/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
-# Expose the port
-EXPOSE ${PORT}
-
-# Run the server with HTTP transport
-# The server will use HTTP transport when TRANSPORT env var is set to "http"
-ENV TRANSPORT=http
-CMD ["python", "server.py"]
+CMD ["node", "dist/bin.js"]

@@ -1,0 +1,10 @@
+dist
+node_modules
+package-lock.json
+SKILL.md
+uv.lock
+.venv
+*.egg-info
+.pytest_cache
+.ruff_cache
+__pycache__

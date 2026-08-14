@@ -14,15 +14,15 @@ the MrScraper service.
 
 ## Tool contract
 
-| Tool | Purpose |
-| --- | --- |
-| `fetch` | Return a known page as Markdown, HTML, or a clean document object, with adaptive unblocking. |
-| `scrape` | Extract requested structured data with a prompt, JSON Schema, and `general`, `listing`, or `map` mode. |
-| `serp` | Return Google results from a plain query or Google search URL. |
-| `status` | Return subscription/quota information and optional domain outcome analytics. |
-| `rerun` | Rerun an existing AI or manual scraper for one or many URLs. |
-| `results` | List stored runs with pagination, sorting, search, and date filters. |
-| `result` | Retrieve one stored run by result ID. |
+| Tool      | Purpose                                                                                                |
+| --------- | ------------------------------------------------------------------------------------------------------ |
+| `fetch`   | Return a known page as Markdown, HTML, or a clean document object, with adaptive unblocking.           |
+| `scrape`  | Extract requested structured data with a prompt, JSON Schema, and `general`, `listing`, or `map` mode. |
+| `serp`    | Return Google results from a plain query or Google search URL.                                         |
+| `status`  | Return subscription/quota information and optional domain outcome analytics.                           |
+| `rerun`   | Rerun an existing AI or manual scraper for one or many URLs.                                           |
+| `results` | List stored runs with pagination, sorting, search, and date filters.                                   |
+| `result`  | Retrieve one stored run by result ID.                                                                  |
 
 The API payloads, defaults, validation, response redaction, environment
 overrides, and v2 SERP endpoint follow `@mrscraper/cli`.
@@ -74,28 +74,21 @@ name and version, which is also advertised through MCP `serverInfo`.
 
 ## Quick start
 
-Python 3.11 or newer is required.
+Node.js 20 or newer is required when running the package locally. Get a
+MrScraper API key from [app.mrscraper.com](https://app.mrscraper.com).
 
-### Install
+### Add to an MCP client
 
-```bash
-python -m venv .venv
-. .venv/bin/activate
-pip install -e .
-```
-
-Installation creates the `mrscraper-mcp` executable.
-
-### Connect over stdio
-
-The default transport is stdio. Add this configuration to an MCP client that
-uses the common `mcpServers` format:
+The normal installation is an MCP client configuration. The client runs
+`npx`, which downloads and starts `@mrscraper/mcp` over stdio when the agent
+needs it. No global npm install or separately running server is required.
 
 ```json
 {
   "mcpServers": {
     "mrscraper": {
-      "command": "mrscraper-mcp",
+      "command": "npx",
+      "args": ["-y", "@mrscraper/mcp"],
       "env": {
         "MRSCRAPER_API_KEY": "YOUR_MRSCRAPER_API_KEY"
       }
@@ -104,15 +97,15 @@ uses the common `mcpServers` format:
 }
 ```
 
-If a desktop client cannot find the executable, replace `mrscraper-mcp` with
-its absolute path, such as `/absolute/path/to/.venv/bin/mrscraper-mcp`.
+This installs the MCP server for the agent in the practical sense: the agent's
+MCP client owns the process lifecycle and communicates with it over stdio.
 
-### Connect over Streamable HTTP
+### Run a hosted HTTP endpoint
 
-Start the local HTTP server:
+Use HTTP when the MCP server should run as a shared service:
 
 ```bash
-TRANSPORT=http mrscraper-mcp
+TRANSPORT=http npx -y @mrscraper/mcp
 # Endpoint: http://127.0.0.1:8000/mcp
 ```
 
@@ -133,18 +126,29 @@ server:
 }
 ```
 
-### Other development entry points
+### Run from a source checkout
 
-From a source checkout, `python server.py` is another development entry point
-for both modes.
-
-The ASGI application can also be run directly:
+Install the repository dependencies and compile it:
 
 ```bash
-uvicorn mrscraper_mcp.app:app --host 127.0.0.1 --port 8000
+npm ci
+npm run build
 ```
 
-`fastmcp run server.py:mcp` runs the same canonical FastMCP application.
+Run stdio directly:
+
+```bash
+MRSCRAPER_API_KEY=YOUR_MRSCRAPER_API_KEY npm start
+```
+
+Or run the local HTTP endpoint:
+
+```bash
+TRANSPORT=http npm start
+```
+
+To make an agent use this checkout instead of the npm package, set `command`
+to `node` and `args` to the absolute path of `dist/bin.js`.
 
 ## Authentication
 
@@ -154,10 +158,10 @@ key for MrScraper API calls. Tool schemas never expose token arguments.
 
 Credential behavior depends on the transport mode:
 
-| Mode | Accepted credential |
-| --- | --- |
-| HTTP | `Authorization: Bearer <MrScraper API key>` is required and verified before MCP requests run. |
-| stdio | `MRSCRAPER_API_KEY`, then `MRSCRAPER_API_TOKEN`. |
+| Mode  | Accepted credential                                                                           |
+| ----- | --------------------------------------------------------------------------------------------- |
+| HTTP  | `Authorization: Bearer <MrScraper API key>` is required and verified before MCP requests run. |
+| stdio | `MRSCRAPER_API_KEY`, then `MRSCRAPER_API_TOKEN`.                                              |
 
 Environment credentials are stdio-only. They are never used to authorize an
 HTTP tool call, so every HTTP client uses its own MrScraper API key.
@@ -303,24 +307,30 @@ Example single-result lookup:
 }
 ```
 
-## Client example
+## TypeScript client example
 
-```python
-from fastmcp import Client
-from fastmcp.client.auth import BearerAuth
+```ts
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
 
-async with Client(
-    "http://localhost:8000/mcp",
-    auth=BearerAuth("YOUR_MRSCRAPER_API_KEY"),
-) as client:
-    response = await client.call_tool(
-        "fetch",
-        {
-            "url": "https://example.com",
-            "format": "markdown",
-            "unblock": "auto",
-        },
-    )
+const client = new Client({ name: "example", version: "1.0.0" });
+const transport = new StreamableHTTPClientTransport(
+  new URL("http://127.0.0.1:8000/mcp"),
+  { authProvider: { token: async () => "YOUR_MRSCRAPER_API_KEY" } },
+);
+
+await client.connect(transport);
+const response = await client.callTool({
+  name: "fetch",
+  arguments: {
+    url: "https://example.com",
+    format: "markdown",
+    unblock: "auto",
+  },
+});
+await client.close();
 ```
 
 ## Environment variables
@@ -341,6 +351,10 @@ async with Client(
 - `MRSCRAPER_API_BASE_URL`: platform API override for development/tests.
 - `MRSCRAPER_FETCH_BASE_URL`: Web Unblocker override.
 - `MRSCRAPER_SYNC_BASE_URL`: sync/SERP API override.
+- `MRSCRAPER_LOG_HTTP_PAYLOAD`: set to `1` only for trusted local request-body
+  debugging; payloads may contain sensitive data.
+- `MRSCRAPER_LOG_HTTP_PAYLOAD_MAX`: maximum logged payload characters, default
+  `8192`.
 
 ## Docker
 
@@ -359,31 +373,43 @@ with network controls and HTTP authentication.
 
 ## Troubleshooting
 
-| Symptom | What to check |
-| --- | --- |
-| `All connection attempts failed` | No server is listening at the configured URL. Start it with `TRANSPORT=http mrscraper-mcp` and verify the host, port, and `/mcp` path. |
-| `401 Unauthorized` | HTTP requires `Authorization: Bearer <MrScraper API key>`. A key in the server environment is intentionally ignored for HTTP requests. |
-| `403 Forbidden Origin` | Add the client's exact browser origin to `MRSCRAPER_ALLOWED_ORIGINS`. Service-to-service clients normally send no `Origin` header. |
-| `Unsupported TRANSPORT` | Set `TRANSPORT` to exactly `stdio` or `http`. |
-| Upstream request timeout | The MCP connection succeeded, but MrScraper or the target page did not finish in time. Retry, increase the tool's `timeout` where available, and call `status` to confirm authentication independently. |
+| Symptom                          | What to check                                                                                                                                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `All connection attempts failed` | No server is listening at the configured URL. Start it with `TRANSPORT=http npm start` and verify the host, port, and `/mcp` path.                                                                      |
+| `401 Unauthorized`               | HTTP requires `Authorization: Bearer <MrScraper API key>`. A key in the server environment is intentionally ignored for HTTP requests.                                                                  |
+| `403 Forbidden Origin`           | Add the client's exact browser origin to `MRSCRAPER_ALLOWED_ORIGINS`. Service-to-service clients normally send no `Origin` header.                                                                      |
+| `Unsupported TRANSPORT`          | Set `TRANSPORT` to exactly `stdio` or `http`.                                                                                                                                                           |
+| Upstream request timeout         | The MCP connection succeeded, but MrScraper or the target page did not finish in time. Retry, increase the tool's `timeout` where available, and call `status` to confirm authentication independently. |
 
 ## Development
 
 Install the development dependencies and run the local checks:
 
 ```bash
-pip install -e '.[dev]'
-ruff format --check .
-ruff check .
-pytest -q
+npm ci
+npm run format:check
+npm run lint
+npm test
+npm run build
 ```
 
 Canonical behavior lives in:
 
-- `mrscraper_mcp/api.py` for service requests;
-- `mrscraper_mcp/content.py` for fetch formatting;
-- `mrscraper_mcp/status.py` for account/date handling; and
-- `mrscraper_mcp/tools/cli.py` for the MCP schemas and routing.
+- `src/api.ts` for service requests;
+- `src/content.ts` for fetch formatting;
+- `src/status.ts` for account/date handling;
+- `src/tools.ts` for MCP schemas and command routing; and
+- `src/app.ts` for the Streamable HTTP boundary.
+
+To smoke-test a running HTTP server with the official TypeScript MCP client:
+
+```bash
+npm run test:mcp -- \
+  --target http://127.0.0.1:8000/mcp \
+  --token "$MRSCRAPER_API_KEY" \
+  --call-tool fetch \
+  --args '{"url":"https://example.com","format":"markdown"}'
+```
 
 ## License
 
