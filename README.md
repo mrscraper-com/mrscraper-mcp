@@ -411,6 +411,15 @@ npm run test:mcp -- \
   --args '{"url":"https://example.com","format":"markdown"}'
 ```
 
+With a key in `.env`, run the credential-gated live suite over stdio:
+
+```bash
+npm run test:e2e
+```
+
+This makes real, potentially billable MrScraper calls. It exercises all seven
+tools and verifies the dependent `scrape → results → result → rerun` lifecycle.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
