@@ -7,6 +7,19 @@ data tools follow the current `@mrscraper/cli` command contract:
 fetch  scrape  serp  status  rerun  results  result
 ```
 
+## Copyable agent setup prompt
+
+Paste this into a coding agent to connect the hosted MCP server:
+
+```text
+Connect MrScraper MCP to this agent. Detect the MCP client and configure
+https://mcp.mrscraper.com/mcp with Streamable HTTP and Authorization: Bearer
+<MRSCRAPER_API_KEY>. Do not use OAuth or ~/.mrscraper/auth.json, and never ask
+me to paste the key into chat; have me set it through the client's environment
+or secret store. Reload the client if needed, then confirm fetch, scrape, serp,
+status, rerun, results, and result are available.
+```
+
 The MCP owns connector authentication and transport. CLI machine-management
 commands such as `login`, `logout`, `init`, and `setup skills` are intentionally
 not MCP tools because they modify the machine running the CLI rather than query
