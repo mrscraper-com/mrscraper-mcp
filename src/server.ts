@@ -10,9 +10,9 @@ import { VERSION } from "./config.js";
 import { registerTools, type ToolDependencies } from "./tools.js";
 
 export const SERVER_INSTRUCTIONS =
-  "MrScraper tools use the same data-command names and behavior as @mrscraper/cli: " +
-  "`fetch`, `scrape`, `serp`, `status`, `rerun`, `results`, and `result`. " +
-  "Use `fetch` for readable page content, `scrape` for requested structured fields, " +
+  "MrScraper provides seven web-data tools: `fetch`, `scrape`, `serp`, " +
+  "`status`, `rerun`, `results`, and `result`. " +
+  "Use `fetch` for the Web Unblocker response from a known URL, `scrape` for requested structured fields, " +
   "and `serp` when starting from a Google query instead of a known URL. " +
   "Use `rerun` for saved AI or manual scraper configurations and `results` / `result` " +
   "to inspect stored work. `status` reports account usage and optional domain outcomes. " +

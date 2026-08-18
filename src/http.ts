@@ -60,14 +60,8 @@ export function sanitizeResponseData(
   value: unknown,
   seen = new WeakSet<object>(),
 ): JSONValue {
-  if (typeof value === "string") return redactSensitiveString(value);
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "number"
-  ) {
-    return value;
-  }
+  if (value === null || typeof value === "string") return value;
+  if (typeof value === "boolean" || typeof value === "number") return value;
   if (typeof value !== "object") return String(value);
   if (seen.has(value)) return "[CIRCULAR]";
   seen.add(value);
@@ -76,14 +70,32 @@ export function sanitizeResponseData(
     return value.map((item) => sanitizeResponseData(item, seen));
   }
 
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [
-      key,
-      SENSITIVE_DATA_KEYS.has(key.toLowerCase())
-        ? "[REDACTED]"
-        : sanitizeResponseData(item, seen),
-    ]),
-  );
+  const sanitized: Record<string, JSONValue> = {};
+  for (const [key, item] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase();
+    const isExtractedPayload =
+      normalizedKey === "data" &&
+      [
+        "id",
+        "scraperId",
+        "status",
+        "type",
+        "url",
+        "runtime",
+        "tokenUsage",
+      ].some((marker) => Object.hasOwn(value, marker));
+
+    if (isExtractedPayload) {
+      sanitized[key] = item as JSONValue;
+    } else if (SENSITIVE_DATA_KEYS.has(normalizedKey)) {
+      sanitized[key] = "[REDACTED]";
+    } else if (normalizedKey === "curl" && typeof item === "string") {
+      sanitized[key] = redactSensitiveString(item);
+    } else {
+      sanitized[key] = sanitizeResponseData(item, seen);
+    }
+  }
+  return sanitized;
 }
 
 function responseHeaders(response: Response): Record<string, string> {
@@ -106,7 +118,7 @@ async function responseData(response: Response): Promise<JSONValue> {
       return sanitizeResponseData(body);
     }
   }
-  return sanitizeResponseData(body);
+  return body;
 }
 
 export async function request(
@@ -148,7 +160,7 @@ export async function request(
     if (response.status === 401) {
       return {
         error:
-          "Unauthorized or invalid token. Visit https://app.mrscraper.com to get your token.",
+          "Unauthorized or invalid token. Run `mrscraper login` or visit https://app.mrscraper.com.",
         status_code: response.status,
         data,
         headers: safeHeaders,

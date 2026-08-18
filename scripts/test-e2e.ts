@@ -186,18 +186,14 @@ async function main(): Promise<void> {
 
     const fetched = await call("fetch", {
       url: values.url,
-      format: "markdown",
-      unblock: "auto",
       timeout: 90,
     });
-    assert.equal(fetched.output.format, "markdown");
-    assert.equal(fetched.output.url, values.url);
     assert.match(JSON.stringify(fetched.output.data), /Andorra/i);
 
     const scraped = await call("scrape", {
       url: values.url,
       prompt: "Extract the first country name shown on this page.",
-      schema: {
+      schema_prompt: {
         type: "object",
         properties: { country: { type: "string" } },
         required: ["country"],

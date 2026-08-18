@@ -5,7 +5,7 @@ import {
   bulkRerunAiScraperApi,
   bulkRerunManualScraperApi,
   createAiScraperApi,
-  fetchWithUnblockerApi,
+  fetchContentApi,
   getAllResultsApi,
   getAnalyticStatusesApi,
   getResultByIdApi,
@@ -16,16 +16,12 @@ import {
   rerunManualScraperApi,
   type Agent,
 } from "./api.js";
-import { formatFetchResult, type FetchFormat } from "./content.js";
 import type { ApiResponse } from "./http.js";
-import { sanitizeResponseData } from "./http.js";
 import {
   formatApiDate,
   parseStatusDate,
   summarizeSubscriptionAccount,
 } from "./status.js";
-
-export const DEFAULT_GENERAL_PROMPT = "Get all data as complete as possible";
 
 export interface ToolDependencies {
   fetchFn?: typeof fetch;
@@ -42,69 +38,35 @@ const apiResponseSchema = z
     status_code: z
       .number()
       .int()
+      .nullable()
       .describe("HTTP status returned by the MrScraper service."),
     data: jsonValueSchema.describe(
       "Sanitized response payload returned by MrScraper.",
     ),
     headers: headersSchema,
+    error: z.string().optional().describe("Request failure message, if any."),
   })
   .meta({
     title: "MrScraper API response",
     description: "A credential-safe response envelope from MrScraper.",
   });
-const unblockerSchema = z.object({
-  requested: z.enum(["auto", "always", "never"]),
-  browser_rendering: z.boolean(),
-  escalated: z.boolean(),
-  attempts: z.number().int().min(1),
+export const fetchOutputSchema = apiResponseSchema.meta({
+  title: "Fetch response",
+  description: "The response envelope returned by the Web Unblocker API.",
 });
 
-export const fetchOutputSchema = apiResponseSchema
-  .extend({
-    format: z.enum(["markdown", "html", "json"]),
-    url: z.string(),
-    unblocker: unblockerSchema,
-  })
-  .meta({
-    title: "Fetch response",
-    description: "Formatted page content and unblocker execution metadata.",
-  });
-
-export const scrapeOutputSchema = apiResponseSchema
-  .extend({
-    format: z.enum(["markdown", "html", "json"]).optional(),
-    url: z.string().optional(),
-    unblocker: unblockerSchema.optional(),
-  })
-  .meta({
-    title: "Scrape response",
-    description:
-      "A structured extraction response, or a fetch-compatible response when no AI extraction arguments are supplied.",
-  });
+export const scrapeOutputSchema = apiResponseSchema.meta({
+  title: "Scrape response",
+  description: "The response envelope returned by the AI scraper API.",
+});
 
 export const statusOutputSchema = z
   .object({
-    status_code: z.number().int(),
-    data: z.object({
-      account: z.object({
-        subscription_status: jsonValueSchema,
-        enterprise: z.boolean(),
-        token_usage: z.number(),
-        token_limit: z.number(),
-        token_remaining: z.number(),
-        usage_percent: z.number(),
-        rate_limit: z.number(),
-        rate_ttl: z.number(),
-        auto_renew: z.boolean(),
-        ends_at: jsonValueSchema,
-        user: z.object({
-          name: jsonValueSchema,
-          email: jsonValueSchema,
-          verified: z.boolean(),
-        }),
-      }),
-      analytics: z.record(z.string(), jsonValueSchema).optional(),
-    }),
+    kind: z.literal("mrscraper-cli-status-summary").optional(),
+    source_endpoints: z.array(z.string()).optional(),
+    status_code: z.number().int().nullable(),
+    data: jsonValueSchema,
+    headers: headersSchema.optional(),
     error: z.string().optional(),
   })
   .meta({
@@ -129,47 +91,31 @@ const resultOutputSchema = apiResponseSchema.meta({
   description: "One stored MrScraper result.",
 });
 
+function isApiFailure(result: Record<string, unknown>): boolean {
+  return Boolean(
+    result.error ||
+    (typeof result.status_code === "number" && result.status_code >= 400),
+  );
+}
+
 function asStructured(result: Record<string, unknown>) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
     structuredContent: result,
+    ...(isApiFailure(result) ? { isError: true } : {}),
   };
 }
 
-function raiseForApiError<T extends ApiResponse>(result: T): T {
-  if (!result.error) return result;
-
-  const error = String(sanitizeResponseData(result.error));
-  const status =
-    result.status_code === null
-      ? "no HTTP response"
-      : `HTTP ${result.status_code}`;
-  let detail = "";
-  if (
-    result.data &&
-    typeof result.data === "object" &&
-    !Array.isArray(result.data)
-  ) {
-    const data = result.data as Record<string, JSONValue>;
-    const candidate = data.message || data.error;
-    if (candidate) {
-      const sanitized = String(sanitizeResponseData(candidate)).trim();
-      if (sanitized && sanitized !== error)
-        detail = `: ${sanitized.slice(0, 500)}`;
-    }
-  }
-  throw new Error(
-    `MrScraper API request failed (${status}): ${error}${detail}`,
-  );
-}
-
 function buildExtractionMessage(
-  prompt?: string | null,
-  schema?: Record<string, JSONValue> | null,
+  prompt: string,
+  schemaPrompt?: Record<string, JSONValue> | null,
 ): string {
-  const instruction = prompt?.trim() || DEFAULT_GENERAL_PROMPT;
-  if (schema === null || schema === undefined) return instruction;
-  return `${instruction}\n\nReturn JSON matching this JSON Schema:\n${JSON.stringify(schema, null, 2)}`;
+  const instruction = prompt.trim();
+  if (!instruction) {
+    throw new Error("prompt is required for general and listing agents");
+  }
+  if (schemaPrompt === null || schemaPrompt === undefined) return instruction;
+  return `${instruction}\n\nBest-effort output guidance: return JSON matching this JSON Schema. The MrScraper API does not validate this schema:\n${JSON.stringify(schemaPrompt, null, 2)}`;
 }
 
 function unwrapApiData(response: ApiResponse): JSONValue {
@@ -199,42 +145,36 @@ function normalizeDomain(value: string): string {
 
 export const fetchInputSchema = z.object({
   url: httpUrlSchema.describe("Absolute HTTP or HTTPS page URL to retrieve."),
-  format: z
-    .enum(["markdown", "html", "json"])
-    .default("markdown")
-    .describe(
-      "Readable Markdown, source HTML, or a clean page-document object.",
-    ),
-  unblock: z
-    .enum(["auto", "always", "never"])
-    .default("auto")
-    .describe(
-      "Browser-rendering policy. Auto escalates only after a detected block.",
-    ),
-  geo: z
-    .string()
-    .nullable()
-    .optional()
-    .describe("Optional ISO 3166-1 alpha-2 proxy country code."),
-  wait_for: z
-    .string()
-    .nullable()
-    .optional()
-    .describe("CSS selector that must appear before capture."),
-  homepage: z
+  browser_rendering: z
     .boolean()
     .default(false)
-    .describe("Visit the site home page before loading the target URL."),
+    .describe("Send browserRendering=true to execute page JavaScript."),
+  geo_code: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Value sent through the API's geoCode query parameter."),
+  wait_for_selector: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "CSS selector sent through waitForSelector; requires browser_rendering.",
+    ),
+  home_page: z
+    .boolean()
+    .default(false)
+    .describe("Send homePage=true to visit the site root first."),
   block_resources: z
     .boolean()
     .default(false)
-    .describe("Block non-essential resources during browser rendering."),
-  retries: z
+    .describe("Send the API's blockResources value."),
+  max_retries: z
     .number()
     .int()
     .min(0)
     .default(3)
-    .describe("Maximum API retry attempts after escalation."),
+    .describe("Value sent through the API's maxRetries query parameter."),
   token_cap: z
     .number()
     .int()
@@ -247,7 +187,9 @@ export const fetchInputSchema = z.object({
     .int()
     .positive()
     .default(30)
-    .describe("Maximum page-load duration in seconds."),
+    .describe(
+      "API page-load timeout in seconds; the MCP server allows 30 seconds more for transport.",
+    ),
 });
 
 export async function fetchTool(
@@ -255,22 +197,22 @@ export async function fetchTool(
   input: z.infer<typeof fetchInputSchema>,
   dependencies: ToolDependencies = {},
 ): Promise<Record<string, unknown>> {
-  const response = await fetchWithUnblockerApi({
+  if (input.wait_for_selector && !input.browser_rendering) {
+    throw new Error("wait_for_selector requires browser_rendering");
+  }
+  return fetchContentApi({
     token,
     url: input.url,
-    unblock: input.unblock,
+    browserRendering: input.browser_rendering,
     timeout: input.timeout,
-    geoCode: input.geo ?? null,
-    waitForSelector: input.wait_for ?? null,
-    homePage: input.homepage,
+    geoCode: input.geo_code ?? null,
+    waitForSelector: input.wait_for_selector ?? null,
+    homePage: input.home_page,
     blockResources: input.block_resources,
-    maxRetries: input.retries,
+    maxRetries: input.max_retries,
     tokenCap: input.token_cap ?? null,
     fetchFn: dependencies.fetchFn,
   });
-  return raiseForApiError(
-    formatFetchResult(response, { format: input.format, url: input.url }),
-  );
 }
 
 export const scrapeInputSchema = z.object({
@@ -282,17 +224,18 @@ export const scrapeInputSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Natural-language extraction instructions; enables AI extraction.",
+      "Natural-language extraction instructions required by general and listing agents.",
     ),
-  schema: z
+  schema_prompt: z
     .record(z.string(), jsonValueSchema)
     .nullable()
     .optional()
-    .describe("JSON Schema object for the requested structured output."),
+    .describe(
+      "JSON Schema appended to the prompt as best-effort guidance; the API does not validate it.",
+    ),
   agent: z
     .enum(["general", "listing", "map"])
-    .nullable()
-    .optional()
+    .default("general")
     .describe("AI extraction mode."),
   proxy_country: z
     .string()
@@ -306,95 +249,32 @@ export const scrapeInputSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Maximum pages for listing or map extraction; defaults to 1 for listing and 50 otherwise.",
+      "Maximum pages for listing or map extraction; omit it to use the backend default.",
     ),
   max_depth: z
     .number()
     .int()
     .positive()
-    .default(2)
+    .nullable()
+    .optional()
     .describe("Maximum link depth for the map agent."),
   limit: z
     .number()
     .int()
     .positive()
-    .default(1000)
+    .nullable()
+    .optional()
     .describe("Maximum URL results returned by the map agent."),
   include_patterns: z
     .string()
-    .default("")
+    .nullable()
+    .optional()
     .describe("Regular expression limiting URLs included by the map agent."),
   exclude_patterns: z
     .string()
-    .default("")
+    .nullable()
+    .optional()
     .describe("Regular expression excluding URLs from the map agent."),
-  format: z
-    .enum(["markdown", "html", "json"])
-    .nullable()
-    .optional()
-    .describe(
-      "Page format used only in promptless fetch-compatible mode; defaults to HTML.",
-    ),
-  unblock: z
-    .enum(["auto", "always", "never"])
-    .nullable()
-    .optional()
-    .describe(
-      "Browser-rendering policy used only in promptless fetch-compatible mode.",
-    ),
-  geo_code: z
-    .string()
-    .nullable()
-    .optional()
-    .describe(
-      "Proxy region used only in promptless fetch-compatible mode; defaults to US.",
-    ),
-  wait_for: z
-    .string()
-    .nullable()
-    .optional()
-    .describe("CSS selector awaited only in promptless fetch-compatible mode."),
-  homepage: z
-    .boolean()
-    .nullable()
-    .optional()
-    .describe(
-      "Visit the site home page first in promptless fetch-compatible mode.",
-    ),
-  block_resources: z
-    .boolean()
-    .nullable()
-    .optional()
-    .describe(
-      "Block non-essential resources in promptless fetch-compatible mode.",
-    ),
-  retries: z
-    .number()
-    .int()
-    .min(0)
-    .nullable()
-    .optional()
-    .describe(
-      "Retry limit used only in promptless fetch-compatible mode; defaults to 3.",
-    ),
-  token_cap: z
-    .number()
-    .int()
-    .positive()
-    .nullable()
-    .optional()
-    .describe(
-      "Optional retry token cap used only in promptless fetch-compatible mode.",
-    ),
-  timeout: z
-    .number()
-    .int()
-    .positive()
-    .nullable()
-    .optional()
-    .describe(
-      "Page-load timeout used only in promptless fetch-compatible mode; defaults to 120 seconds.",
-    ),
 });
 
 export async function scrapeTool(
@@ -402,68 +282,58 @@ export async function scrapeTool(
   input: z.infer<typeof scrapeInputSchema>,
   dependencies: ToolDependencies = {},
 ): Promise<Record<string, unknown>> {
-  const useAi = [
-    input.prompt,
-    input.schema,
-    input.agent,
-    input.proxy_country,
-  ].some((value) => value !== undefined && value !== null);
-  if (!useAi) {
-    return fetchTool(
-      token,
-      {
-        url: input.url,
-        format: (input.format || "html") as FetchFormat,
-        unblock: input.unblock || "auto",
-        geo: input.geo_code || "US",
-        wait_for: input.wait_for,
-        homepage: Boolean(input.homepage),
-        block_resources: Boolean(input.block_resources),
-        retries: input.retries ?? 3,
-        token_cap: input.token_cap,
-        timeout: input.timeout ?? 120,
-      },
-      dependencies,
-    );
+  const supplied = (value: unknown) => value !== undefined && value !== null;
+  const agent: Agent = input.agent;
+  const mapOnlyOptions = [
+    ["max_depth", input.max_depth],
+    ["limit", input.limit],
+    ["include_patterns", input.include_patterns],
+    ["exclude_patterns", input.exclude_patterns],
+  ] as const;
+
+  if (agent === "map") {
+    if (supplied(input.prompt)) {
+      throw new Error("prompt is not accepted by the map agent");
+    }
+    if (supplied(input.schema_prompt)) {
+      throw new Error("schema_prompt is not accepted by the map agent");
+    }
+    if (supplied(input.proxy_country)) {
+      throw new Error("proxy_country is not accepted by the map agent");
+    }
+  } else {
+    if (!input.prompt?.trim()) {
+      throw new Error("prompt is required for general and listing agents");
+    }
+    const invalidMapOptions = mapOnlyOptions
+      .filter(([, value]) => supplied(value))
+      .map(([name]) => name);
+    if (invalidMapOptions.length) {
+      throw new Error(
+        `${invalidMapOptions.join(", ")} ${invalidMapOptions.length === 1 ? "is" : "are"} only accepted by the map agent`,
+      );
+    }
+    if (agent === "general" && supplied(input.max_pages)) {
+      throw new Error("max_pages is only accepted by listing and map agents");
+    }
   }
 
-  const fetchOnly = [
-    ["format", input.format],
-    ["unblock", input.unblock],
-    ["geo_code", input.geo_code],
-    ["wait_for", input.wait_for],
-    ["homepage", input.homepage],
-    ["block_resources", input.block_resources],
-    ["retries", input.retries],
-    ["token_cap", input.token_cap],
-    ["timeout", input.timeout],
-  ]
-    .filter(([, value]) => value !== undefined && value !== null)
-    .map(([name]) => name);
-  if (fetchOnly.length) {
-    throw new Error(
-      `The AI scrape API does not support these fetch-only options: ${fetchOnly.join(", ")}. Use fetch for unblocker controls; AI scrape supports proxy_country.`,
-    );
-  }
-
-  const agent: Agent = input.agent || "general";
-  if (agent === "map" && input.schema) {
-    throw new Error("schema is not supported by the map agent");
-  }
-  const response = await createAiScraperApi({
+  return createAiScraperApi({
     token,
     url: input.url,
-    message: buildExtractionMessage(input.prompt, input.schema),
+    message:
+      agent === "map"
+        ? undefined
+        : buildExtractionMessage(input.prompt!, input.schema_prompt),
     agent,
     proxyCountry: input.proxy_country ?? null,
-    maxPages: input.max_pages ?? (agent === "listing" ? 1 : 50),
-    maxDepth: input.max_depth,
-    limit: input.limit,
-    includePatterns: input.include_patterns,
-    excludePatterns: input.exclude_patterns,
+    maxPages: input.max_pages ?? undefined,
+    maxDepth: input.max_depth ?? undefined,
+    limit: input.limit ?? undefined,
+    includePatterns: input.include_patterns ?? undefined,
+    excludePatterns: input.exclude_patterns ?? undefined,
     fetchFn: dependencies.fetchFn,
   });
-  return raiseForApiError(response);
 }
 
 export const serpInputSchema = z.object({
@@ -499,13 +369,17 @@ export const serpInputSchema = z.object({
   raw: z
     .boolean()
     .default(false)
-    .describe("Request raw HTML; takes precedence over format."),
-  timeout: z
+    .describe(
+      "Deprecated alias for format=html; takes precedence over format.",
+    ),
+  client_timeout: z
     .number()
     .int()
     .positive()
     .default(120)
-    .describe("Maximum SERP request duration in seconds."),
+    .describe(
+      "Local upstream HTTP timeout in seconds; it is not included in the SERP request body.",
+    ),
 });
 
 export async function serpTool(
@@ -513,20 +387,18 @@ export async function serpTool(
   input: z.infer<typeof serpInputSchema>,
   dependencies: ToolDependencies = {},
 ): Promise<Record<string, unknown>> {
-  return raiseForApiError(
-    await googleSerpSyncApi({
-      token,
-      queryOrUrl: input.query_or_url,
-      region: input.region ?? null,
-      language: input.language ?? null,
-      page: input.page ?? null,
-      format: input.format,
-      renderJs: input.render_js,
-      raw: input.raw,
-      timeout: input.timeout,
-      fetchFn: dependencies.fetchFn,
-    }),
-  );
+  return googleSerpSyncApi({
+    token,
+    queryOrUrl: input.query_or_url,
+    region: input.region ?? null,
+    language: input.language ?? null,
+    page: input.page ?? null,
+    format: input.format,
+    renderJs: input.render_js,
+    raw: input.raw,
+    timeout: input.client_timeout,
+    fetchFn: dependencies.fetchFn,
+  });
 }
 
 export const statusInputSchema = z.object({
@@ -561,9 +433,11 @@ export async function statusTool(
   dependencies: ToolDependencies = {},
 ): Promise<Record<string, unknown>> {
   const accountResponse = await getSubscriptionAccountApi(token, dependencies);
-  raiseForApiError(accountResponse);
+  if (isApiFailure(accountResponse)) return accountResponse;
   const account = unwrapApiData(accountResponse);
   const output: Record<string, unknown> = {
+    kind: "mrscraper-cli-status-summary",
+    source_endpoints: ["/subscription-accounts"],
     status_code: accountResponse.status_code,
     data: {
       account: summarizeSubscriptionAccount(
@@ -575,6 +449,7 @@ export async function statusTool(
   };
   if (!input.domain) return output;
 
+  (output.source_endpoints as string[]).push("/analytic/statuses");
   const domain = normalizeDomain(input.domain);
   const now = dependencies.now?.() || new Date();
   const end = parseStatusDate(input.to, now, "now");
@@ -613,8 +488,8 @@ export async function statusTool(
 
 export const rerunInputSchema = z.object({
   target: z
-    .union([z.string(), z.array(z.string())])
-    .describe("One URL, or a bulk URL array/delimited string."),
+    .string()
+    .describe("One URL, or comma/newline-separated URLs for a bulk rerun."),
   type: z.enum(["ai", "manual"]).describe("Saved scraper type."),
   bulk: z
     .boolean()
@@ -634,34 +509,43 @@ export const rerunInputSchema = z.object({
     .number()
     .int()
     .positive()
-    .default(2)
+    .nullable()
+    .optional()
     .describe(
-      "Maximum crawl depth for a single AI rerun; ignored for manual and bulk reruns.",
+      "Maximum crawl depth for a single AI rerun; defaults to 2 when omitted.",
     ),
   max_pages: z
     .number()
     .int()
     .positive()
-    .default(50)
+    .nullable()
+    .optional()
     .describe(
-      "Maximum pages for a single AI rerun; ignored for manual and bulk reruns.",
+      "Maximum pages for a single AI rerun; defaults to 50 when omitted.",
     ),
   limit: z
     .number()
     .int()
     .positive()
-    .default(1000)
+    .nullable()
+    .optional()
     .describe(
-      "Maximum results for a single AI rerun; ignored for manual and bulk reruns.",
+      "Maximum results for a single AI rerun; defaults to 1000 when omitted.",
     ),
   include_patterns: z
     .string()
-    .default("")
-    .describe("URL include regular expression for a single AI rerun."),
+    .nullable()
+    .optional()
+    .describe(
+      "URL include regular expression for a single AI rerun; defaults to an empty string.",
+    ),
   exclude_patterns: z
     .string()
-    .default("")
-    .describe("URL exclude regular expression for a single AI rerun."),
+    .nullable()
+    .optional()
+    .describe(
+      "URL exclude regular expression for a single AI rerun; defaults to an empty string.",
+    ),
 });
 
 export async function rerunTool(
@@ -669,9 +553,30 @@ export async function rerunTool(
   input: z.infer<typeof rerunInputSchema>,
   dependencies: ToolDependencies = {},
 ): Promise<Record<string, unknown>> {
+  const aiOptionEntries = [
+    ["max_depth", input.max_depth],
+    ["max_pages", input.max_pages],
+    ["limit", input.limit],
+    ["include_patterns", input.include_patterns],
+    ["exclude_patterns", input.exclude_patterns],
+  ] as const;
+  const explicitAiOptions = aiOptionEntries
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([name]) => name);
+
   let response: ApiResponse;
   if (input.bulk) {
     if (!input.id) throw new Error("id is required when bulk is true");
+    if (input.scraper_id !== undefined && input.scraper_id !== null) {
+      throw new Error(
+        "scraper_id is only accepted for single reruns; use id when bulk is true",
+      );
+    }
+    if (explicitAiOptions.length) {
+      throw new Error(
+        `${explicitAiOptions.join(", ")} ${explicitAiOptions.length === 1 ? "is" : "are"} not accepted by bulk rerun endpoints`,
+      );
+    }
     const urls = parseBulkUrls(input.target);
     if (!urls.length) throw new Error("No URLs found in the bulk target");
     response =
@@ -692,11 +597,17 @@ export async function rerunTool(
     if (!input.scraper_id) {
       throw new Error("scraper_id is required unless bulk is true");
     }
-    const targets = Array.isArray(input.target) ? input.target : [input.target];
-    if (targets.length !== 1) {
-      throw new Error("A single rerun requires exactly one target URL");
+    if (input.id !== undefined && input.id !== null) {
+      throw new Error(
+        "id is only accepted when bulk is true; use scraper_id for a single rerun",
+      );
     }
-    const url = targets[0]!.trim();
+    if (input.type === "manual" && explicitAiOptions.length) {
+      throw new Error(
+        `${explicitAiOptions.join(", ")} ${explicitAiOptions.length === 1 ? "is" : "are"} only accepted by single AI reruns`,
+      );
+    }
+    const url = input.target.trim();
     if (!url) throw new Error("target URL must not be empty");
     response =
       input.type === "manual"
@@ -710,38 +621,30 @@ export async function rerunTool(
             token,
             scraperId: input.scraper_id,
             url,
-            maxDepth: input.max_depth,
-            maxPages: input.max_pages,
-            limit: input.limit,
-            includePatterns: input.include_patterns,
-            excludePatterns: input.exclude_patterns,
+            maxDepth: input.max_depth ?? 2,
+            maxPages: input.max_pages ?? 50,
+            limit: input.limit ?? 1000,
+            includePatterns: input.include_patterns ?? "",
+            excludePatterns: input.exclude_patterns ?? "",
             fetchFn: dependencies.fetchFn,
           });
   }
-  return raiseForApiError(response);
+  return response;
 }
-
-const sortFields = [
-  "createdAt",
-  "updatedAt",
-  "id",
-  "type",
-  "url",
-  "status",
-  "error",
-  "tokenUsage",
-  "runtime",
-] as const;
 
 export const resultsInputSchema = z.object({
   sort_field: z
-    .enum(sortFields)
+    .string()
+    .min(1)
     .default("updatedAt")
     .describe("Stored-result field used for sorting."),
   sort_order: z
-    .enum(["ASC", "DESC"])
-    .default("DESC")
-    .describe("Result sort direction."),
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(z.enum(["asc", "desc"]))
+    .default("desc")
+    .describe("Result sort direction, accepted case-insensitively."),
   page_size: z
     .number()
     .int()
@@ -781,20 +684,18 @@ export async function resultsTool(
   input: z.infer<typeof resultsInputSchema>,
   dependencies: ToolDependencies = {},
 ): Promise<Record<string, unknown>> {
-  return raiseForApiError(
-    await getAllResultsApi({
-      token,
-      sortField: input.sort_field,
-      sortOrder: input.sort_order,
-      pageSize: input.page_size,
-      page: input.page,
-      search: input.search ?? null,
-      dateRangeColumn: input.date_range_column ?? null,
-      startAt: input.start_at ?? null,
-      endAt: input.end_at ?? null,
-      fetchFn: dependencies.fetchFn,
-    }),
-  );
+  return getAllResultsApi({
+    token,
+    sortField: input.sort_field,
+    sortOrder: input.sort_order.toUpperCase(),
+    pageSize: input.page_size,
+    page: input.page,
+    search: input.search ?? null,
+    dateRangeColumn: input.date_range_column ?? null,
+    startAt: input.start_at ?? null,
+    endAt: input.end_at ?? null,
+    fetchFn: dependencies.fetchFn,
+  });
 }
 
 export const resultInputSchema = z.object({
@@ -808,9 +709,7 @@ export async function resultTool(
 ): Promise<Record<string, unknown>> {
   const resultId = input.result_id.trim();
   if (!resultId) throw new Error("result_id must not be empty");
-  return raiseForApiError(
-    await getResultByIdApi(token, resultId, dependencies),
-  );
+  return getResultByIdApi(token, resultId, dependencies);
 }
 
 const readAnnotations = {
@@ -833,7 +732,7 @@ export function registerTools(
     "fetch",
     {
       description:
-        "Fetch a known URL as Markdown, HTML, or a clean page-document object. Auto unblock starts without browser rendering and escalates after a detected challenge.",
+        "Call the Web Unblocker endpoint once for a known URL and return its response envelope. Enable browser_rendering explicitly when page JavaScript is required.",
       inputSchema: fetchInputSchema,
       outputSchema: fetchOutputSchema,
       annotations: readAnnotations,
@@ -845,7 +744,7 @@ export function registerTools(
     "scrape",
     {
       description:
-        "Extract structured data from a URL using a prompt, JSON Schema, or both. General handles a page, listing handles repeated records, and map discovers site URLs.",
+        "Call the AI scraper endpoint. General and listing require a prompt; map discovers site URLs and accepts only its crawl controls.",
       inputSchema: scrapeInputSchema,
       outputSchema: scrapeOutputSchema,
       annotations: writeAnnotations,

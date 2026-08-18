@@ -3,7 +3,6 @@ import { getApiEndpoints } from "./config.js";
 import { request, type ApiResponse } from "./http.js";
 
 export type Agent = "general" | "listing" | "map";
-export type UnblockPolicy = "auto" | "always" | "never";
 export type SerpFormat = "json" | "html";
 
 interface FetchDependency {
@@ -81,126 +80,10 @@ export async function fetchContentApi({
   });
 }
 
-const BLOCK_PAGE_PATTERNS = [
-  /\bcaptcha\b/i,
-  /access denied/i,
-  /verify (?:that )?you are (?:a )?human/i,
-  /checking (?:if|your) (?:the )?(?:site|browser|connection)/i,
-  /unusual traffic/i,
-  /cf-chl-/i,
-  /cloudflare ray id/i,
-  /datadome/i,
-  /incapsula/i,
-  /perimeterx/i,
-];
-
-export function isLikelyBlockedResult(result: ApiResponse): boolean {
-  if (result.status_code === null) return true;
-  if ([408, 500, 502, 503, 504].includes(result.status_code)) return true;
-  if (
-    typeof result.data === "string" &&
-    [403, 429].includes(result.status_code)
-  ) {
-    return true;
-  }
-  const sample = (
-    typeof result.data === "string"
-      ? result.data
-      : JSON.stringify(result.data || {})
-  ).slice(0, 250_000);
-  if (/failed to open url|navigation failed|target.*blocked/i.test(sample)) {
-    return true;
-  }
-  return BLOCK_PAGE_PATTERNS.some((pattern) => pattern.test(sample));
-}
-
-export interface FetchWithUnblockerOptions extends FetchDependency {
-  token: string;
-  url: string;
-  unblock?: UnblockPolicy;
-  timeout?: number;
-  geoCode?: string | null;
-  waitForSelector?: string | null;
-  homePage?: boolean;
-  blockResources?: boolean;
-  maxRetries?: number;
-  tokenCap?: number | null;
-}
-
-export async function fetchWithUnblockerApi({
-  token,
-  url,
-  unblock = "auto",
-  timeout = 30,
-  geoCode = null,
-  waitForSelector = null,
-  homePage = false,
-  blockResources = false,
-  maxRetries = 3,
-  tokenCap = null,
-  fetchFn,
-}: FetchWithUnblockerOptions): Promise<ApiResponse> {
-  if (!(["auto", "always", "never"] as const).includes(unblock)) {
-    throw new Error("unblock must be auto, always, or never");
-  }
-  if (unblock === "never" && waitForSelector) {
-    throw new Error(
-      "wait_for requires browser rendering; use unblock='auto' or 'always'",
-    );
-  }
-
-  const renderingRequired = unblock === "always" || Boolean(waitForSelector);
-  const common = {
-    token,
-    url,
-    timeout,
-    geoCode,
-    waitForSelector,
-    homePage,
-    blockResources,
-    tokenCap,
-    fetchFn,
-  };
-  const first = await fetchContentApi({
-    ...common,
-    browserRendering: renderingRequired,
-    maxRetries: unblock === "auto" && !renderingRequired ? 0 : maxRetries,
-  });
-  const shouldEscalate =
-    unblock === "auto" && !renderingRequired && isLikelyBlockedResult(first);
-
-  if (!shouldEscalate) {
-    return {
-      ...first,
-      unblocker: {
-        requested: unblock,
-        browser_rendering: renderingRequired,
-        escalated: false,
-        attempts: 1,
-      },
-    };
-  }
-
-  const second = await fetchContentApi({
-    ...common,
-    browserRendering: true,
-    maxRetries,
-  });
-  return {
-    ...second,
-    unblocker: {
-      requested: unblock,
-      browser_rendering: true,
-      escalated: true,
-      attempts: 2,
-    },
-  };
-}
-
 export interface CreateAiScraperOptions extends FetchDependency {
   token: string;
   url: string;
-  message: string;
+  message?: string;
   agent?: Agent;
   proxyCountry?: string | null;
   maxDepth?: number;
@@ -216,26 +99,45 @@ export async function createAiScraperApi({
   message,
   agent = "general",
   proxyCountry = null,
-  maxDepth = 2,
-  maxPages = 50,
-  limit = 1_000,
-  includePatterns = "",
-  excludePatterns = "",
+  maxDepth,
+  maxPages,
+  limit,
+  includePatterns,
+  excludePatterns,
   fetchFn,
 }: CreateAiScraperOptions): Promise<ApiResponse> {
-  const payload: Record<string, unknown> =
-    agent === "general" || agent === "listing"
-      ? { url, message, agent, proxyCountry }
-      : {
-          url,
-          agent,
-          maxDepth,
-          maxPages,
-          limit,
-          includePatterns,
-          excludePatterns,
-        };
-  if (agent === "listing") payload.maxPages = maxPages;
+  if (!(agent === "general" || agent === "listing" || agent === "map")) {
+    throw new Error("agent must be general, listing, or map");
+  }
+  if ((agent === "general" || agent === "listing") && !message?.trim()) {
+    throw new Error(
+      "An extraction message is required for general and listing agents",
+    );
+  }
+  if (agent === "map" && proxyCountry !== null && proxyCountry !== undefined) {
+    throw new Error("The map agent does not accept proxyCountry");
+  }
+
+  const payload: Record<string, unknown> = { url, agent };
+  if (agent === "general" || agent === "listing") {
+    payload.message = message;
+    if (proxyCountry !== null && proxyCountry !== undefined) {
+      payload.proxyCountry = proxyCountry;
+    }
+    if (agent === "listing" && maxPages !== undefined) {
+      payload.maxPages = maxPages;
+    }
+  } else {
+    if (message)
+      throw new Error("The map agent does not accept an extraction prompt");
+    if (maxDepth !== undefined) payload.maxDepth = maxDepth;
+    if (maxPages !== undefined) payload.maxPages = maxPages;
+    if (limit !== undefined) payload.limit = limit;
+    if (includePatterns !== undefined)
+      payload.includePatterns = includePatterns;
+    if (excludePatterns !== undefined)
+      payload.excludePatterns = excludePatterns;
+  }
   return request("POST", getApiEndpoints().scrapersAi, {
     headers: { accept: "application/json", ...getAuthHeaders(token) },
     json: payload,
@@ -489,15 +391,9 @@ export async function googleSerpSyncApi({
   });
 }
 
-export function parseBulkUrls(raw: string | string[]): string[] {
-  if (Array.isArray(raw)) {
-    return raw
-      .map(String)
-      .map((value) => value.trim())
-      .filter(Boolean);
-  }
+export function parseBulkUrls(raw: string): string[] {
   return raw
-    .split(/[,|\n]/g)
+    .split(/[,\n]/g)
     .map((part) => part.trim())
     .filter(Boolean);
 }

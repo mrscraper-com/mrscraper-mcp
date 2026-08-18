@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createAiScraperApi,
-  fetchWithUnblockerApi,
+  fetchContentApi,
   googleSerpSyncApi,
   normalizeSerpInput,
   parseBulkUrls,
@@ -47,12 +47,32 @@ describe("HTTP helpers", () => {
     expect(JSON.stringify(result)).not.toContain("atk_fakefakefakefake");
   });
 
-  it("redacts signed query parameters", () => {
-    const sanitized = sanitizeResponseData(
-      "https://example.com/file?x-amz-signature=secret&token=atk_abcdefghijkl",
+  it("preserves extracted scraper data while redacting credential metadata", () => {
+    const sanitized = sanitizeResponseData({
+      data: {
+        id: "result-1",
+        scraperId: "scraper-1",
+        data: { token: "user-requested-value" },
+        latestApiToken: "atk_fakefakefakefake",
+      },
+    });
+    expect(sanitized).toEqual({
+      data: {
+        id: "result-1",
+        scraperId: "scraper-1",
+        data: { token: "user-requested-value" },
+        latestApiToken: "[REDACTED]",
+      },
+    });
+  });
+
+  it("preserves non-JSON response bodies exactly", async () => {
+    const html = "<p>Product token: atk_abcdefghijkl</p>";
+    const fetchFn = mockFetch(
+      () => new Response(html, { headers: { "content-type": "text/html" } }),
     );
-    expect(sanitized).not.toContain("secret");
-    expect(sanitized).not.toContain("atk_abcdefghijkl");
+    const result = await request("GET", "https://example.com", { fetchFn });
+    expect(result.data).toBe(html);
   });
 
   it("returns a safe timeout envelope", async () => {
@@ -78,48 +98,42 @@ describe("HTTP helpers", () => {
 });
 
 describe("CLI-aligned API calls", () => {
-  it("auto unblock escalates a challenge without putting tokens in the URL", async () => {
+  it("fetches once with the exact Web Unblocker parameters", async () => {
     const requests: Array<{ url: URL; init: RequestInit }> = [];
     const fetchFn = mockFetch((url, init) => {
       requests.push({ url, init });
-      return new Response(
-        requests.length === 1
-          ? "<html>Checking your browser - captcha</html>"
-          : "<html>Available</html>",
-        { status: 200, headers: { "content-type": "text/html" } },
-      );
+      return new Response("<html>Checking your browser - captcha</html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
     });
-    const result = await fetchWithUnblockerApi({
+    const result = await fetchContentApi({
       token: "test-token",
       url: "https://target.example",
-      unblock: "auto",
+      browserRendering: true,
+      geoCode: "ID",
+      waitForSelector: ".ready",
+      homePage: true,
+      blockResources: true,
+      maxRetries: 4,
+      tokenCap: 100,
+      timeout: 45,
       fetchFn,
     });
-    expect(requests).toHaveLength(2);
-    expect(requests[0]!.url.searchParams.get("browserRendering")).toBe("false");
-    expect(requests[0]!.url.searchParams.get("maxRetries")).toBe("0");
-    expect(requests[1]!.url.searchParams.get("browserRendering")).toBe("true");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.url.searchParams.get("browserRendering")).toBe("true");
+    expect(requests[0]!.url.searchParams.get("geoCode")).toBe("ID");
+    expect(requests[0]!.url.searchParams.get("waitForSelector")).toBe(".ready");
+    expect(requests[0]!.url.searchParams.get("homePage")).toBe("true");
+    expect(requests[0]!.url.searchParams.get("blockResources")).toBe("true");
+    expect(requests[0]!.url.searchParams.get("maxRetries")).toBe("4");
+    expect(requests[0]!.url.searchParams.get("tokenCap")).toBe("100");
+    expect(requests[0]!.url.searchParams.get("timeout")).toBe("45");
     expect(requests[0]!.url.searchParams.has("token")).toBe(false);
     expect(new Headers(requests[0]!.init.headers).get("authorization")).toBe(
       "Bearer test-token",
     );
-    expect(result.unblocker).toEqual({
-      requested: "auto",
-      browser_rendering: true,
-      escalated: true,
-      attempts: 2,
-    });
-  });
-
-  it("rejects a selector when browser rendering is forbidden", async () => {
-    await expect(
-      fetchWithUnblockerApi({
-        token: "test",
-        url: "https://target.example",
-        unblock: "never",
-        waitForSelector: ".ready",
-      }),
-    ).rejects.toThrow("requires browser rendering");
+    expect(result).not.toHaveProperty("unblocker");
   });
 
   it("sends listing maxPages", async () => {
@@ -138,6 +152,26 @@ describe("CLI-aligned API calls", () => {
     });
     expect(result.status_code).toBe(200);
     expect(body).toMatchObject({ agent: "listing", maxPages: 4 });
+  });
+
+  it("omits unspecified scrape controls and proxyCountry", async () => {
+    let body: Record<string, unknown> = {};
+    const fetchFn = mockFetch((_url, init) => {
+      body = JSON.parse(String(init.body));
+      return Response.json({ data: { id: "general-1" } });
+    });
+    await createAiScraperApi({
+      token: "test",
+      url: "https://target.example",
+      message: "Extract the title",
+      agent: "general",
+      fetchFn,
+    });
+    expect(body).toEqual({
+      url: "https://target.example",
+      message: "Extract the title",
+      agent: "general",
+    });
   });
 
   it("preserves the CLI Node request profile for reruns", async () => {
@@ -201,5 +235,8 @@ describe("CLI-aligned API calls", () => {
     expect(
       parseBulkUrls("https://a.example,https://b.example\nhttps://c.example"),
     ).toEqual(["https://a.example", "https://b.example", "https://c.example"]);
+    expect(parseBulkUrls("https://a.example|https://b.example")).toEqual([
+      "https://a.example|https://b.example",
+    ]);
   });
 });
