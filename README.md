@@ -267,6 +267,10 @@ URL or another URL without rebuilding the prompt and agent settings:
 This makes the scraper configuration reproducible, but it does not guarantee
 identical extracted values when the page or model behavior changes.
 
+`rerun` also supports dashboard-built manual workflows and asynchronous bulk
+jobs across multiple target URLs. See the full [`rerun`](#rerun) section below
+for the available modes and result-tracking workflow.
+
 ### `serp`
 
 `serp` calls the synchronous Google endpoint:
@@ -380,6 +384,22 @@ The summary calculates `token_remaining` and `usage_percent`, normalizes a
 URL to its hostname, and records the source endpoints used for the response.
 
 ### `rerun`
+
+`type` and `bulk` describe different parts of the request:
+
+- Set `type` to `ai` for a saved AI scraper created by the `scrape` tool.
+- Set `type` to `manual` for a saved step-based workflow created in the
+  MrScraper dashboard. MCP reruns that workflow but does not create it.
+- Leave `bulk` as `false` for one URL. Set it to `true` to apply the same saved
+  configuration to a comma- or newline-separated URL list in one bulk request.
+
+Manual reruns can be single or bulk, and bulk reruns can use either scraper
+type. Bulk describes the number of targets; manual describes how the saved
+scraper was built.
+
+Bulk mode submits one asynchronous backend job; MCP does not repeat the
+single-URL tool call locally. Save `data.data.bulkResultId` from the response
+and pass it to `result` as `result_id` until the stored result is finished.
 
 `rerun` routes one tool contract to four saved-scraper endpoints:
 

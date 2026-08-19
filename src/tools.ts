@@ -491,11 +491,17 @@ export const rerunInputSchema = z.object({
   target: z
     .string()
     .describe("One URL, or comma/newline-separated URLs for a bulk rerun."),
-  type: z.enum(["ai", "manual"]).describe("Saved scraper type."),
+  type: z
+    .enum(["ai", "manual"])
+    .describe(
+      "How the saved scraper was created: ai for an AI scraper or manual for a dashboard-built step workflow.",
+    ),
   bulk: z
     .boolean()
     .default(false)
-    .describe("Submit all parsed target URLs through the bulk rerun endpoint."),
+    .describe(
+      "Independently select target count: false for one URL or true to submit all parsed targets as one asynchronous bulk job.",
+    ),
   scraper_id: z
     .string()
     .nullable()
@@ -745,7 +751,7 @@ export function registerTools(
     "scrape",
     {
       description:
-        "Create a saved AI scraper. General and listing require a prompt; map discovers site URLs and accepts only its crawl controls. Reuse the returned scraperId with rerun.",
+        "Create a saved AI scraper from one starting URL. General and listing require a prompt; map discovers site URLs. Use rerun for dashboard-built manual workflows or multiple independent target URLs.",
       inputSchema: scrapeInputSchema,
       outputSchema: scrapeOutputSchema,
       annotations: writeAnnotations,
@@ -781,7 +787,7 @@ export function registerTools(
     "rerun",
     {
       description:
-        "Rerun a saved AI or manual scraper for one URL or a bulk URL list. Manual reruns require the compliance acknowledgment described in server instructions.",
+        "Rerun one saved scraper configuration. Type selects an AI scraper or dashboard-built manual workflow; independently, bulk selects one URL or an asynchronous URL-list job whose bulkResultId can be inspected with result. Manual reruns require the compliance acknowledgment described in server instructions.",
       inputSchema: rerunInputSchema,
       outputSchema: rerunOutputSchema,
       annotations: writeAnnotations,
