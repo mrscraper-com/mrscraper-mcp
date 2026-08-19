@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TOOL_NAMES, VERSION } from "../src/config.js";
 import { createMrscraperServer } from "../src/server.js";
 import {
+  TOOL_DESCRIPTIONS,
   fetchInputSchema,
   fetchTool,
   rerunTool,
@@ -435,6 +436,14 @@ describe("MCP surface", () => {
     try {
       const { tools } = await client.listTools();
       for (const tool of tools) {
+        const expectedDescription =
+          TOOL_DESCRIPTIONS[tool.name as keyof typeof TOOL_DESCRIPTIONS];
+        expect(
+          expectedDescription,
+          `${tool.name} has no tool description`,
+        ).toBeDefined();
+        expect(tool.description).toBe(expectedDescription);
+        expect(tool.description).toMatch(/^Use this (?:when|to|only)/);
         expect(tool.outputSchema).not.toEqual({
           type: "object",
           additionalProperties: true,
@@ -445,9 +454,11 @@ describe("MCP surface", () => {
         >;
         expect(
           Object.entries(properties)
-            .filter(([, schema]) => !schema.description?.trim())
+            .filter(
+              ([, schema]) => (schema.description?.trim().length || 0) < 40,
+            )
             .map(([name]) => name),
-          `${tool.name} has parameters without descriptions`,
+          `${tool.name} has parameters without useful descriptions`,
         ).toEqual([]);
       }
       const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
