@@ -57,7 +57,8 @@ export const fetchOutputSchema = apiResponseSchema.meta({
 
 export const scrapeOutputSchema = apiResponseSchema.meta({
   title: "Scrape response",
-  description: "The response envelope returned by the AI scraper API.",
+  description:
+    "The AI scraper response envelope. A successful run contains scraperId for reproducing the saved configuration with rerun.",
 });
 
 export const statusOutputSchema = z
@@ -744,7 +745,7 @@ export function registerTools(
     "scrape",
     {
       description:
-        "Call the AI scraper endpoint. General and listing require a prompt; map discovers site URLs and accepts only its crawl controls.",
+        "Create a saved AI scraper. General and listing require a prompt; map discovers site URLs and accepts only its crawl controls. Reuse the returned scraperId with rerun.",
       inputSchema: scrapeInputSchema,
       outputSchema: scrapeOutputSchema,
       annotations: writeAnnotations,

@@ -249,6 +249,24 @@ strict conformance is required.
 General and listing send `url`, `message`, and `agent`, plus the supplied
 agent inputs. Map sends `url`, `agent`, and only the supplied crawl inputs.
 
+#### Reproduce a scrape with `rerun`
+
+Every successful `scrape` creates a saved AI scraper configuration by default.
+Its response run object contains `scraperId`. Pass that UUID to `rerun` as
+`scraper_id` to apply the same saved extraction configuration to the original
+URL or another URL without rebuilding the prompt and agent settings:
+
+```json
+{
+  "target": "https://example.com/product-2",
+  "type": "ai",
+  "scraper_id": "scraper-uuid"
+}
+```
+
+This makes the scraper configuration reproducible, but it does not guarantee
+identical extracted values when the page or model behavior changes.
+
 ### `serp`
 
 `serp` calls the synchronous Google endpoint:

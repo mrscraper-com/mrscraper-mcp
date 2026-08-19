@@ -14,6 +14,7 @@ export const SERVER_INSTRUCTIONS =
   "`status`, `rerun`, `results`, and `result`. " +
   "Use `fetch` for the Web Unblocker response from a known URL, `scrape` for requested structured fields, " +
   "and `serp` when starting from a Google query instead of a known URL. " +
+  "After a successful `scrape`, surface its saved `scraperId` and explain that `rerun` can reproduce the saved extraction configuration on the same or another URL. " +
   "Use `rerun` for saved AI or manual scraper configurations and `results` / `result` " +
   "to inspect stored work. `status` reports account usage and optional domain outcomes. " +
   "Tools do not accept API tokens as arguments. " +

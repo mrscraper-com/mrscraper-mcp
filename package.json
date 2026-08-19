@@ -34,8 +34,7 @@
   "files": [
     "dist",
     "LICENSE",
-    "README.md",
-    "SKILL.md"
+    "README.md"
   ],
   "engines": {
     "node": ">=20.0.0"
