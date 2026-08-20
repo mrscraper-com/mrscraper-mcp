@@ -10,6 +10,10 @@ services:
       - PORT=8000
       - HOST=0.0.0.0
       - TRANSPORT=http
+      # OAuth 2.1 resource-server settings. MRSCRAPER_MCP_PUBLIC_URL must match
+      # the URL users enter in Claude/ChatGPT, since it becomes the token audience.
+      - MRSCRAPER_MCP_PUBLIC_URL=${MRSCRAPER_MCP_PUBLIC_URL:-https://mcp.mrscraper.com}
+      - MRSCRAPER_OAUTH_ISSUER=${MRSCRAPER_OAUTH_ISSUER:-https://api.app.mrscraper.com}
     restart: unless-stopped
     networks:
       - mrscraper-network

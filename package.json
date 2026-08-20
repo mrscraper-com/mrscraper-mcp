@@ -41,7 +41,9 @@
   },
   "scripts": {
     "clean": "node --eval \"import('node:fs').then(({ rmSync }) => rmSync('dist', { recursive: true, force: true }))\"",
-    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "build:widgets": "tsx scripts/build-widgets.ts",
+    "preview:widgets": "tsx scripts/preview-widgets.ts",
+    "build": "npm run clean && npm run build:widgets && tsc -p tsconfig.build.json",
     "dev": "tsx src/bin.ts",
     "start": "node dist/bin.js",
     "format": "prettier --write .",
@@ -51,6 +53,7 @@
     "test:watch": "vitest",
     "test:e2e": "tsx scripts/test-e2e.ts",
     "test:mcp": "tsx scripts/test-mcp.ts",
+    "test:oauth": "tsx scripts/test-oauth.ts",
     "test:serp": "tsx scripts/test-serp.ts",
     "prepack": "npm run build"
   },
@@ -60,12 +63,14 @@
     "@modelcontextprotocol/server": "2.0.0",
     "dotenv": "17.4.2",
     "express": "5.2.1",
+    "jose": "^6.2.9",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.0.0",
     "@types/express": "5.0.6",
     "@types/node": "26.2.0",
+    "esbuild": "^0.27.7",
     "prettier": "3.9.6",
     "tsx": "4.23.12",
     "typescript": "7.0.2",

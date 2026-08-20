@@ -1,21 +1,32 @@
 import {
   createMcpExpressApp,
+  mcpAuthMetadataRouter,
   requireBearerAuth,
 } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import {
+  buildOAuthProtectedResourceMetadata,
   createMcpHandler,
+  getOAuthProtectedResourceMetadataUrl,
+  type AuthMetadataOptions,
   type McpHttpHandler,
+  type OAuthMetadata,
 } from "@modelcontextprotocol/server";
 import type { Express, NextFunction, Request, Response } from "express";
 
-import { createTokenVerifier } from "./auth.js";
 import {
   TOOL_NAMES,
   VERSION,
+  getOAuthConfig,
   httpAuthEnabled,
   httpRuntimeConfig,
+  type OAuthConfig,
 } from "./config.js";
+import {
+  buildAuthorizationServerMetadata,
+  createCompositeVerifier,
+} from "./oauth.js";
+import { missingScopes, requiredScopesForRequest } from "./scopes.js";
 import { createServerFactory, type ServerFactoryOptions } from "./server.js";
 
 export interface HttpAppOptions extends ServerFactoryOptions {
@@ -23,6 +34,8 @@ export interface HttpAppOptions extends ServerFactoryOptions {
   allowedOrigins?: string[];
   authEnabled?: boolean;
   validateToken?: (token: string) => Promise<boolean>;
+  oauthConfig?: OAuthConfig;
+  oauthMetadata?: OAuthMetadata;
   logPayloads?: boolean;
   payloadLogMax?: number;
 }
@@ -108,11 +121,64 @@ function requestPayloadLogger(enabled: boolean, maxCharacters: number) {
   };
 }
 
+function requireToolScopes(resourceMetadataUrl: string) {
+  return (request: Request, response: Response, next: NextFunction): void => {
+    const auth = request.auth;
+    if (!auth) {
+      next();
+      return;
+    }
+    const required = requiredScopesForRequest(request.body);
+    const missing = missingScopes(auth.scopes, required);
+    if (missing.length === 0) {
+      next();
+      return;
+    }
+    const scope = [...new Set([...auth.scopes, ...required])].join(" ");
+    response
+      .status(403)
+      .set(
+        "WWW-Authenticate",
+        `Bearer error="insufficient_scope", scope="${scope}", resource_metadata="${resourceMetadataUrl}", ` +
+          `error_description="This tool requires the ${missing.join(" ")} scope"`,
+      )
+      .json({
+        error: "insufficient_scope",
+        error_description: `This tool requires the ${missing.join(" ")} scope`,
+      });
+  };
+}
+
+function servePrmAlias(metadata: unknown) {
+  return (request: Request, response: Response, next: NextFunction): void => {
+    if (request.path !== "/") {
+      next();
+      return;
+    }
+    response.set("Access-Control-Allow-Origin", "*");
+    response.set("Access-Control-Allow-Headers", "*");
+    if (request.method === "OPTIONS") {
+      response.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+      response.status(204).end();
+      return;
+    }
+    if (request.method !== "GET") {
+      response.set("Allow", "GET, OPTIONS").status(405).end();
+      return;
+    }
+    response.json(metadata);
+  };
+}
+
 export function createHttpApp(options: HttpAppOptions = {}): HttpApp {
   const runtime = httpRuntimeConfig();
   const host = options.host || runtime.host;
   const origins = options.allowedOrigins || runtime.allowedOrigins;
   const allowedOrigins = normalizeAllowedOrigins(origins);
+  const oauthConfig = options.oauthConfig ?? getOAuthConfig();
+  const resourceServerUrl = new URL(oauthConfig.resourceUrl);
+  const resourceMetadataUrl =
+    getOAuthProtectedResourceMetadataUrl(resourceServerUrl);
   const app = createMcpExpressApp({
     host,
     allowedOrigins: allowedOrigins.hostnames,
@@ -132,6 +198,21 @@ export function createHttpApp(options: HttpAppOptions = {}): HttpApp {
   const payloadLogMax =
     Number.isInteger(configuredMax) && configuredMax > 0 ? configuredMax : 8192;
 
+  const authMetadataOptions: AuthMetadataOptions = {
+    oauthMetadata:
+      options.oauthMetadata ?? buildAuthorizationServerMetadata(oauthConfig),
+    resourceServerUrl,
+    scopesSupported: [...oauthConfig.scopesSupported],
+    resourceName: "MrScraper",
+    serviceDocumentationUrl: new URL(oauthConfig.documentationUrl),
+  };
+  app.use(mcpAuthMetadataRouter(authMetadataOptions));
+
+  app.use(
+    "/.well-known/oauth-protected-resource",
+    servePrmAlias(buildOAuthProtectedResourceMetadata(authMetadataOptions)),
+  );
+
   app.use(exactOriginProtection(allowedOrigins.origins));
   app.use(requestPayloadLogger(logPayloads, payloadLogMax));
   app.get("/health", (_request, response) => {
@@ -150,8 +231,13 @@ export function createHttpApp(options: HttpAppOptions = {}): HttpApp {
   const auth = authEnabled
     ? [
         requireBearerAuth({
-          verifier: createTokenVerifier(options.validateToken),
+          verifier: createCompositeVerifier({
+            config: oauthConfig,
+            validateToken: options.validateToken,
+          }),
+          resourceMetadataUrl,
         }),
+        requireToolScopes(resourceMetadataUrl),
       ]
     : [];
   app.all("/mcp", ...auth, async (request, response, next) => {
