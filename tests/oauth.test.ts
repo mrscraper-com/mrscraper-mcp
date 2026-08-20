@@ -47,7 +47,6 @@ function oauthConfig(): OAuthConfig {
   return {
     enabled: true,
     issuer,
-    metadataUrl: `${issuer}/.well-known/oauth-authorization-server`,
     jwksUrl: `${issuer}/.well-known/jwks.json`,
     publicUrl: "https://mcp.mrscraper.test",
     resourceUrl: RESOURCE,
@@ -85,11 +84,11 @@ afterEach(async () => {
   await Promise.all(closers.splice(0).map((close) => close()));
 });
 
-async function startApp() {
+async function startApp(config: OAuthConfig = oauthConfig()) {
   const { app, handler } = createHttpApp({
     host: "127.0.0.1",
     authEnabled: true,
-    oauthConfig: oauthConfig(),
+    oauthConfig: config,
     validateToken: async (token) => token === "valid-key",
   });
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
@@ -197,6 +196,24 @@ describe("OAuth discovery documents", () => {
     expect(as.client_id_metadata_document_supported).toBe(true);
     expect(as.authorization_response_iss_parameter_supported).toBe(true);
   });
+
+  it("does not advertise OAuth when OAuth access tokens are disabled", async () => {
+    const baseUrl = await startApp({ ...oauthConfig(), enabled: false });
+    for (const path of [
+      "/.well-known/oauth-protected-resource",
+      "/.well-known/oauth-protected-resource/mcp",
+      "/.well-known/oauth-authorization-server",
+    ]) {
+      expect((await fetch(`${baseUrl}${path}`)).status).toBe(404);
+    }
+
+    const response = await toolCall(baseUrl, "status");
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).not.toContain(
+      "resource_metadata=",
+    );
+    expect((await toolCall(baseUrl, "status", "valid-key")).status).toBe(200);
+  });
 });
 
 describe("bearer challenges", () => {
@@ -219,6 +236,14 @@ describe("bearer challenges", () => {
     const baseUrl = await startApp();
     const token = await mintToken({
       audience: "https://elsewhere.example/mcp",
+    });
+    expect((await toolCall(baseUrl, "status", token)).status).toBe(401);
+  });
+
+  it("rejects a token minted for the bare public origin", async () => {
+    const baseUrl = await startApp();
+    const token = await mintToken({
+      audience: "https://mcp.mrscraper.test",
     });
     expect((await toolCall(baseUrl, "status", token)).status).toBe(401);
   });

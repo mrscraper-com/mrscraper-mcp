@@ -176,9 +176,12 @@ export function createHttpApp(options: HttpAppOptions = {}): HttpApp {
   const origins = options.allowedOrigins || runtime.allowedOrigins;
   const allowedOrigins = normalizeAllowedOrigins(origins);
   const oauthConfig = options.oauthConfig ?? getOAuthConfig();
-  const resourceServerUrl = new URL(oauthConfig.resourceUrl);
-  const resourceMetadataUrl =
-    getOAuthProtectedResourceMetadataUrl(resourceServerUrl);
+  const resourceServerUrl = oauthConfig.enabled
+    ? new URL(oauthConfig.resourceUrl)
+    : undefined;
+  const resourceMetadataUrl = resourceServerUrl
+    ? getOAuthProtectedResourceMetadataUrl(resourceServerUrl)
+    : undefined;
   const app = createMcpExpressApp({
     host,
     allowedOrigins: allowedOrigins.hostnames,
@@ -198,20 +201,22 @@ export function createHttpApp(options: HttpAppOptions = {}): HttpApp {
   const payloadLogMax =
     Number.isInteger(configuredMax) && configuredMax > 0 ? configuredMax : 8192;
 
-  const authMetadataOptions: AuthMetadataOptions = {
-    oauthMetadata:
-      options.oauthMetadata ?? buildAuthorizationServerMetadata(oauthConfig),
-    resourceServerUrl,
-    scopesSupported: [...oauthConfig.scopesSupported],
-    resourceName: "MrScraper",
-    serviceDocumentationUrl: new URL(oauthConfig.documentationUrl),
-  };
-  app.use(mcpAuthMetadataRouter(authMetadataOptions));
+  if (resourceServerUrl) {
+    const authMetadataOptions: AuthMetadataOptions = {
+      oauthMetadata:
+        options.oauthMetadata ?? buildAuthorizationServerMetadata(oauthConfig),
+      resourceServerUrl,
+      scopesSupported: [...oauthConfig.scopesSupported],
+      resourceName: "MrScraper",
+      serviceDocumentationUrl: new URL(oauthConfig.documentationUrl),
+    };
+    app.use(mcpAuthMetadataRouter(authMetadataOptions));
 
-  app.use(
-    "/.well-known/oauth-protected-resource",
-    servePrmAlias(buildOAuthProtectedResourceMetadata(authMetadataOptions)),
-  );
+    app.use(
+      "/.well-known/oauth-protected-resource",
+      servePrmAlias(buildOAuthProtectedResourceMetadata(authMetadataOptions)),
+    );
+  }
 
   app.use(exactOriginProtection(allowedOrigins.origins));
   app.use(requestPayloadLogger(logPayloads, payloadLogMax));
@@ -235,9 +240,11 @@ export function createHttpApp(options: HttpAppOptions = {}): HttpApp {
             config: oauthConfig,
             validateToken: options.validateToken,
           }),
-          resourceMetadataUrl,
+          ...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
         }),
-        requireToolScopes(resourceMetadataUrl),
+        ...(resourceMetadataUrl
+          ? [requireToolScopes(resourceMetadataUrl)]
+          : []),
       ]
     : [];
   app.all("/mcp", ...auth, async (request, response, next) => {

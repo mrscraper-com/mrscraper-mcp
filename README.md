@@ -657,25 +657,24 @@ deployment and keep bearer authentication enabled.
 
 ## Environment variables
 
-| Variable                         | Default                                           | Purpose                                                          |
-| -------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- |
-| `TRANSPORT`                      | `stdio`                                           | Selects `stdio` or `http`.                                       |
-| `HOST`                           | `127.0.0.1`                                       | HTTP bind address; the Docker image uses `0.0.0.0`.              |
-| `PORT`                           | `8000`                                            | HTTP listen port.                                                |
-| `MRSCRAPER_API_KEY`              | -                                                 | Primary stdio credential.                                        |
-| `MRSCRAPER_API_TOKEN`            | -                                                 | Legacy stdio credential alias.                                   |
-| `MRSCRAPER_HTTP_AUTH`            | `1`                                               | Enables HTTP bearer verification.                                |
-| `MRSCRAPER_OAUTH`                | `1`                                               | Accepts OAuth 2.1 access tokens alongside API keys.              |
-| `MRSCRAPER_MCP_PUBLIC_URL`       | `https://mcp.mrscraper.com`                       | Public origin; `<origin>/mcp` is the required token audience.    |
-| `MRSCRAPER_OAUTH_ISSUER`         | `https://api.app.mrscraper.com`                   | Authorization server issuer.                                     |
-| `MRSCRAPER_OAUTH_JWKS_URL`       | `<issuer>/.well-known/jwks.json`                  | Key set used to verify access tokens.                            |
-| `MRSCRAPER_OAUTH_METADATA_URL`   | `<issuer>/.well-known/oauth-authorization-server` | Authorization server metadata document.                          |
-| `MRSCRAPER_ALLOWED_ORIGINS`      | -                                                 | Comma-separated browser origins allowed to call the HTTP server. |
-| `MRSCRAPER_API_BASE_URL`         | MrScraper platform API                            | Platform endpoint override for development and testing.          |
-| `MRSCRAPER_FETCH_BASE_URL`       | MrScraper Web Unblocker                           | Fetch endpoint override.                                         |
-| `MRSCRAPER_SYNC_BASE_URL`        | MrScraper synchronous scraper API                 | SERP endpoint override.                                          |
-| `MRSCRAPER_LOG_HTTP_PAYLOAD`     | off                                               | Enables trusted-environment request-body diagnostics.            |
-| `MRSCRAPER_LOG_HTTP_PAYLOAD_MAX` | `8192`                                            | Maximum diagnostic payload length.                               |
+| Variable                         | Default                           | Purpose                                                          |
+| -------------------------------- | --------------------------------- | ---------------------------------------------------------------- |
+| `TRANSPORT`                      | `stdio`                           | Selects `stdio` or `http`.                                       |
+| `HOST`                           | `127.0.0.1`                       | HTTP bind address; the Docker image uses `0.0.0.0`.              |
+| `PORT`                           | `8000`                            | HTTP listen port.                                                |
+| `MRSCRAPER_API_KEY`              | -                                 | Primary stdio credential.                                        |
+| `MRSCRAPER_API_TOKEN`            | -                                 | Legacy stdio credential alias.                                   |
+| `MRSCRAPER_HTTP_AUTH`            | `1`                               | Enables HTTP bearer verification.                                |
+| `MRSCRAPER_OAUTH`                | `1`                               | Accepts OAuth 2.1 access tokens alongside API keys.              |
+| `MRSCRAPER_MCP_PUBLIC_URL`       | `https://mcp.mrscraper.com`       | Public origin; `<origin>/mcp` is the required token audience.    |
+| `MRSCRAPER_OAUTH_ISSUER`         | `https://api.app.mrscraper.com`   | Authorization server issuer.                                     |
+| `MRSCRAPER_OAUTH_JWKS_URL`       | `<issuer>/.well-known/jwks.json`  | Key set used to verify access tokens.                            |
+| `MRSCRAPER_ALLOWED_ORIGINS`      | -                                 | Comma-separated browser origins allowed to call the HTTP server. |
+| `MRSCRAPER_API_BASE_URL`         | MrScraper platform API            | Platform endpoint override for development and testing.          |
+| `MRSCRAPER_FETCH_BASE_URL`       | MrScraper Web Unblocker           | Fetch endpoint override.                                         |
+| `MRSCRAPER_SYNC_BASE_URL`        | MrScraper synchronous scraper API | SERP endpoint override.                                          |
+| `MRSCRAPER_LOG_HTTP_PAYLOAD`     | off                               | Enables trusted-environment request-body diagnostics.            |
+| `MRSCRAPER_LOG_HTTP_PAYLOAD_MAX` | `8192`                            | Maximum diagnostic payload length.                               |
 
 ## Troubleshooting
 

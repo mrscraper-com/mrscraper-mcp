@@ -35,6 +35,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Build Docker image
+        run: docker build --tag mrscraper-mcp:test -f docker/Dockerfile .
+
       - name: Verify npm package
         run: npm pack --dry-run
 

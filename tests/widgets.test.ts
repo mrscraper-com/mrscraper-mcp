@@ -98,6 +98,14 @@ describe("widget resources", () => {
     }
   });
 
+  it("initializes the MCP Apps bridge before waiting for tool results", () => {
+    for (const name of Object.keys(WIDGETS) as Array<keyof typeof WIDGETS>) {
+      const html = widgetHtml(name);
+      expect(html).toContain("ui/initialize");
+      expect(html).toContain("ui/notifications/initialized");
+    }
+  });
+
   it("links tools to widgets under both the MCP Apps and ChatGPT keys", async () => {
     const client = await connect();
     const { tools } = await client.listTools();

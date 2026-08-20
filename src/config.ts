@@ -125,8 +125,6 @@ export interface OAuthConfig {
 
   issuer: string;
 
-  metadataUrl: string;
-
   jwksUrl: string;
 
   publicUrl: string;
@@ -148,10 +146,6 @@ export function getOAuthConfig(): OAuthConfig {
   return {
     enabled: environmentFlag("MRSCRAPER_OAUTH", true),
     issuer,
-    metadataUrl: baseUrl(
-      "MRSCRAPER_OAUTH_METADATA_URL",
-      `${issuer}/.well-known/oauth-authorization-server`,
-    ),
     jwksUrl: baseUrl(
       "MRSCRAPER_OAUTH_JWKS_URL",
       `${issuer}/.well-known/jwks.json`,

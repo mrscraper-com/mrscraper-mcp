@@ -29,15 +29,10 @@ function claimedScopes(payload: JWTPayload): string[] {
   return [];
 }
 
-function acceptedAudiences(config: OAuthConfig): string[] {
-  return [...new Set([config.resourceUrl, config.publicUrl])];
-}
-
 export function createOAuthVerifier(
   config: OAuthConfig = getOAuthConfig(),
 ): OAuthTokenVerifier {
   const jwks = createRemoteJWKSet(new URL(config.jwksUrl));
-  const audience = acceptedAudiences(config);
 
   return {
     async verifyAccessToken(rawToken: string): Promise<AuthInfo> {
@@ -46,7 +41,7 @@ export function createOAuthVerifier(
       try {
         ({ payload } = await jwtVerify(token, jwks, {
           issuer: config.issuer,
-          audience,
+          audience: config.resourceUrl,
         }));
       } catch (error) {
         throw invalidToken(
