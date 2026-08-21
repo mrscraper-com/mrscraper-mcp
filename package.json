@@ -1,6 +1,6 @@
 {
   "name": "@mrscraper/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MrScraper MCP server for web fetching, extraction, Google SERPs, saved scraper reruns, results, and account status.",
   "license": "MIT",
   "author": "MrScraper",
