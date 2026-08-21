@@ -483,6 +483,14 @@ describe("MCP surface", () => {
       for (const name of ["fetch", "serp", "status", "results", "result"]) {
         expect(byName[name]!.annotations).toMatchObject({
           readOnlyHint: true,
+          openWorldHint: false,
+          destructiveHint: false,
+        });
+      }
+      for (const name of ["scrape", "rerun"]) {
+        expect(byName[name]!.annotations).toMatchObject({
+          readOnlyHint: false,
+          openWorldHint: false,
           destructiveHint: false,
         });
       }
