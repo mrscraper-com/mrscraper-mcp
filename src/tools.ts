@@ -73,7 +73,8 @@ export const statusOutputSchema = z
   })
   .meta({
     title: "Status response",
-    description: "Account usage and optional domain request-outcome analytics.",
+    description:
+      "Account identity, subscription usage, and optional domain request-outcome analytics.",
   });
 
 const serpOutputSchema = apiResponseSchema.meta({
@@ -797,12 +798,12 @@ export async function resultTool(
 
 const readAnnotations = {
   readOnlyHint: true,
-  openWorldHint: true,
+  openWorldHint: false,
   destructiveHint: false,
 };
 const writeAnnotations = {
   readOnlyHint: false,
-  openWorldHint: true,
+  openWorldHint: false,
   destructiveHint: false,
 };
 
@@ -813,7 +814,7 @@ export const TOOL_DESCRIPTIONS = {
     "Use this when you know a starting URL and need AI-extracted fields, repeated listing records, or a map of site URLs. Choose agent=general for defined fields on a page, agent=listing for repeated records across pages, or agent=map for URL discovery. The general and listing modes require prompt and optionally accept schema_prompt guidance and proxy_country; max_pages applies to listing and map, while max_depth, limit, include_patterns, and exclude_patterns are map-only. A successful run creates a saved scraper and returns scraperId, which rerun can reuse on the same or another URL. Use fetch instead when the page response itself is sufficient.",
   serp: "Use this when the task starts with a Google query or Google search URL and you need to discover relevant result pages before fetching or extracting them. The query_or_url argument is required; region, language, and page control localization and pagination. format=json returns parsed results, format=html returns result-page HTML, render_js includes dynamic features, and client_timeout only controls how long this MCP request waits. raw is a deprecated alias for format=html. Follow useful result URLs with fetch or scrape.",
   status:
-    "Use this to check the current MrScraper account's subscription and usage before or after web-data work. With no arguments it returns the account summary. Supply domain only when request-outcome analytics are also needed; from and to select that analytics window, while action and api_token_name narrow those domain outcomes. This tool reports account and request health, not scrape-job progress; use result for a known asynchronous result ID.",
+    "Use this to check the current MrScraper account's identity, subscription, and usage before or after web-data work. With no arguments it returns an account summary including the user's name, email, and verification state. Supply domain only when request-outcome analytics are also needed; from and to select that analytics window, while action and api_token_name narrow those domain outcomes. This tool reports account and request health, not scrape-job progress; use result for a known asynchronous result ID.",
   rerun:
     "Use this only when you already have a saved scraper UUID and want to apply that configuration to the same or new target URLs. Set type=ai for a scraper created by scrape; type=manual selects a dashboard-built step workflow and requires the conversation's compliance acknowledgment. For one URL, leave bulk=false and pass target with scraper_id. A single AI rerun also accepts max_depth, max_pages, limit, include_patterns, and exclude_patterns; manual and bulk reruns reject those controls. For multiple URLs, set bulk=true, pass comma- or newline-separated target URLs and id; bulk jobs are asynchronous, so retain bulkResultId and inspect it with result until completion. Use scrape to create a new AI configuration.",
   results:
