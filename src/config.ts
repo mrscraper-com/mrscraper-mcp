@@ -10,6 +10,8 @@ export const TOOL_NAMES = [
   "result",
 ] as const;
 
+export type ToolName = (typeof TOOL_NAMES)[number];
+
 export type Transport = "stdio" | "http";
 
 export interface ApiEndpoints {
@@ -81,11 +83,17 @@ export function httpAuthEnabled(): boolean {
   return environmentFlag("MRSCRAPER_HTTP_AUTH", true);
 }
 
+export const DEFAULT_ALLOWED_ORIGINS = [
+  "https://claude.ai",
+  "https://chatgpt.com",
+];
+
 export function parseAllowedOrigins(): string[] {
-  return (process.env.MRSCRAPER_ALLOWED_ORIGINS || "")
+  const configured = (process.env.MRSCRAPER_ALLOWED_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim().replace(/\/$/, ""))
     .filter(Boolean);
+  return [...new Set([...DEFAULT_ALLOWED_ORIGINS, ...configured])];
 }
 
 export function httpRuntimeConfig(): {
@@ -99,4 +107,52 @@ export function httpRuntimeConfig(): {
     throw new Error("PORT must be an integer between 1 and 65535");
   }
   return { host, port, allowedOrigins: parseAllowedOrigins() };
+}
+
+export const OAUTH_SCOPES = [
+  "scrape:read",
+  "scrape:write",
+  "account:read",
+] as const;
+
+export type OAuthScope = (typeof OAUTH_SCOPES)[number];
+
+export const DOCUMENTATION_URL =
+  "https://docs.mrscraper.com/docs/getting-started/mcp-server";
+
+export interface OAuthConfig {
+  enabled: boolean;
+
+  issuer: string;
+
+  jwksUrl: string;
+
+  publicUrl: string;
+
+  resourceUrl: string;
+  scopesSupported: readonly string[];
+  documentationUrl: string;
+}
+
+export function getOAuthConfig(): OAuthConfig {
+  const issuer = baseUrl(
+    "MRSCRAPER_OAUTH_ISSUER",
+    "https://api.app.mrscraper.com",
+  );
+  const publicUrl = baseUrl(
+    "MRSCRAPER_MCP_PUBLIC_URL",
+    "https://mcp.mrscraper.com",
+  );
+  return {
+    enabled: environmentFlag("MRSCRAPER_OAUTH", true),
+    issuer,
+    jwksUrl: baseUrl(
+      "MRSCRAPER_OAUTH_JWKS_URL",
+      `${issuer}/.well-known/jwks.json`,
+    ),
+    publicUrl,
+    resourceUrl: `${publicUrl}/mcp`,
+    scopesSupported: OAUTH_SCOPES,
+    documentationUrl: baseUrl("MRSCRAPER_DOCS_URL", DOCUMENTATION_URL),
+  };
 }

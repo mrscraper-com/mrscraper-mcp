@@ -1,0 +1,141 @@
+:root {
+  --ms-fg: #16181d;
+  --ms-muted: #61656e;
+  --ms-line: #e3e5ea;
+  --ms-bg: transparent;
+  --ms-accent: #2f6df6;
+  --ms-error: #b42318;
+  --ms-track: #eceef2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ms-fg: #e8eaee;
+    --ms-muted: #9aa0ab;
+    --ms-line: #2c3038;
+    --ms-accent: #7aa2ff;
+    --ms-error: #f9847a;
+    --ms-track: #23272f;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  color: var(--ms-fg);
+  background: var(--ms-bg);
+  font:
+    14px/1.5 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+.ms-widget {
+  padding: 12px 14px;
+}
+.ms-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.ms-empty,
+.ms-count {
+  margin: 8px 0 0;
+  color: var(--ms-muted);
+  font-size: 12px;
+}
+.ms-error {
+  margin: 0;
+  color: var(--ms-error);
+}
+.ms-link {
+  color: var(--ms-accent);
+  font-weight: 500;
+  text-decoration: none;
+}
+.ms-link:hover {
+  text-decoration: underline;
+}
+
+.ms-results {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 14px;
+}
+.ms-url {
+  color: var(--ms-muted);
+  font-size: 12px;
+  word-break: break-all;
+}
+.ms-snippet {
+  margin: 4px 0 0;
+}
+
+.ms-table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.ms-table th,
+.ms-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ms-line);
+  text-align: left;
+  vertical-align: top;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+.ms-table th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ms-fields {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+}
+.ms-fields dt {
+  color: var(--ms-muted);
+}
+.ms-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ms-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.ms-stat {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--ms-line);
+  border-radius: 8px;
+  min-width: 120px;
+}
+.ms-stat-label {
+  color: var(--ms-muted);
+  font-size: 12px;
+}
+.ms-stat-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+.ms-meter {
+  margin-top: 12px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ms-track);
+  overflow: hidden;
+}
+.ms-meter-fill {
+  height: 100%;
+  background: var(--ms-accent);
+}

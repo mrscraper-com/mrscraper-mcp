@@ -8,6 +8,7 @@ import { resolveApiToken } from "./auth.js";
 import { MANUAL_SCRAPER_SERVER_INSTRUCTIONS } from "./compliance.js";
 import { VERSION } from "./config.js";
 import { registerTools, type ToolDependencies } from "./tools.js";
+import { registerWidgets } from "./widgets/index.js";
 
 export const SERVER_INSTRUCTIONS =
   "MrScraper provides seven web-data tools: `fetch`, `scrape`, `serp`, " +
@@ -38,6 +39,7 @@ export function createMrscraperServer(
     () => (options.resolveToken || resolveApiToken)(context),
     options,
   );
+  registerWidgets(server);
   return server;
 }
 

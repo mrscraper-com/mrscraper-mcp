@@ -1,6 +1,7 @@
 import { normalizeBearerToken } from "./auth.js";
 import { getApiEndpoints } from "./config.js";
 import { request, type ApiResponse } from "./http.js";
+import { isOAuthAccessToken } from "./oauth.js";
 
 export type Agent = "general" | "listing" | "map";
 export type SerpFormat = "json" | "html";
@@ -18,6 +19,10 @@ const CLI_FETCH_HEADERS = {
 export function getAuthHeaders(token: string): Record<string, string> {
   const apiToken = normalizeBearerToken(token);
   if (!apiToken) throw new Error("API token is required");
+
+  if (isOAuthAccessToken(apiToken)) {
+    return { ...CLI_FETCH_HEADERS, Authorization: `Bearer ${apiToken}` };
+  }
   return {
     ...CLI_FETCH_HEADERS,
     Authorization: `Bearer ${apiToken}`,

@@ -19,13 +19,58 @@ fetch  scrape  serp  status  rerun  results  result
 | Local HTTP  | `TRANSPORT=http npx -y @mrscraper/mcp@latest` | A self-managed HTTP service             |
 | Local stdio | `npx -y @mrscraper/mcp@latest`                | MCP clients that launch a local process |
 
-All modes use a MrScraper API key from
-[app.mrscraper.com/api-tokens](https://app.mrscraper.com/api-tokens).
+The hosted server signs you in through your browser with OAuth 2.1, so there
+is no key to copy. Self-hosted and stdio setups use a MrScraper API key from
+[app.mrscraper.com/api-tokens](https://app.mrscraper.com/api-tokens), which the
+hosted server also still accepts.
 
 ## Connect to the hosted server
 
-Configure a Streamable HTTP MCP connection and send the API key as a bearer
-token:
+Point your MCP client at `https://mcp.mrscraper.com/mcp` with no credential.
+The server answers with an OAuth challenge, your client opens a browser, and
+you approve the connection on `app.mrscraper.com`.
+
+```sh
+claude mcp add --transport http --scope user \
+  mrscraper https://mcp.mrscraper.com/mcp
+```
+
+For clients configured by file, omit the `headers` block entirely:
+
+```json
+{
+  "mcpServers": {
+    "mrscraper": {
+      "type": "http",
+      "url": "https://mcp.mrscraper.com/mcp"
+    }
+  }
+}
+```
+
+Use exactly this URL, including the `/mcp` path. It is the resource identifier
+access tokens are issued for, and a token minted for a different spelling of
+the address will be refused.
+
+### What you are approving
+
+| Scope          | Grants                                                    |
+| -------------- | --------------------------------------------------------- |
+| `scrape:read`  | `fetch`, `serp`, `results`, `result`                      |
+| `scrape:write` | `scrape`, `rerun`: creating scrapers and running them     |
+| `account:read` | `status`: subscription plan, quota, and request analytics |
+
+A tool called without its scope is refused with `403 insufficient_scope`, and
+your client will offer to grant the missing permission.
+
+Disconnect it later under Connected applications in your MrScraper account.
+Disconnecting revokes the refresh tokens immediately; an access token already
+issued stops working within the hour.
+
+### Connect with an API key instead
+
+An API key still works as a bearer token, which is what self-hosted
+deployments and non-OAuth clients use:
 
 ```json
 {
@@ -41,10 +86,11 @@ token:
 }
 ```
 
-Use the environment-variable or secret-storage feature provided by your MCP
-client so the key remains outside project files.
+Use your client's environment-variable or secret-storage feature so the key
+stays out of project files. An API key carries your full account authority, so
+no scope is enforced against it.
 
-### Codex
+#### Codex
 
 ```sh
 export MRSCRAPER_API_KEY="YOUR_MRSCRAPER_API_KEY"
@@ -56,7 +102,7 @@ codex mcp add mrscraper \
 Start Codex from an environment containing `MRSCRAPER_API_KEY`. Codex stores
 the environment-variable name in its MCP configuration.
 
-### Claude Code
+#### Claude Code
 
 ```sh
 claude mcp add \
@@ -72,7 +118,7 @@ matches how broadly the connection should be available.
 ## Copyable agent setup prompt
 
 ```text
-Connect MrScraper MCP to this agent. Detect the current MCP client and configure a Streamable HTTP server named mrscraper at https://mcp.mrscraper.com/mcp. Use a MrScraper API key from https://app.mrscraper.com/api-tokens, store it through the client's environment-variable or secret-storage mechanism, and send it as Authorization: Bearer <key>. Reload the MCP client when required, then list the tools and confirm that fetch, scrape, serp, status, rerun, results, and result are available.
+Connect MrScraper MCP to this agent. Detect the current MCP client and configure a Streamable HTTP server named mrscraper at https://mcp.mrscraper.com/mcp with no credential. The server uses OAuth 2.1, so the client will open a browser to sign in. If the client cannot do OAuth, fall back to a MrScraper API key from https://app.mrscraper.com/api-tokens stored through the client's environment-variable or secret-storage mechanism and sent as Authorization: Bearer <key>. Reload the MCP client when required, then list the tools and confirm that fetch, scrape, serp, status, rerun, results, and result are available.
 ```
 
 ## Choosing a tool
@@ -149,7 +195,7 @@ Use browser rendering for JavaScript-driven content:
 
 | Input               | Required | Default | API mapping              | Purpose                                                                              |
 | ------------------- | -------- | ------- | ------------------------ | ------------------------------------------------------------------------------------ |
-| `url`               | Yes      | —       | Query `url`              | Target page URL.                                                                     |
+| `url`               | Yes      | -       | Query `url`              | Target page URL.                                                                     |
 | `browser_rendering` | No       | `false` | Query `browserRendering` | Executes page JavaScript in a browser.                                               |
 | `geo_code`          | No       | omitted | Query `geoCode`          | Selects proxy-country routing.                                                       |
 | `wait_for_selector` | No       | omitted | Query `waitForSelector`  | Waits for a CSS selector together with `browser_rendering: true`.                    |
@@ -235,8 +281,8 @@ strict conformance is required.
 
 | Input              | Required        | Default         | Request mapping        | Purpose                                                     |
 | ------------------ | --------------- | --------------- | ---------------------- | ----------------------------------------------------------- |
-| `url`              | Yes             | —               | Body `url`             | Target URL for every agent.                                 |
-| `prompt`           | General/listing | —               | Body `message`         | Natural-language extraction instructions.                   |
+| `url`              | Yes             | -               | Body `url`             | Target URL for every agent.                                 |
+| `prompt`           | General/listing | -               | Body `message`         | Natural-language extraction instructions.                   |
 | `schema_prompt`    | No              | omitted         | Appended to `message`  | Best-effort JSON Schema shape guidance for general/listing. |
 | `agent`            | No              | `general`       | Body `agent`           | Selects `general`, `listing`, or `map`.                     |
 | `proxy_country`    | No              | omitted         | Body `proxyCountry`    | Proxy country for general/listing.                          |
@@ -305,7 +351,7 @@ take priority over URL-derived values.
 
 | Input            | Required | Default              | Request mapping        | Purpose                                      |
 | ---------------- | -------- | -------------------- | ---------------------- | -------------------------------------------- |
-| `query_or_url`   | Yes      | —                    | Body `query`           | Google query or Google search URL.           |
+| `query_or_url`   | Yes      | -                    | Body `query`           | Google query or Google search URL.           |
 | `region`         | No       | URL value or omitted | Body `region`          | Result country.                              |
 | `language`       | No       | URL value or omitted | Body `language`        | Result language.                             |
 | `page`           | No       | URL value or omitted | Body `page`            | One-based result page.                       |
@@ -438,11 +484,11 @@ Bulk manual rerun:
 
 | Input              | Required    | Default      | Purpose                                                         |
 | ------------------ | ----------- | ------------ | --------------------------------------------------------------- |
-| `target`           | Yes         | —            | One URL, or a comma/newline-separated URL string for bulk mode. |
-| `type`             | Yes         | —            | Selects `ai` or `manual`.                                       |
+| `target`           | Yes         | -            | One URL, or a comma/newline-separated URL string for bulk mode. |
+| `type`             | Yes         | -            | Selects `ai` or `manual`.                                       |
 | `bulk`             | No          | `false`      | Selects a bulk endpoint.                                        |
-| `scraper_id`       | Single mode | —            | Saved scraper UUID for one URL.                                 |
-| `id`               | Bulk mode   | —            | Saved scraper UUID for the bulk URL list.                       |
+| `scraper_id`       | Single mode | -            | Saved scraper UUID for one URL.                                 |
+| `id`               | Bulk mode   | -            | Saved scraper UUID for the bulk URL list.                       |
 | `max_depth`        | Single AI   | `2`          | Crawl depth.                                                    |
 | `max_pages`        | Single AI   | `50`         | Page bound.                                                     |
 | `limit`            | Single AI   | `1000`       | Result bound.                                                   |
@@ -557,21 +603,47 @@ Stdio credential precedence is `MRSCRAPER_API_KEY`, then
 
 ## Authentication and security
 
-| Transport            | Credential source                                                 |
-| -------------------- | ----------------------------------------------------------------- |
-| Hosted or local HTTP | `Authorization: Bearer <MrScraper API key>` on the MCP connection |
-| Local stdio          | `MRSCRAPER_API_KEY`, then `MRSCRAPER_API_TOKEN`                   |
+| Transport            | Credential                                                                    |
+| -------------------- | ----------------------------------------------------------------------------- |
+| Hosted or local HTTP | An OAuth 2.1 access token, or a MrScraper API key, as `Authorization: Bearer` |
+| Local stdio          | `MRSCRAPER_API_KEY`, then `MRSCRAPER_API_TOKEN`                               |
 
-HTTP bearer tokens are validated against the MrScraper account endpoint before
-tool execution. Each HTTP request uses its caller's credential.
+The HTTP transport is an OAuth 2.1 resource server. It publishes RFC 9728
+protected resource metadata at `/.well-known/oauth-protected-resource` (and at
+the `/mcp` path-suffixed variant), and an unauthenticated request is answered
+with `401` and a `WWW-Authenticate` header naming that document, which is how a
+client discovers where to send you to sign in.
+
+Access tokens are verified locally against the authorization server's published
+JWKS. A token must name this server in its `aud` claim, so a token issued for
+another MrScraper surface cannot be replayed here.
+
+API keys are validated against the MrScraper account endpoint before tool
+execution. Either way, each HTTP request uses its own caller's credential;
+server environment credentials are never used on the HTTP transport.
 
 The server filters credential-bearing response headers. Parsed JSON credential
 metadata and credentials embedded in generated curl commands are redacted.
 Scraper run extraction values remain available in `data`.
 
-Browser-origin requests are accepted from trusted local origins and exact
-origins configured through `MRSCRAPER_ALLOWED_ORIGINS`. Service-to-service
-MCP clients typically connect without an `Origin` header.
+Browser-origin requests are accepted from trusted local origins, from
+`claude.ai` and `chatgpt.com`, and from exact origins configured through
+`MRSCRAPER_ALLOWED_ORIGINS`. Service-to-service MCP clients typically connect
+without an `Origin` header. The discovery documents are served ahead of origin
+checks, since any client must be able to read them before it has credentials.
+
+## Interactive widgets
+
+Tool results that suit a visual answer carry a UI resource: `serp` renders a
+result list, `scrape`/`results`/`result` render a record table, and `status`
+renders a quota card. Hosts that do not support MCP Apps ignore them and show
+the JSON as before.
+
+Each widget is a self-contained document with its script and styles inlined,
+because strict host CSP blocks anything external. Each one declares an empty
+network allowlist, since it only renders data the tool already returned. Sources live
+in `ui/`; `npm run build:widgets` bundles them into
+`src/widgets/bundles.generated.ts`, which `npm run build` does for you.
 
 ## Docker
 
@@ -590,10 +662,14 @@ deployment and keep bearer authentication enabled.
 | `TRANSPORT`                      | `stdio`                           | Selects `stdio` or `http`.                                       |
 | `HOST`                           | `127.0.0.1`                       | HTTP bind address; the Docker image uses `0.0.0.0`.              |
 | `PORT`                           | `8000`                            | HTTP listen port.                                                |
-| `MRSCRAPER_API_KEY`              | —                                 | Primary stdio credential.                                        |
-| `MRSCRAPER_API_TOKEN`            | —                                 | Legacy stdio credential alias.                                   |
+| `MRSCRAPER_API_KEY`              | -                                 | Primary stdio credential.                                        |
+| `MRSCRAPER_API_TOKEN`            | -                                 | Legacy stdio credential alias.                                   |
 | `MRSCRAPER_HTTP_AUTH`            | `1`                               | Enables HTTP bearer verification.                                |
-| `MRSCRAPER_ALLOWED_ORIGINS`      | —                                 | Comma-separated browser origins allowed to call the HTTP server. |
+| `MRSCRAPER_OAUTH`                | `1`                               | Accepts OAuth 2.1 access tokens alongside API keys.              |
+| `MRSCRAPER_MCP_PUBLIC_URL`       | `https://mcp.mrscraper.com`       | Public origin; `<origin>/mcp` is the required token audience.    |
+| `MRSCRAPER_OAUTH_ISSUER`         | `https://api.app.mrscraper.com`   | Authorization server issuer.                                     |
+| `MRSCRAPER_OAUTH_JWKS_URL`       | `<issuer>/.well-known/jwks.json`  | Key set used to verify access tokens.                            |
+| `MRSCRAPER_ALLOWED_ORIGINS`      | -                                 | Comma-separated browser origins allowed to call the HTTP server. |
 | `MRSCRAPER_API_BASE_URL`         | MrScraper platform API            | Platform endpoint override for development and testing.          |
 | `MRSCRAPER_FETCH_BASE_URL`       | MrScraper Web Unblocker           | Fetch endpoint override.                                         |
 | `MRSCRAPER_SYNC_BASE_URL`        | MrScraper synchronous scraper API | SERP endpoint override.                                          |
@@ -604,8 +680,13 @@ deployment and keep bearer authentication enabled.
 
 - **Connection error:** Confirm the server URL ends in `/mcp` and reload the
   MCP client after configuration changes.
-- **401 Unauthorized:** Confirm the bearer key for HTTP or the environment key
-  for stdio.
+- **401 Unauthorized:** For OAuth, reconnect the server so your client runs the
+  sign-in flow again. For an API key, confirm the bearer key for HTTP or the
+  environment key for stdio.
+- **403 insufficient_scope:** The token lacks a scope the tool needs. Reconnect
+  and approve the additional permission.
+- **Signing in succeeds but tools fail:** Confirm the server URL is exactly
+  `https://mcp.mrscraper.com/mcp`; the token audience is bound to it.
 - **403 Forbidden Origin:** Add the exact browser origin to
   `MRSCRAPER_ALLOWED_ORIGINS`.
 - **Tool input error:** Compare the call with the tool's parameter table and
@@ -639,4 +720,4 @@ service and creates stored scraper results.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).

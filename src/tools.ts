@@ -17,6 +17,7 @@ import {
   type Agent,
 } from "./api.js";
 import type { ApiResponse } from "./http.js";
+import { widgetMeta } from "./widgets/index.js";
 import {
   formatApiDate,
   parseStatusDate,
@@ -829,6 +830,7 @@ export function registerTools(
   server.registerTool(
     "fetch",
     {
+      title: "Fetch Page",
       description: TOOL_DESCRIPTIONS.fetch,
       inputSchema: fetchInputSchema,
       outputSchema: fetchOutputSchema,
@@ -840,9 +842,11 @@ export function registerTools(
   server.registerTool(
     "scrape",
     {
+      title: "Extract Data",
       description: TOOL_DESCRIPTIONS.scrape,
       inputSchema: scrapeInputSchema,
       outputSchema: scrapeOutputSchema,
+      _meta: widgetMeta("records", "Extracting data…", "Extraction complete."),
       annotations: writeAnnotations,
     },
     async (input) =>
@@ -851,9 +855,11 @@ export function registerTools(
   server.registerTool(
     "serp",
     {
+      title: "Google Search",
       description: TOOL_DESCRIPTIONS.serp,
       inputSchema: serpInputSchema,
       outputSchema: serpOutputSchema,
+      _meta: widgetMeta("serp", "Searching Google…", "Search complete."),
       annotations: readAnnotations,
     },
     async (input) =>
@@ -862,9 +868,15 @@ export function registerTools(
   server.registerTool(
     "status",
     {
+      title: "Account Status",
       description: TOOL_DESCRIPTIONS.status,
       inputSchema: statusInputSchema,
       outputSchema: statusOutputSchema,
+      _meta: widgetMeta(
+        "status",
+        "Checking your account…",
+        "Account status loaded.",
+      ),
       annotations: readAnnotations,
     },
     async (input) =>
@@ -873,6 +885,7 @@ export function registerTools(
   server.registerTool(
     "rerun",
     {
+      title: "Rerun Saved Scraper",
       description: TOOL_DESCRIPTIONS.rerun,
       inputSchema: rerunInputSchema,
       outputSchema: rerunOutputSchema,
@@ -884,9 +897,11 @@ export function registerTools(
   server.registerTool(
     "results",
     {
+      title: "List Results",
       description: TOOL_DESCRIPTIONS.results,
       inputSchema: resultsInputSchema,
       outputSchema: resultsOutputSchema,
+      _meta: widgetMeta("records", "Loading results…", "Results loaded."),
       annotations: readAnnotations,
     },
     async (input) =>
@@ -895,9 +910,11 @@ export function registerTools(
   server.registerTool(
     "result",
     {
+      title: "Get Result",
       description: TOOL_DESCRIPTIONS.result,
       inputSchema: resultInputSchema,
       outputSchema: resultOutputSchema,
+      _meta: widgetMeta("records", "Loading result…", "Result loaded."),
       annotations: readAnnotations,
     },
     async (input) =>
