@@ -2,7 +2,7 @@ import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TOOL_NAMES, VERSION } from "../src/config.js";
-import { createMrscraperServer } from "../src/server.js";
+import { createMrscraperServer, SERVER_INSTRUCTIONS } from "../src/server.js";
 import {
   TOOL_DESCRIPTIONS,
   fetchInputSchema,
@@ -337,6 +337,43 @@ describe("tool behavior", () => {
 });
 
 describe("MCP surface", () => {
+  it("publishes fetch-first routing without companion skills", () => {
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /always use `fetch` for the first exploration of a known public URL/,
+    );
+    expect(SERVER_INSTRUCTIONS).toMatch(/raw response as the source of truth/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/one reusable local extractor/);
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /100-page job.*often faster than 100 separate backend-LLM extractions/,
+    );
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /structured-output request alone is not a reason to call `scrape`/,
+    );
+
+    expect(TOOL_DESCRIPTIONS.fetch).toMatch(
+      /default first content-acquisition step/,
+    );
+    expect(TOOL_DESCRIPTIONS.fetch).toMatch(
+      /Do not call scrape merely because the requested output is structured/,
+    );
+    expect(TOOL_DESCRIPTIONS.fetch).toMatch(
+      /100 similarly structured pages.*one local batch extraction.*often faster/,
+    );
+    expect(TOOL_DESCRIPTIONS.scrape).toMatch(
+      /Do not use general or listing for the first exploration/,
+    );
+    expect(TOOL_DESCRIPTIONS.scrape).toMatch(/backend LLM/);
+    expect(TOOL_DESCRIPTIONS.scrape).toMatch(
+      /Prefer one reusable local extractor/,
+    );
+    expect(TOOL_DESCRIPTIONS.scrape).toMatch(
+      /100 same-layout pages.*often faster than 100 separate backend-LLM runs/,
+    );
+    expect(TOOL_DESCRIPTIONS.serp).toMatch(
+      /use fetch for every page whose content will inform the answer/,
+    );
+  });
+
   it("advertises version 0.1.0 and the exact CLI command names", async () => {
     const server = createMrscraperServer(
       { era: "legacy" },
