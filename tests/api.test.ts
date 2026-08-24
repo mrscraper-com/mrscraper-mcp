@@ -36,7 +36,9 @@ describe("HTTP helpers", () => {
         },
       ),
     );
-    const result = await request("GET", "https://example.com", { fetchFn });
+    const result = await request("GET", "https://www.scrapethissite.com/", {
+      fetchFn,
+    });
     expect(result.headers).not.toHaveProperty("set-cookie");
     expect(result.headers).not.toHaveProperty("x-api-token");
     expect(result.headers["x-request-id"]).toBe("request-1");
@@ -71,7 +73,9 @@ describe("HTTP helpers", () => {
     const fetchFn = mockFetch(
       () => new Response(html, { headers: { "content-type": "text/html" } }),
     );
-    const result = await request("GET", "https://example.com", { fetchFn });
+    const result = await request("GET", "https://www.scrapethissite.com/", {
+      fetchFn,
+    });
     expect(result.data).toBe(html);
   });
 
@@ -84,7 +88,7 @@ describe("HTTP helpers", () => {
           );
         }),
     ) as unknown as typeof fetch;
-    const result = await request("GET", "https://example.com", {
+    const result = await request("GET", "https://www.scrapethissite.com/", {
       timeout: 0.001,
       fetchFn,
     });

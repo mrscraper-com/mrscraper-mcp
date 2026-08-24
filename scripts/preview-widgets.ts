@@ -65,7 +65,7 @@ const SAMPLES: Record<WidgetName, unknown> = {
         ends_at: "2026-09-14",
         user: {
           name: "Test Account",
-          email: "you@example.com",
+          email: "you@example.test",
           verified: true,
         },
       },

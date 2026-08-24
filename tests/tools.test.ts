@@ -28,11 +28,11 @@ afterEach(() => vi.restoreAllMocks());
 describe("tool behavior", () => {
   it("accepts only absolute HTTP(S) fetch URLs", () => {
     expect(() =>
-      fetchInputSchema.parse({ url: "ftp://example.com/file" }),
+      fetchInputSchema.parse({ url: "ftp://www.scrapethissite.com/file" }),
     ).toThrow();
-    expect(fetchInputSchema.parse({ url: "https://example.com" }).url).toBe(
-      "https://example.com",
-    );
+    expect(
+      fetchInputSchema.parse({ url: "https://www.scrapethissite.com/" }).url,
+    ).toBe("https://www.scrapethissite.com/");
   });
 
   it("fetches once and preserves the API response envelope", async () => {
@@ -173,7 +173,7 @@ describe("tool behavior", () => {
     const output = await statusTool(
       "test",
       {
-        domain: "https://www.example.com/products",
+        domain: "https://www.scrapethissite.com/pages/",
         from: "24h",
         to: "2026-08-10T12:00:00Z",
       },
@@ -185,14 +185,16 @@ describe("tool behavior", () => {
       data: {
         account: { token_remaining: 90 },
         analytics: {
-          domain: "www.example.com",
+          domain: "www.scrapethissite.com",
           from: "2026-08-09 12:00:00 UTC",
           to: "2026-08-10 12:00:00 UTC",
           successRate: 80,
         },
       },
     });
-    expect(requests[1]?.searchParams.get("domain")).toBe("www.example.com");
+    expect(requests[1]?.searchParams.get("domain")).toBe(
+      "www.scrapethissite.com",
+    );
   });
 
   it("returns the account failure envelope instead of composing status", async () => {

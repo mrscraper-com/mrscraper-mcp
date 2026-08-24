@@ -177,7 +177,7 @@ Start with the URL alone:
 
 ```json
 {
-  "url": "https://example.com/products"
+  "url": "https://www.scrapethissite.com/pages/simple/"
 }
 ```
 
@@ -185,9 +185,9 @@ Use browser rendering for JavaScript-driven content:
 
 ```json
 {
-  "url": "https://example.com/products",
+  "url": "https://www.scrapethissite.com/pages/ajax-javascript/",
   "browser_rendering": true,
-  "wait_for_selector": ".product-card",
+  "wait_for_selector": "body",
   "geo_code": "ID",
   "timeout": 45
 }
@@ -227,9 +227,9 @@ General extraction:
 
 ```json
 {
-  "url": "https://example.com/product",
+  "url": "https://www.scrapethissite.com/pages/simple/",
   "agent": "general",
-  "prompt": "Extract the product name, price, availability, and image URLs"
+  "prompt": "Extract Andorra's name, capital, population, and area"
 }
 ```
 
@@ -237,9 +237,9 @@ Listing extraction:
 
 ```json
 {
-  "url": "https://example.com/products",
+  "url": "https://www.scrapethissite.com/pages/forms/",
   "agent": "listing",
-  "prompt": "Extract every product name, price, and detail URL",
+  "prompt": "Extract every hockey team, year, wins, losses, and win percentage",
   "max_pages": 5
 }
 ```
@@ -248,13 +248,13 @@ Site map:
 
 ```json
 {
-  "url": "https://example.com",
+  "url": "https://www.scrapethissite.com/",
   "agent": "map",
   "max_depth": 2,
   "max_pages": 50,
   "limit": 1000,
-  "include_patterns": "/products/",
-  "exclude_patterns": "/cart/"
+  "include_patterns": "/pages/",
+  "exclude_patterns": "/login/"
 }
 ```
 
@@ -262,15 +262,15 @@ Best-effort schema guidance:
 
 ```json
 {
-  "url": "https://example.com/product",
-  "prompt": "Extract the product",
+  "url": "https://www.scrapethissite.com/pages/simple/",
+  "prompt": "Extract Andorra's name and capital",
   "schema_prompt": {
     "type": "object",
     "properties": {
       "name": { "type": "string" },
-      "price": { "type": "number" }
+      "capital": { "type": "string" }
     },
-    "required": ["name", "price"]
+    "required": ["name", "capital"]
   }
 }
 ```
@@ -304,7 +304,7 @@ URL or another URL without rebuilding the prompt and agent settings:
 
 ```json
 {
-  "target": "https://example.com/product-2",
+  "target": "https://www.scrapethissite.com/pages/forms/?page_num=2",
   "type": "ai",
   "scraper_id": "scraper-uuid"
 }
@@ -376,7 +376,7 @@ GET https://api.app.mrscraper.com/api/v1/analytic/statuses
 
 ```json
 {
-  "domain": "https://www.example.com/products",
+  "domain": "https://www.scrapethissite.com/pages/",
   "from": "7d",
   "to": "now",
   "action": "fetch",
@@ -413,12 +413,12 @@ Successful output is a normalized account and analytics summary:
       "ends_at": null,
       "user": {
         "name": "Ada",
-        "email": "ada@example.com",
+        "email": "ada@example.test",
         "verified": true
       }
     },
     "analytics": {
-      "domain": "www.example.com",
+      "domain": "www.scrapethissite.com",
       "from": "2026-08-11 00:00:00 UTC",
       "to": "2026-08-18 00:00:00 UTC"
     }
@@ -460,14 +460,14 @@ Single AI rerun:
 
 ```json
 {
-  "target": "https://example.com/products",
+  "target": "https://www.scrapethissite.com/pages/forms/",
   "type": "ai",
   "scraper_id": "scraper-uuid",
   "max_depth": 2,
   "max_pages": 50,
   "limit": 1000,
-  "include_patterns": "/products/",
-  "exclude_patterns": "/cart/"
+  "include_patterns": "/pages/forms/",
+  "exclude_patterns": "/login/"
 }
 ```
 
@@ -475,7 +475,7 @@ Bulk manual rerun:
 
 ```json
 {
-  "target": "https://example.com/a,https://example.com/b\nhttps://example.com/c",
+  "target": "https://www.scrapethissite.com/pages/simple/,https://www.scrapethissite.com/pages/forms/\nhttps://www.scrapethissite.com/pages/ajax-javascript/",
   "type": "manual",
   "bulk": true,
   "id": "scraper-uuid"
@@ -513,7 +513,7 @@ GET https://api.app.mrscraper.com/api/v1/results
   "sort_order": "desc",
   "page_size": 25,
   "page": 1,
-  "search": "example.com",
+  "search": "scrapethissite.com",
   "date_range_column": "updatedAt",
   "start_at": "2026-08-01T00:00:00Z",
   "end_at": "2026-08-18T23:59:59Z"
