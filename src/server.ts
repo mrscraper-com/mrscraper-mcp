@@ -13,8 +13,13 @@ import { registerWidgets } from "./widgets/index.js";
 export const SERVER_INSTRUCTIONS =
   "MrScraper provides seven web-data tools: `fetch`, `scrape`, `serp`, " +
   "`status`, `rerun`, `results`, and `result`. " +
-  "Use `fetch` for the Web Unblocker response from a known URL, `scrape` for requested structured fields, " +
-  "and `serp` when starting from a Google query instead of a known URL. " +
+  "For agent-led work, always use `fetch` for the first exploration of a known public URL and retain its raw response as the source of truth. " +
+  "The agent should derive summaries, comparisons, fields, JSON, and tables locally from fetched content; a structured-output request alone is not a reason to call `scrape`. " +
+  "When many pages share a layout, fetch representative pages, define one reusable local extractor, fetch the remaining pages, and apply that extractor across the saved responses. " +
+  "For a 100-page job with shared structure, 100 fetches can run concurrently when safe and feed one local batch extraction; this is often faster than 100 separate backend-LLM extractions and preserves every raw input. " +
+  "The `general` and `listing` scrape modes send page content through a backend LLM, which can omit source details and repeat model work. " +
+  "Use them only when the user explicitly requests MrScraper-managed extraction or fetch-led exploration has established a stable output schema and a clear benefit. " +
+  "The `map` scrape mode is separate bounded URL discovery within a known site. Use `serp` when starting from a Google query instead of a known URL, then use `fetch` for selected result pages that inform the answer. " +
   "After a successful `scrape`, surface its saved `scraperId` and explain that `rerun` can reproduce the saved extraction configuration on the same or another URL. " +
   "Use `rerun` for saved scraper configurations: `type` identifies an AI scraper or dashboard-built manual workflow, while `bulk` independently selects one URL or a URL list. " +
   "Bulk reruns are asynchronous; retain `bulkResultId` and use `result` to inspect them until completion. " +
