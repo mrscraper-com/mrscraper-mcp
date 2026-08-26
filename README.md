@@ -181,6 +181,21 @@ Start with the URL alone:
 }
 ```
 
+Browser loading and real-device routing are independent controls. These four
+inputs can return different results for the same URL:
+
+| Browser rendering | Super Mode | Input                                                             | Loading path                                             |
+| ----------------- | ---------- | ----------------------------------------------------------------- | -------------------------------------------------------- |
+| Off               | Off        | `{ "url": "URL" }`                                                | Standard routing with the non-browser loader.            |
+| On                | Off        | `{ "url": "URL", "browser_rendering": true }`                     | Standard routing with browser loading and JavaScript.    |
+| Off               | On         | `{ "url": "URL", "super_mode": true }`                            | Real-device routing with the non-browser loader.         |
+| On                | On         | `{ "url": "URL", "browser_rendering": true, "super_mode": true }` | Real-device routing with browser loading and JavaScript. |
+
+Start with both controls off, inspect the response, and change one axis at a
+time when needed. Browser rendering is not guaranteed to work better: some
+sites fail with it enabled but load without it. Try the remaining combinations
+without repeating an identical failed request.
+
 Use browser rendering for JavaScript-driven content:
 
 ```json
@@ -193,7 +208,7 @@ Use browser rendering for JavaScript-driven content:
 }
 ```
 
-If ordinary browser rendering still fails, use real-device Super Mode:
+Use both controls for real-device browser loading:
 
 ```json
 {
@@ -207,7 +222,7 @@ If ordinary browser rendering still fails, use real-device Super Mode:
 | ------------------- | -------- | ------- | ------------------------ | ------------------------------------------------------------------------------------ |
 | `url`               | Yes      | -       | Query `url`              | Target page URL.                                                                     |
 | `browser_rendering` | No       | `false` | Query `browserRendering` | Executes page JavaScript in a browser.                                               |
-| `super_mode`        | No       | `false` | Query `super`            | Routes browser rendering through a real device; requires `browser_rendering: true`.  |
+| `super_mode`        | No       | `false` | Query `super`            | Selects real-device routing independently of browser rendering.                      |
 | `geo_code`          | No       | omitted | Query `geoCode`          | Selects proxy-country routing.                                                       |
 | `wait_for_selector` | No       | omitted | Query `waitForSelector`  | Waits for a CSS selector together with `browser_rendering: true`.                    |
 | `home_page`         | No       | `false` | Query `homePage`         | Visits the site root before the target URL.                                          |
@@ -216,7 +231,11 @@ If ordinary browser rendering still fails, use real-device Super Mode:
 | `token_cap`         | No       | omitted | Query `tokenCap`         | Sets the retry token budget.                                                         |
 | `timeout`           | No       | `30`    | Query `timeout`          | Sets the page-load deadline in seconds; transport receives an additional 30 seconds. |
 
-The response body's value is returned in `data`, commonly as HTML.
+The response body's value is returned in `data`, commonly as HTML. Toggle
+`browser_rendering` for JavaScript needs and `super_mode` for routing needs.
+When browser loading fails, is blocked, or returns worse content, retry the same
+`super_mode` value with `browser_rendering: false`. Stop after a usable response
+unless the task requires comparing modes.
 
 ### `scrape`
 

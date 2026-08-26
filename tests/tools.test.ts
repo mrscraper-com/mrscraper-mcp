@@ -77,15 +77,43 @@ describe("tool behavior", () => {
         }),
       ),
     ).rejects.toThrow("wait_for_selector requires browser_rendering");
-    await expect(
-      fetchTool(
+  });
+
+  it("supports every browser-rendering and super-mode combination", async () => {
+    const requests: URL[] = [];
+    const fetchFn = mockFetch((url) => {
+      requests.push(url);
+      return new Response("<html><body>ok</body></html>");
+    });
+    const combinations = [
+      { browser_rendering: false, super_mode: false },
+      { browser_rendering: true, super_mode: false },
+      { browser_rendering: false, super_mode: true },
+      { browser_rendering: true, super_mode: true },
+    ];
+
+    for (const combination of combinations) {
+      await fetchTool(
         "test",
         fetchInputSchema.parse({
           url: "https://target.example",
-          super_mode: true,
+          ...combination,
         }),
-      ),
-    ).rejects.toThrow("super_mode requires browser_rendering");
+        { fetchFn },
+      );
+    }
+
+    expect(
+      requests.map((request) => ({
+        browser_rendering: request.searchParams.get("browserRendering"),
+        super_mode: request.searchParams.get("super"),
+      })),
+    ).toEqual(
+      combinations.map((combination) => ({
+        browser_rendering: String(combination.browser_rendering),
+        super_mode: String(combination.super_mode),
+      })),
+    );
   });
 
   it("embeds best-effort schema guidance and a listing page limit", async () => {
@@ -437,6 +465,12 @@ describe("MCP surface", () => {
     );
     expect(TOOL_DESCRIPTIONS.fetch).toMatch(
       /100 similarly structured pages.*one local batch extraction.*often faster/,
+    );
+    expect(TOOL_DESCRIPTIONS.fetch).toMatch(
+      /four false\/false, true\/false, false\/true, and true\/true combinations/,
+    );
+    expect(TOOL_DESCRIPTIONS.fetch).toMatch(
+      /some sites fail or return worse content with browser_rendering=true/,
     );
     expect(TOOL_DESCRIPTIONS.scrape).toMatch(
       /Do not use general or listing for the first exploration/,
