@@ -65,7 +65,7 @@ function normalizeAllowedOrigins(origins: string[]): {
       return parsed;
     } catch {
       throw new Error(
-        `Invalid MRSCRAPER_ALLOWED_ORIGINS entry ${JSON.stringify(origin)}; expected a full origin such as https://agent.example.com`,
+        `Invalid MRSCRAPER_ALLOWED_ORIGINS entry ${JSON.stringify(origin)}; expected a full origin such as https://www.scrapethissite.com`,
       );
     }
   });

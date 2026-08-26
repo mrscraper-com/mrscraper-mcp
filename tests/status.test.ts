@@ -32,7 +32,7 @@ describe("status helpers", () => {
       isAutoRenew: true,
       user: {
         name: "Ada",
-        email: "ada@example.com",
+        email: "ada@example.test",
         latestApiToken: "atk_secret",
         isVerified: true,
       },

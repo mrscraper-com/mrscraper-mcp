@@ -4,6 +4,7 @@ import { request, type ApiResponse } from "./http.js";
 import { isOAuthAccessToken } from "./oauth.js";
 
 export type Agent = "general" | "listing" | "map";
+export type ScrapeMode = "Cheap" | "Super";
 export type SerpFormat = "json" | "html";
 
 interface FetchDependency {
@@ -47,6 +48,7 @@ export interface FetchContentOptions extends FetchDependency {
   timeout?: number;
   geoCode?: string | null;
   browserRendering?: boolean;
+  superMode?: boolean;
   waitForSelector?: string | null;
   homePage?: boolean;
   blockResources?: boolean;
@@ -60,6 +62,7 @@ export async function fetchContentApi({
   timeout = 30,
   geoCode = null,
   browserRendering = false,
+  superMode = false,
   waitForSelector = null,
   homePage = false,
   blockResources = false,
@@ -74,6 +77,7 @@ export async function fetchContentApi({
       timeout,
       geoCode,
       browserRendering,
+      super: superMode,
       waitForSelector,
       homePage,
       blockResources,
@@ -90,6 +94,7 @@ export interface CreateAiScraperOptions extends FetchDependency {
   url: string;
   message?: string;
   agent?: Agent;
+  mode?: ScrapeMode;
   proxyCountry?: string | null;
   maxDepth?: number;
   maxPages?: number;
@@ -103,6 +108,7 @@ export async function createAiScraperApi({
   url,
   message,
   agent = "general",
+  mode,
   proxyCountry = null,
   maxDepth,
   maxPages,
@@ -114,6 +120,9 @@ export async function createAiScraperApi({
   if (!(agent === "general" || agent === "listing" || agent === "map")) {
     throw new Error("agent must be general, listing, or map");
   }
+  if (mode !== undefined && !(mode === "Cheap" || mode === "Super")) {
+    throw new Error("mode must be Cheap or Super");
+  }
   if ((agent === "general" || agent === "listing") && !message?.trim()) {
     throw new Error(
       "An extraction message is required for general and listing agents",
@@ -124,6 +133,7 @@ export async function createAiScraperApi({
   }
 
   const payload: Record<string, unknown> = { url, agent };
+  if (mode !== undefined) payload.mode = mode;
   if (agent === "general" || agent === "listing") {
     payload.message = message;
     if (proxyCountry !== null && proxyCountry !== undefined) {
@@ -159,22 +169,28 @@ export interface RerunAiOptions extends FetchDependency {
   limit?: number;
   includePatterns?: string;
   excludePatterns?: string;
+  proxyCountry?: string;
+  maxRetry?: number;
+  timeout?: number;
 }
 
 export async function rerunAiScraperApi({
   token,
   scraperId,
   url,
-  maxDepth = 2,
-  maxPages = 50,
-  limit = 1_000,
-  includePatterns = "",
-  excludePatterns = "",
+  maxDepth,
+  maxPages,
+  limit,
+  includePatterns,
+  excludePatterns,
+  proxyCountry,
+  maxRetry,
+  timeout,
   fetchFn,
 }: RerunAiOptions): Promise<ApiResponse> {
   return request("POST", getApiEndpoints().scrapersAiRerun, {
     headers: { accept: "application/json", ...getAuthHeaders(token) },
-    json: {
+    json: compact({
       scraperId,
       url,
       maxDepth,
@@ -182,7 +198,10 @@ export async function rerunAiScraperApi({
       limit,
       includePatterns,
       excludePatterns,
-    },
+      proxyCountry,
+      maxRetry,
+      timeout,
+    }),
     fetchFn,
   });
 }
@@ -248,6 +267,10 @@ export interface GetResultsOptions extends FetchDependency {
   dateRangeColumn?: string | null;
   startAt?: string | null;
   endAt?: string | null;
+  scraperId?: string | null;
+  status?: string | null;
+  type?: string | null;
+  url?: string | null;
 }
 
 export async function getAllResultsApi({
@@ -260,6 +283,10 @@ export async function getAllResultsApi({
   dateRangeColumn = null,
   startAt = null,
   endAt = null,
+  scraperId = null,
+  status = null,
+  type = null,
+  url = null,
   fetchFn,
 }: GetResultsOptions): Promise<ApiResponse> {
   const params: Record<string, string | number> = {
@@ -272,6 +299,10 @@ export async function getAllResultsApi({
   if (dateRangeColumn) params.dateRangeColumn = dateRangeColumn;
   if (startAt) params.startAt = startAt;
   if (endAt) params.endAt = endAt;
+  if (scraperId) params["filters[scraperId]"] = scraperId;
+  if (status) params["filters[status]"] = status;
+  if (type) params["filters[type]"] = type;
+  if (url) params["filters[url]"] = url;
   return request("GET", getApiEndpoints().results, {
     headers: { accept: "application/json", ...getAuthHeaders(token) },
     params,
@@ -282,10 +313,11 @@ export async function getAllResultsApi({
 export async function getResultByIdApi(
   token: string,
   resultId: string,
-  options: FetchDependency = {},
+  options: FetchDependency & { includeHtml?: boolean } = {},
 ): Promise<ApiResponse> {
   return request("GET", `${getApiEndpoints().results}/${resultId}`, {
     headers: { accept: "application/json", ...getAuthHeaders(token) },
+    params: { includeHtml: options.includeHtml ?? true },
     fetchFn: options.fetchFn,
   });
 }

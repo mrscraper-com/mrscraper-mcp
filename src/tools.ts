@@ -154,7 +154,13 @@ export const fetchInputSchema = z.object({
     .boolean()
     .default(false)
     .describe(
-      "Execute page JavaScript in a browser. Enable this for client-rendered content or before using wait_for_selector.",
+      "Choose browser loading and execute page JavaScript. This is independent of super_mode: either value may work better for a site, and some pages fail in a browser but load without one. Required for wait_for_selector.",
+    ),
+  super_mode: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Choose real-device routing independently of browser_rendering. Try it with either browser_rendering value when the current combination fails or returns worse content.",
     ),
   geo_code: z
     .string()
@@ -221,6 +227,7 @@ export async function fetchTool(
     token,
     url: input.url,
     browserRendering: input.browser_rendering,
+    superMode: input.super_mode,
     timeout: input.timeout,
     geoCode: input.geo_code ?? null,
     waitForSelector: input.wait_for_selector ?? null,
@@ -255,6 +262,13 @@ export const scrapeInputSchema = z.object({
     .default("general")
     .describe(
       "Extraction mode: general for defined page fields, listing for repeated records across pages, or map for discovering site URLs.",
+    ),
+  mode: z
+    .enum(["Cheap", "Super"])
+    .nullable()
+    .optional()
+    .describe(
+      "Optional backend execution tier: Cheap or Super. This is separate from agent; omit it to preserve the backend default.",
     ),
   proxy_country: z
     .string()
@@ -355,6 +369,7 @@ export async function scrapeTool(
         ? undefined
         : buildExtractionMessage(input.prompt!, input.schema_prompt),
     agent,
+    mode: input.mode ?? undefined,
     proxyCountry: input.proxy_country ?? null,
     maxPages: input.max_pages ?? undefined,
     maxDepth: input.max_depth ?? undefined,
@@ -575,7 +590,7 @@ export const rerunInputSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Maximum crawl depth for a single AI rerun; defaults to 2 when omitted.",
+      "Maximum crawl depth for a single AI rerun; omit it to preserve the saved scraper or backend default.",
     ),
   max_pages: z
     .number()
@@ -584,7 +599,7 @@ export const rerunInputSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Maximum pages for a single AI rerun; defaults to 50 when omitted.",
+      "Maximum pages for a single AI rerun; omit it to preserve the saved scraper or backend default.",
     ),
   limit: z
     .number()
@@ -593,21 +608,46 @@ export const rerunInputSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Maximum results for a single AI rerun; defaults to 1000 when omitted.",
+      "Maximum results for a single AI rerun; omit it to preserve the saved scraper or backend default.",
     ),
   include_patterns: z
     .string()
     .nullable()
     .optional()
     .describe(
-      "URL include regular expression for a single AI rerun; defaults to an empty string.",
+      "URL include regular expression for a single AI rerun; omit it to preserve the saved scraper or backend default.",
     ),
   exclude_patterns: z
     .string()
     .nullable()
     .optional()
     .describe(
-      "URL exclude regular expression for a single AI rerun; defaults to an empty string.",
+      "URL exclude regular expression for a single AI rerun; omit it to preserve the saved scraper or backend default.",
+    ),
+  proxy_country: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Proxy country code for a single AI rerun; omit it to preserve the saved scraper or backend default.",
+    ),
+  max_retry: z
+    .number()
+    .int()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe(
+      "Maximum retry count for a single AI rerun; omit it to preserve the saved scraper or backend default.",
+    ),
+  timeout: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .optional()
+    .describe(
+      "Timeout in seconds for a single AI rerun, used by listing reruns; omit it to preserve the backend default.",
     ),
 });
 
@@ -622,6 +662,9 @@ export async function rerunTool(
     ["limit", input.limit],
     ["include_patterns", input.include_patterns],
     ["exclude_patterns", input.exclude_patterns],
+    ["proxy_country", input.proxy_country],
+    ["max_retry", input.max_retry],
+    ["timeout", input.timeout],
   ] as const;
   const explicitAiOptions = aiOptionEntries
     .filter(([, value]) => value !== undefined && value !== null)
@@ -684,11 +727,14 @@ export async function rerunTool(
             token,
             scraperId: input.scraper_id,
             url,
-            maxDepth: input.max_depth ?? 2,
-            maxPages: input.max_pages ?? 50,
-            limit: input.limit ?? 1000,
-            includePatterns: input.include_patterns ?? "",
-            excludePatterns: input.exclude_patterns ?? "",
+            maxDepth: input.max_depth ?? undefined,
+            maxPages: input.max_pages ?? undefined,
+            limit: input.limit ?? undefined,
+            includePatterns: input.include_patterns ?? undefined,
+            excludePatterns: input.exclude_patterns ?? undefined,
+            proxyCountry: input.proxy_country ?? undefined,
+            maxRetry: input.max_retry ?? undefined,
+            timeout: input.timeout ?? undefined,
             fetchFn: dependencies.fetchFn,
           });
   }
@@ -756,6 +802,35 @@ export const resultsInputSchema = z.object({
     .describe(
       "Optional inclusive ISO 8601 end bound applied to date_range_column.",
     ),
+  scraper_id: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe(
+      "Optional exact saved scraper UUID filter, sent as filters[scraperId].",
+    ),
+  status: z
+    .enum(["Draft", "Finished", "Running", "Failed", "Cancelled"])
+    .nullable()
+    .optional()
+    .describe(
+      "Optional exact result status filter: Draft, Finished, Running, Failed, or Cancelled.",
+    ),
+  type: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe(
+      "Optional exact result type filter, such as AI, Manual, Rerun-AI, or Bulk-AI.",
+    ),
+  url: httpUrlSchema
+    .nullable()
+    .optional()
+    .describe(
+      "Optional exact stored target URL filter, including its path and query string.",
+    ),
 });
 
 export async function resultsTool(
@@ -773,6 +848,10 @@ export async function resultsTool(
     dateRangeColumn: input.date_range_column ?? null,
     startAt: input.start_at ?? null,
     endAt: input.end_at ?? null,
+    scraperId: input.scraper_id ?? null,
+    status: input.status ?? null,
+    type: input.type ?? null,
+    url: input.url ?? null,
     fetchFn: dependencies.fetchFn,
   });
 }
@@ -784,6 +863,12 @@ export const resultInputSchema = z.object({
     .describe(
       "Required UUID of the stored result to retrieve, including a bulkResultId returned by an asynchronous bulk rerun.",
     ),
+  include_html: z
+    .boolean()
+    .default(true)
+    .describe(
+      "Include stored HTML in the result response. Set false for a smaller response when polling status or reading extracted data only.",
+    ),
 });
 
 export async function resultTool(
@@ -793,7 +878,10 @@ export async function resultTool(
 ): Promise<Record<string, unknown>> {
   const resultId = input.result_id.trim();
   if (!resultId) throw new Error("result_id must not be empty");
-  return getResultByIdApi(token, resultId, dependencies);
+  return getResultByIdApi(token, resultId, {
+    includeHtml: input.include_html,
+    fetchFn: dependencies.fetchFn,
+  });
 }
 
 const readAnnotations = {
@@ -809,18 +897,18 @@ const writeAnnotations = {
 
 export const TOOL_DESCRIPTIONS = {
   fetch:
-    "Use this when a public page URL is known; fetch is the default first content-acquisition step for agent-led work. It returns the raw page response through Web Unblocker, preserving source details for reading, analysis, verification, and follow-up transformations. Keep that response as the source of truth. If the user needs fields, JSON, a table, or extraction across many similar pages, fetch and inspect representative pages, define one reusable local extractor, fetch the remaining pages, and apply the extractor locally. For 100 similarly structured pages, run the fetches concurrently when safe and feed the saved responses into one local batch extraction; this is often faster than 100 separate backend-LLM extractions and preserves every raw page. Do not call scrape merely because the requested output is structured. Use scrape only when the user explicitly requests MrScraper-managed extraction or after fetch-led exploration has established a stable output schema and a clear benefit. Use serp when no target URL is known. The url argument is required. Enable browser_rendering for JavaScript-driven content; wait_for_selector then waits for a CSS selector. geo_code changes proxy location, while home_page, block_resources, max_retries, token_cap, and timeout tune loading and retry behavior.",
+    "Use this when a public page URL is known; fetch is the default first content-acquisition step for agent-led work. It returns the raw page response through Web Unblocker, preserving source details for reading, analysis, verification, and follow-up transformations. Keep that response as the source of truth. If the user needs fields, JSON, a table, or extraction across many similar pages, fetch and inspect representative pages, define one reusable local extractor, fetch the remaining pages, and apply the extractor locally. For 100 similarly structured pages, run the fetches concurrently when safe and feed the saved responses into one local batch extraction; this is often faster than 100 separate backend-LLM extractions and preserves every raw page. Do not call scrape merely because the requested output is structured. Use scrape only when the user explicitly requests MrScraper-managed extraction or after fetch-led exploration has established a stable output schema and a clear benefit. Use serp when no target URL is known. The url argument is required. browser_rendering selects browser loading and JavaScript execution; super_mode independently selects real-device routing. The four false/false, true/false, false/true, and true/true combinations can return different results. Start with both false, inspect the response, and change one axis at a time when needed. Browser rendering is not strictly stronger: some sites fail or return worse content with browser_rendering=true, so retry the same super_mode value with browser_rendering=false. Try super_mode with either loader when routing may be the problem; use both true for real-device browser loading. Do not repeat an identical combination, and stop once the response is usable unless comparison is requested. wait_for_selector requires browser_rendering=true. geo_code changes proxy location, while home_page, block_resources, max_retries, token_cap, and timeout tune loading and retry behavior.",
   scrape:
-    "Use this when the user explicitly wants MrScraper-managed structured extraction or bounded URL discovery within a known site. Do not use general or listing for the first exploration of a known page: they send page content through a backend LLM, which can omit source details, narrow the result to the prompt, and repeat model work across pages. Start with fetch, inspect the raw content, understand the site, and define a stable output schema. Prefer one reusable local extractor across saved fetch responses; requesting fields, JSON, or a table does not by itself justify scrape. This remains true for 100 same-layout pages: safe concurrent fetches plus one local batch extraction are often faster than 100 separate backend-LLM runs and preserve every source response. Use general or listing only when managed extraction was explicitly requested or still has a clear benefit after that exploration. Choose agent=general for defined page fields, agent=listing for repeated records across pages, or agent=map for bounded URL discovery within the known site; map is separate from LLM extraction and does not require a schema. General and listing require prompt and optionally accept schema_prompt and proxy_country. max_pages applies to listing and map; max_depth, limit, include_patterns, and exclude_patterns are map-only. A successful run returns scraperId for reuse with rerun.",
+    "Use this when the user explicitly wants MrScraper-managed structured extraction or bounded URL discovery within a known site. Do not use general or listing for the first exploration of a known page: they send page content through a backend LLM, which can omit source details, narrow the result to the prompt, and repeat model work across pages. Start with fetch, inspect the raw content, understand the site, and define a stable output schema. Prefer one reusable local extractor across saved fetch responses; requesting fields, JSON, or a table does not by itself justify scrape. This remains true for 100 same-layout pages: safe concurrent fetches plus one local batch extraction are often faster than 100 separate backend-LLM runs and preserve every source response. Use general or listing only when managed extraction was explicitly requested or still has a clear benefit after that exploration. Choose agent=general for defined page fields, agent=listing for repeated records across pages, or agent=map for bounded URL discovery within the known site; map is separate from LLM extraction and does not require a schema. mode=Cheap or mode=Super selects the backend execution tier independently of agent; omit mode to preserve the backend default. General and listing require prompt and optionally accept schema_prompt and proxy_country. max_pages applies to listing and map; max_depth, limit, include_patterns, and exclude_patterns are map-only. A successful run returns scraperId for reuse with rerun.",
   serp: "Use this when the task starts with a Google query or Google search URL rather than a known target page. After selecting relevant result URLs, use fetch for every page whose content will inform the answer and preserve each raw response. Analyze or transform those responses locally, using one reusable extractor when pages share a structure. Use scrape only when the user explicitly requests MrScraper-managed extraction or after fetch-led exploration has established a stable schema and clear benefit; stop after serp when the user only needs URL discovery. The query_or_url argument is required; region, language, and page control localization and pagination. format=json returns parsed results, format=html returns result-page HTML, render_js includes dynamic features, and client_timeout controls how long this MCP request waits. raw is a deprecated alias for format=html.",
   status:
     "Use this to check the current MrScraper account's identity, subscription, and usage before or after web-data work. With no arguments it returns an account summary including the user's name, email, and verification state. Supply domain only when request-outcome analytics are also needed; from and to select that analytics window, while action and api_token_name narrow those domain outcomes. This tool reports account and request health, not scrape-job progress; use result for a known asynchronous result ID.",
   rerun:
-    "Use this only when you already have a saved scraper UUID and want to apply that configuration to the same or new target URLs. Set type=ai for a scraper created by scrape; type=manual selects a dashboard-built step workflow and requires the conversation's compliance acknowledgment. For one URL, leave bulk=false and pass target with scraper_id. A single AI rerun also accepts max_depth, max_pages, limit, include_patterns, and exclude_patterns; manual and bulk reruns reject those controls. For multiple URLs, set bulk=true, pass comma- or newline-separated target URLs and id; bulk jobs are asynchronous, so retain bulkResultId and inspect it with result until completion. Use scrape to create a new AI configuration.",
+    "Use this only when you already have a saved scraper UUID and want to apply that configuration to the same or new target URLs. Set type=ai for a scraper created by scrape; type=manual selects a dashboard-built step workflow and requires the conversation's compliance acknowledgment. For one URL, leave bulk=false and pass target with scraper_id. A single AI rerun also accepts max_depth, max_pages, limit, include_patterns, exclude_patterns, proxy_country, max_retry, and timeout; omit controls to preserve saved scraper and backend defaults. Manual and bulk reruns reject those controls. For multiple URLs, set bulk=true, pass comma- or newline-separated target URLs and id; bulk jobs are asynchronous, so retain bulkResultId and inspect it with result until completion. Use scrape to create a new AI configuration.",
   results:
-    "Use this to browse or locate stored scrape results when you do not yet know the exact result UUID. sort_field and sort_order control ordering; page_size and page control pagination; search narrows the list; and date_range_column with start_at or end_at applies a date window. This returns a result list rather than one complete record. Once an ID is known, use result for that record.",
+    "Use this to browse or locate stored scrape results when you do not yet know the exact result UUID. sort_field and sort_order control ordering; page_size and page control pagination; search narrows the list; and date_range_column with start_at or end_at applies a date window. scraper_id, status, type, and url apply exact backend filters. This returns a result list rather than one complete record. Once an ID is known, use result for that record.",
   result:
-    "Use this when you already know the exact stored result UUID and need the complete record or current job state. Pass that UUID as result_id; this may also be the bulkResultId returned by an asynchronous bulk rerun. Call result again as needed until an asynchronous job completes. Use results first when the UUID is unknown.",
+    "Use this when you already know the exact stored result UUID and need the complete record or current job state. Pass that UUID as result_id; this may also be the bulkResultId returned by an asynchronous bulk rerun. include_html defaults to true; set it false for a smaller response while polling status or when extracted data is sufficient. Call result again as needed until an asynchronous job completes. Use results first when the UUID is unknown.",
 } as const;
 
 export function registerTools(

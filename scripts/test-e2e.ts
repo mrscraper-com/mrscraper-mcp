@@ -162,7 +162,7 @@ async function main(): Promise<void> {
 
     const serverVersion = client.getServerVersion();
     assert.equal(serverVersion?.name, "MrScraper MCP Server");
-    assert.equal(serverVersion?.version, "0.1.0");
+    assert.equal(serverVersion?.version, "0.1.3");
     const { tools } = await client.listTools(undefined, { timeout: 10_000 });
     assert.deepEqual(
       tools.map((tool) => tool.name),

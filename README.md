@@ -177,19 +177,44 @@ Start with the URL alone:
 
 ```json
 {
-  "url": "https://example.com/products"
+  "url": "https://www.scrapethissite.com/pages/simple/"
 }
 ```
+
+Browser loading and real-device routing are independent controls. These four
+inputs can return different results for the same URL:
+
+| Browser rendering | Super Mode | Input                                                             | Loading path                                             |
+| ----------------- | ---------- | ----------------------------------------------------------------- | -------------------------------------------------------- |
+| Off               | Off        | `{ "url": "URL" }`                                                | Standard routing with the non-browser loader.            |
+| On                | Off        | `{ "url": "URL", "browser_rendering": true }`                     | Standard routing with browser loading and JavaScript.    |
+| Off               | On         | `{ "url": "URL", "super_mode": true }`                            | Real-device routing with the non-browser loader.         |
+| On                | On         | `{ "url": "URL", "browser_rendering": true, "super_mode": true }` | Real-device routing with browser loading and JavaScript. |
+
+Start with both controls off, inspect the response, and change one axis at a
+time when needed. Browser rendering is not guaranteed to work better: some
+sites fail with it enabled but load without it. Try the remaining combinations
+without repeating an identical failed request.
 
 Use browser rendering for JavaScript-driven content:
 
 ```json
 {
-  "url": "https://example.com/products",
+  "url": "https://www.scrapethissite.com/pages/ajax-javascript/",
   "browser_rendering": true,
-  "wait_for_selector": ".product-card",
+  "wait_for_selector": "body",
   "geo_code": "ID",
   "timeout": 45
+}
+```
+
+Use both controls for real-device browser loading:
+
+```json
+{
+  "url": "https://www.scrapethissite.com/pages/ajax-javascript/",
+  "browser_rendering": true,
+  "super_mode": true
 }
 ```
 
@@ -197,6 +222,7 @@ Use browser rendering for JavaScript-driven content:
 | ------------------- | -------- | ------- | ------------------------ | ------------------------------------------------------------------------------------ |
 | `url`               | Yes      | -       | Query `url`              | Target page URL.                                                                     |
 | `browser_rendering` | No       | `false` | Query `browserRendering` | Executes page JavaScript in a browser.                                               |
+| `super_mode`        | No       | `false` | Query `super`            | Selects real-device routing independently of browser rendering.                      |
 | `geo_code`          | No       | omitted | Query `geoCode`          | Selects proxy-country routing.                                                       |
 | `wait_for_selector` | No       | omitted | Query `waitForSelector`  | Waits for a CSS selector together with `browser_rendering: true`.                    |
 | `home_page`         | No       | `false` | Query `homePage`         | Visits the site root before the target URL.                                          |
@@ -205,7 +231,11 @@ Use browser rendering for JavaScript-driven content:
 | `token_cap`         | No       | omitted | Query `tokenCap`         | Sets the retry token budget.                                                         |
 | `timeout`           | No       | `30`    | Query `timeout`          | Sets the page-load deadline in seconds; transport receives an additional 30 seconds. |
 
-The response body's value is returned in `data`, commonly as HTML.
+The response body's value is returned in `data`, commonly as HTML. Toggle
+`browser_rendering` for JavaScript needs and `super_mode` for routing needs.
+When browser loading fails, is blocked, or returns worse content, retry the same
+`super_mode` value with `browser_rendering: false`. Stop after a usable response
+unless the task requires comparing modes.
 
 ### `scrape`
 
@@ -227,9 +257,10 @@ General extraction:
 
 ```json
 {
-  "url": "https://example.com/product",
+  "url": "https://www.scrapethissite.com/pages/simple/",
   "agent": "general",
-  "prompt": "Extract the product name, price, availability, and image URLs"
+  "mode": "Super",
+  "prompt": "Extract Andorra's name, capital, population, and area"
 }
 ```
 
@@ -237,9 +268,9 @@ Listing extraction:
 
 ```json
 {
-  "url": "https://example.com/products",
+  "url": "https://www.scrapethissite.com/pages/forms/",
   "agent": "listing",
-  "prompt": "Extract every product name, price, and detail URL",
+  "prompt": "Extract every hockey team, year, wins, losses, and win percentage",
   "max_pages": 5
 }
 ```
@@ -248,13 +279,13 @@ Site map:
 
 ```json
 {
-  "url": "https://example.com",
+  "url": "https://www.scrapethissite.com/",
   "agent": "map",
   "max_depth": 2,
   "max_pages": 50,
   "limit": 1000,
-  "include_patterns": "/products/",
-  "exclude_patterns": "/cart/"
+  "include_patterns": "/pages/",
+  "exclude_patterns": "/login/"
 }
 ```
 
@@ -262,15 +293,15 @@ Best-effort schema guidance:
 
 ```json
 {
-  "url": "https://example.com/product",
-  "prompt": "Extract the product",
+  "url": "https://www.scrapethissite.com/pages/simple/",
+  "prompt": "Extract Andorra's name and capital",
   "schema_prompt": {
     "type": "object",
     "properties": {
       "name": { "type": "string" },
-      "price": { "type": "number" }
+      "capital": { "type": "string" }
     },
-    "required": ["name", "price"]
+    "required": ["name", "capital"]
   }
 }
 ```
@@ -285,6 +316,7 @@ strict conformance is required.
 | `prompt`           | General/listing | -               | Body `message`         | Natural-language extraction instructions.                   |
 | `schema_prompt`    | No              | omitted         | Appended to `message`  | Best-effort JSON Schema shape guidance for general/listing. |
 | `agent`            | No              | `general`       | Body `agent`           | Selects `general`, `listing`, or `map`.                     |
+| `mode`             | No              | service default | Body `mode`            | Selects `Cheap` or `Super` independently of the agent.      |
 | `proxy_country`    | No              | omitted         | Body `proxyCountry`    | Proxy country for general/listing.                          |
 | `max_pages`        | No              | service default | Body `maxPages`        | Page bound for listing/map.                                 |
 | `max_depth`        | No              | service default | Body `maxDepth`        | Link-depth bound for map.                                   |
@@ -304,7 +336,7 @@ URL or another URL without rebuilding the prompt and agent settings:
 
 ```json
 {
-  "target": "https://example.com/product-2",
+  "target": "https://www.scrapethissite.com/pages/forms/?page_num=2",
   "type": "ai",
   "scraper_id": "scraper-uuid"
 }
@@ -376,7 +408,7 @@ GET https://api.app.mrscraper.com/api/v1/analytic/statuses
 
 ```json
 {
-  "domain": "https://www.example.com/products",
+  "domain": "https://www.scrapethissite.com/pages/",
   "from": "7d",
   "to": "now",
   "action": "fetch",
@@ -413,12 +445,12 @@ Successful output is a normalized account and analytics summary:
       "ends_at": null,
       "user": {
         "name": "Ada",
-        "email": "ada@example.com",
+        "email": "ada@example.test",
         "verified": true
       }
     },
     "analytics": {
-      "domain": "www.example.com",
+      "domain": "www.scrapethissite.com",
       "from": "2026-08-11 00:00:00 UTC",
       "to": "2026-08-18 00:00:00 UTC"
     }
@@ -460,14 +492,17 @@ Single AI rerun:
 
 ```json
 {
-  "target": "https://example.com/products",
+  "target": "https://www.scrapethissite.com/pages/forms/",
   "type": "ai",
   "scraper_id": "scraper-uuid",
   "max_depth": 2,
   "max_pages": 50,
   "limit": 1000,
-  "include_patterns": "/products/",
-  "exclude_patterns": "/cart/"
+  "include_patterns": "/pages/forms/",
+  "exclude_patterns": "/login/",
+  "proxy_country": "ID",
+  "max_retry": 4,
+  "timeout": 120
 }
 ```
 
@@ -475,25 +510,31 @@ Bulk manual rerun:
 
 ```json
 {
-  "target": "https://example.com/a,https://example.com/b\nhttps://example.com/c",
+  "target": "https://www.scrapethissite.com/pages/simple/,https://www.scrapethissite.com/pages/forms/\nhttps://www.scrapethissite.com/pages/ajax-javascript/",
   "type": "manual",
   "bulk": true,
   "id": "scraper-uuid"
 }
 ```
 
-| Input              | Required    | Default      | Purpose                                                         |
-| ------------------ | ----------- | ------------ | --------------------------------------------------------------- |
-| `target`           | Yes         | -            | One URL, or a comma/newline-separated URL string for bulk mode. |
-| `type`             | Yes         | -            | Selects `ai` or `manual`.                                       |
-| `bulk`             | No          | `false`      | Selects a bulk endpoint.                                        |
-| `scraper_id`       | Single mode | -            | Saved scraper UUID for one URL.                                 |
-| `id`               | Bulk mode   | -            | Saved scraper UUID for the bulk URL list.                       |
-| `max_depth`        | Single AI   | `2`          | Crawl depth.                                                    |
-| `max_pages`        | Single AI   | `50`         | Page bound.                                                     |
-| `limit`            | Single AI   | `1000`       | Result bound.                                                   |
-| `include_patterns` | Single AI   | empty string | URL inclusion expression.                                       |
-| `exclude_patterns` | Single AI   | empty string | URL exclusion expression.                                       |
+| Input              | Required    | Default | Purpose                                                              |
+| ------------------ | ----------- | ------- | -------------------------------------------------------------------- |
+| `target`           | Yes         | -       | One URL, or a comma/newline-separated URL string for bulk mode.      |
+| `type`             | Yes         | -       | Selects `ai` or `manual`.                                            |
+| `bulk`             | No          | `false` | Selects a bulk endpoint.                                             |
+| `scraper_id`       | Single mode | -       | Saved scraper UUID for one URL.                                      |
+| `id`               | Bulk mode   | -       | Saved scraper UUID for the bulk URL list.                            |
+| `max_depth`        | Single AI   | omitted | Crawl depth; omission preserves the saved scraper/backend default.   |
+| `max_pages`        | Single AI   | omitted | Page bound; omission preserves the saved scraper/backend default.    |
+| `limit`            | Single AI   | omitted | Result bound; omission preserves the saved scraper/backend default.  |
+| `include_patterns` | Single AI   | omitted | URL inclusion expression; omission preserves saved/backend defaults. |
+| `exclude_patterns` | Single AI   | omitted | URL exclusion expression; omission preserves saved/backend defaults. |
+| `proxy_country`    | Single AI   | omitted | Proxy country code.                                                  |
+| `max_retry`        | Single AI   | omitted | Retry limit; zero is accepted.                                       |
+| `timeout`          | Single AI   | omitted | Timeout in seconds, used by listing reruns.                          |
+
+The MCP server sends single-AI controls only when supplied. Manual and bulk
+reruns reject them.
 
 Manual reruns carry a compliance acknowledgment in the MCP server
 instructions. MCP clients should present that acknowledgment before executing
@@ -513,23 +554,31 @@ GET https://api.app.mrscraper.com/api/v1/results
   "sort_order": "desc",
   "page_size": 25,
   "page": 1,
-  "search": "example.com",
+  "search": "scrapethissite.com",
+  "scraper_id": "scraper-uuid",
+  "status": "Finished",
+  "type": "Rerun-AI",
+  "url": "https://www.scrapethissite.com/pages/forms/",
   "date_range_column": "updatedAt",
   "start_at": "2026-08-01T00:00:00Z",
   "end_at": "2026-08-18T23:59:59Z"
 }
 ```
 
-| Input               | Required | Default     | Query mapping     | Purpose                                                       |
-| ------------------- | -------- | ----------- | ----------------- | ------------------------------------------------------------- |
-| `sort_field`        | No       | `updatedAt` | `sortField`       | Field used by the results API for sorting.                    |
-| `sort_order`        | No       | `desc`      | `sortOrder`       | Case-insensitive `asc` or `desc`; sent upstream in uppercase. |
-| `page_size`         | No       | `10`        | `pageSize`        | Number of rows per page.                                      |
-| `page`              | No       | `1`         | `page`            | One-based page index.                                         |
-| `search`            | No       | omitted     | `search`          | Free-text result filter.                                      |
-| `date_range_column` | No       | omitted     | `dateRangeColumn` | Column used by the date range.                                |
-| `start_at`          | No       | omitted     | `startAt`         | Inclusive range start.                                        |
-| `end_at`            | No       | omitted     | `endAt`           | Inclusive range end.                                          |
+| Input               | Required | Default     | Query mapping        | Purpose                                                       |
+| ------------------- | -------- | ----------- | -------------------- | ------------------------------------------------------------- |
+| `sort_field`        | No       | `updatedAt` | `sortField`          | Field used by the results API for sorting.                    |
+| `sort_order`        | No       | `desc`      | `sortOrder`          | Case-insensitive `asc` or `desc`; sent upstream in uppercase. |
+| `page_size`         | No       | `10`        | `pageSize`           | Number of rows per page.                                      |
+| `page`              | No       | `1`         | `page`               | One-based page index.                                         |
+| `search`            | No       | omitted     | `search`             | Free-text result filter.                                      |
+| `scraper_id`        | No       | omitted     | `filters[scraperId]` | Exact saved scraper UUID filter.                              |
+| `status`            | No       | omitted     | `filters[status]`    | Exact Draft, Finished, Running, Failed, or Cancelled filter.  |
+| `type`              | No       | omitted     | `filters[type]`      | Exact result type filter, such as AI or Rerun-AI.             |
+| `url`               | No       | omitted     | `filters[url]`       | Exact stored target URL filter.                               |
+| `date_range_column` | No       | omitted     | `dateRangeColumn`    | Column used by the date range.                                |
+| `start_at`          | No       | omitted     | `startAt`            | Inclusive range start.                                        |
+| `end_at`            | No       | omitted     | `endAt`              | Inclusive range end.                                          |
 
 ### `result`
 
@@ -541,13 +590,15 @@ GET https://api.app.mrscraper.com/api/v1/results/{result_id}
 
 ```json
 {
-  "result_id": "result-uuid"
+  "result_id": "result-uuid",
+  "include_html": false
 }
 ```
 
-| Input       | Required | Purpose                       |
-| ----------- | -------- | ----------------------------- |
-| `result_id` | Yes      | Stored MrScraper result UUID. |
+| Input          | Required | Default | Purpose                                                                  |
+| -------------- | -------- | ------- | ------------------------------------------------------------------------ |
+| `result_id`    | Yes      | -       | Stored MrScraper result UUID.                                            |
+| `include_html` | No       | `true`  | Includes stored HTML; set false for smaller polling or data-only output. |
 
 ## Run the server locally
 
