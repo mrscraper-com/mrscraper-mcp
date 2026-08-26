@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createAiScraperApi,
   fetchContentApi,
+  getAllResultsApi,
+  getResultByIdApi,
   googleSerpSyncApi,
   normalizeSerpInput,
   parseBulkUrls,
@@ -115,6 +117,7 @@ describe("CLI-aligned API calls", () => {
       token: "test-token",
       url: "https://target.example",
       browserRendering: true,
+      superMode: true,
       geoCode: "ID",
       waitForSelector: ".ready",
       homePage: true,
@@ -126,6 +129,7 @@ describe("CLI-aligned API calls", () => {
     });
     expect(requests).toHaveLength(1);
     expect(requests[0]!.url.searchParams.get("browserRendering")).toBe("true");
+    expect(requests[0]!.url.searchParams.get("super")).toBe("true");
     expect(requests[0]!.url.searchParams.get("geoCode")).toBe("ID");
     expect(requests[0]!.url.searchParams.get("waitForSelector")).toBe(".ready");
     expect(requests[0]!.url.searchParams.get("homePage")).toBe("true");
@@ -151,11 +155,16 @@ describe("CLI-aligned API calls", () => {
       url: "https://target.example/listings",
       message: "Extract every listing",
       agent: "listing",
+      mode: "Super",
       maxPages: 4,
       fetchFn,
     });
     expect(result.status_code).toBe(200);
-    expect(body).toMatchObject({ agent: "listing", maxPages: 4 });
+    expect(body).toMatchObject({
+      agent: "listing",
+      mode: "Super",
+      maxPages: 4,
+    });
   });
 
   it("omits unspecified scrape controls and proxyCountry", async () => {
@@ -178,10 +187,12 @@ describe("CLI-aligned API calls", () => {
     });
   });
 
-  it("preserves the CLI Node request profile for reruns", async () => {
+  it("preserves the CLI Node request profile without overriding rerun defaults", async () => {
     let headers = new Headers();
+    let body: Record<string, unknown> = {};
     const fetchFn = mockFetch((_url, init) => {
       headers = new Headers(init.headers);
+      body = JSON.parse(String(init.body));
       return Response.json({ data: { id: "rerun-1" } }, { status: 201 });
     });
     await rerunAiScraperApi({
@@ -195,6 +206,61 @@ describe("CLI-aligned API calls", () => {
     expect(headers.get("sec-fetch-mode")).toBe("cors");
     expect(headers.get("authorization")).toBe("Bearer test-token");
     expect(headers.get("x-api-token")).toBe("test-token");
+    expect(body).toEqual({
+      scraperId: "scraper-1",
+      url: "https://target.example",
+    });
+  });
+
+  it("sends explicitly supplied AI rerun controls", async () => {
+    let body: Record<string, unknown> = {};
+    const fetchFn = mockFetch((_url, init) => {
+      body = JSON.parse(String(init.body));
+      return Response.json({ data: { id: "rerun-1" } });
+    });
+    await rerunAiScraperApi({
+      token: "test-token",
+      scraperId: "scraper-1",
+      url: "https://target.example",
+      proxyCountry: "ID",
+      maxRetry: 4,
+      timeout: 120,
+      fetchFn,
+    });
+    expect(body).toMatchObject({
+      proxyCountry: "ID",
+      maxRetry: 4,
+      timeout: 120,
+    });
+  });
+
+  it("sends exact result filters and controls stored HTML inclusion", async () => {
+    const requests: URL[] = [];
+    const fetchFn = mockFetch((url) => {
+      requests.push(url);
+      return Response.json({ data: [] });
+    });
+    await getAllResultsApi({
+      token: "test-token",
+      scraperId: "scraper-1",
+      status: "Finished",
+      type: "Rerun-AI",
+      url: "https://target.example/?page=2",
+      fetchFn,
+    });
+    await getResultByIdApi("test-token", "result-1", {
+      includeHtml: false,
+      fetchFn,
+    });
+    expect(requests[0]!.searchParams.get("filters[scraperId]")).toBe(
+      "scraper-1",
+    );
+    expect(requests[0]!.searchParams.get("filters[status]")).toBe("Finished");
+    expect(requests[0]!.searchParams.get("filters[type]")).toBe("Rerun-AI");
+    expect(requests[0]!.searchParams.get("filters[url]")).toBe(
+      "https://target.example/?page=2",
+    );
+    expect(requests[1]!.searchParams.get("includeHtml")).toBe("false");
   });
 
   it("normalizes Google URLs and emits the v2 SERP payload", async () => {

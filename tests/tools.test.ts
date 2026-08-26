@@ -7,6 +7,8 @@ import {
   TOOL_DESCRIPTIONS,
   fetchInputSchema,
   fetchTool,
+  resultInputSchema,
+  resultTool,
   rerunTool,
   resultsInputSchema,
   resultsTool,
@@ -48,12 +50,14 @@ describe("tool behavior", () => {
       fetchInputSchema.parse({
         url: "https://target.example",
         browser_rendering: true,
+        super_mode: true,
         geo_code: "ID",
       }),
       { fetchFn },
     );
     expect(requests).toHaveLength(1);
     expect(requests[0]?.searchParams.get("browserRendering")).toBe("true");
+    expect(requests[0]?.searchParams.get("super")).toBe("true");
     expect(requests[0]?.searchParams.get("geoCode")).toBe("ID");
     expect(output).toMatchObject({
       status_code: 200,
@@ -73,6 +77,15 @@ describe("tool behavior", () => {
         }),
       ),
     ).rejects.toThrow("wait_for_selector requires browser_rendering");
+    await expect(
+      fetchTool(
+        "test",
+        fetchInputSchema.parse({
+          url: "https://target.example",
+          super_mode: true,
+        }),
+      ),
+    ).rejects.toThrow("super_mode requires browser_rendering");
   });
 
   it("embeds best-effort schema guidance and a listing page limit", async () => {
@@ -94,11 +107,16 @@ describe("tool behavior", () => {
           },
         },
         agent: "listing",
+        mode: "Super",
         max_pages: 3,
       },
       { fetchFn },
     );
-    expect(body).toMatchObject({ agent: "listing", maxPages: 3 });
+    expect(body).toMatchObject({
+      agent: "listing",
+      mode: "Super",
+      maxPages: 3,
+    });
     expect(body.message).toContain("Best-effort output guidance");
     expect(body.message).toContain("does not validate this schema");
     expect(body.message).toContain('"price"');
@@ -259,9 +277,18 @@ describe("tool behavior", () => {
         limit: 10,
       }),
     ).rejects.toThrow("limit is only accepted by single AI reruns");
+    await expect(
+      rerunTool("test", {
+        target: "https://a.example",
+        type: "manual",
+        bulk: false,
+        scraper_id: "scraper-1",
+        proxy_country: "ID",
+      }),
+    ).rejects.toThrow("proxy_country is only accepted by single AI reruns");
   });
 
-  it("applies CLI defaults only to single AI reruns", async () => {
+  it("preserves backend defaults for single AI reruns", async () => {
     let body: Record<string, unknown> = {};
     const fetchFn = mockFetch((_url, init) => {
       body = JSON.parse(String(init.body));
@@ -280,11 +307,32 @@ describe("tool behavior", () => {
     expect(body).toEqual({
       scraperId: "scraper-1",
       url: "https://target.example",
-      maxDepth: 2,
-      maxPages: 50,
-      limit: 1000,
-      includePatterns: "",
-      excludePatterns: "",
+    });
+  });
+
+  it("sends explicitly supplied single AI rerun controls", async () => {
+    let body: Record<string, unknown> = {};
+    const fetchFn = mockFetch((_url, init) => {
+      body = JSON.parse(String(init.body));
+      return Response.json({ data: { id: "rerun-1" } });
+    });
+    await rerunTool(
+      "test",
+      {
+        target: "https://target.example",
+        type: "ai",
+        bulk: false,
+        scraper_id: "scraper-1",
+        proxy_country: "ID",
+        max_retry: 4,
+        timeout: 120,
+      },
+      { fetchFn },
+    );
+    expect(body).toMatchObject({
+      proxyCountry: "ID",
+      maxRetry: 4,
+      timeout: 120,
     });
   });
 
@@ -297,6 +345,10 @@ describe("tool behavior", () => {
     const input = resultsInputSchema.parse({
       sort_field: "customBackendField",
       sort_order: "DeSc",
+      scraper_id: "scraper-1",
+      status: "Finished",
+      type: "Rerun-AI",
+      url: "https://target.example/?page=2",
     });
     expect(input.sort_order).toBe("desc");
     await resultsTool("test", input, { fetchFn });
@@ -304,6 +356,31 @@ describe("tool behavior", () => {
       "customBackendField",
     );
     expect(requestUrl?.searchParams.get("sortOrder")).toBe("DESC");
+    expect(requestUrl?.searchParams.get("filters[scraperId]")).toBe(
+      "scraper-1",
+    );
+    expect(requestUrl?.searchParams.get("filters[status]")).toBe("Finished");
+    expect(requestUrl?.searchParams.get("filters[type]")).toBe("Rerun-AI");
+    expect(requestUrl?.searchParams.get("filters[url]")).toBe(
+      "https://target.example/?page=2",
+    );
+  });
+
+  it("can omit stored HTML from result detail", async () => {
+    let requestUrl: URL | undefined;
+    const fetchFn = mockFetch((url) => {
+      requestUrl = url;
+      return Response.json({ data: { id: "result-1" } });
+    });
+    await resultTool(
+      "test",
+      resultInputSchema.parse({
+        result_id: "result-1",
+        include_html: false,
+      }),
+      { fetchFn },
+    );
+    expect(requestUrl?.searchParams.get("includeHtml")).toBe("false");
   });
 
   it("turns upstream failures into safe tool errors", async () => {
@@ -376,7 +453,7 @@ describe("MCP surface", () => {
     );
   });
 
-  it("advertises version 0.1.0 and the exact CLI command names", async () => {
+  it("advertises version 0.1.3 and the exact CLI command names", async () => {
     const server = createMrscraperServer(
       { era: "legacy" },
       { resolveToken: () => "test" },
@@ -394,6 +471,7 @@ describe("MCP surface", () => {
         fetch: [
           "url",
           "browser_rendering",
+          "super_mode",
           "geo_code",
           "wait_for_selector",
           "home_page",
@@ -407,6 +485,7 @@ describe("MCP surface", () => {
           "prompt",
           "schema_prompt",
           "agent",
+          "mode",
           "proxy_country",
           "max_pages",
           "max_depth",
@@ -436,6 +515,9 @@ describe("MCP surface", () => {
           "limit",
           "include_patterns",
           "exclude_patterns",
+          "proxy_country",
+          "max_retry",
+          "timeout",
         ],
         results: [
           "sort_field",
@@ -446,8 +528,12 @@ describe("MCP surface", () => {
           "date_range_column",
           "start_at",
           "end_at",
+          "scraper_id",
+          "status",
+          "type",
+          "url",
         ],
-        result: ["result_id"],
+        result: ["result_id", "include_html"],
       };
       for (const tool of tools) {
         expect(Object.keys(tool.inputSchema.properties || {}).sort()).toEqual(

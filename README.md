@@ -193,10 +193,21 @@ Use browser rendering for JavaScript-driven content:
 }
 ```
 
+If ordinary browser rendering still fails, use real-device Super Mode:
+
+```json
+{
+  "url": "https://www.scrapethissite.com/pages/ajax-javascript/",
+  "browser_rendering": true,
+  "super_mode": true
+}
+```
+
 | Input               | Required | Default | API mapping              | Purpose                                                                              |
 | ------------------- | -------- | ------- | ------------------------ | ------------------------------------------------------------------------------------ |
 | `url`               | Yes      | -       | Query `url`              | Target page URL.                                                                     |
 | `browser_rendering` | No       | `false` | Query `browserRendering` | Executes page JavaScript in a browser.                                               |
+| `super_mode`        | No       | `false` | Query `super`            | Routes browser rendering through a real device; requires `browser_rendering: true`.  |
 | `geo_code`          | No       | omitted | Query `geoCode`          | Selects proxy-country routing.                                                       |
 | `wait_for_selector` | No       | omitted | Query `waitForSelector`  | Waits for a CSS selector together with `browser_rendering: true`.                    |
 | `home_page`         | No       | `false` | Query `homePage`         | Visits the site root before the target URL.                                          |
@@ -229,6 +240,7 @@ General extraction:
 {
   "url": "https://www.scrapethissite.com/pages/simple/",
   "agent": "general",
+  "mode": "Super",
   "prompt": "Extract Andorra's name, capital, population, and area"
 }
 ```
@@ -285,6 +297,7 @@ strict conformance is required.
 | `prompt`           | General/listing | -               | Body `message`         | Natural-language extraction instructions.                   |
 | `schema_prompt`    | No              | omitted         | Appended to `message`  | Best-effort JSON Schema shape guidance for general/listing. |
 | `agent`            | No              | `general`       | Body `agent`           | Selects `general`, `listing`, or `map`.                     |
+| `mode`             | No              | service default | Body `mode`            | Selects `Cheap` or `Super` independently of the agent.      |
 | `proxy_country`    | No              | omitted         | Body `proxyCountry`    | Proxy country for general/listing.                          |
 | `max_pages`        | No              | service default | Body `maxPages`        | Page bound for listing/map.                                 |
 | `max_depth`        | No              | service default | Body `maxDepth`        | Link-depth bound for map.                                   |
@@ -467,7 +480,10 @@ Single AI rerun:
   "max_pages": 50,
   "limit": 1000,
   "include_patterns": "/pages/forms/",
-  "exclude_patterns": "/login/"
+  "exclude_patterns": "/login/",
+  "proxy_country": "ID",
+  "max_retry": 4,
+  "timeout": 120
 }
 ```
 
@@ -482,18 +498,24 @@ Bulk manual rerun:
 }
 ```
 
-| Input              | Required    | Default      | Purpose                                                         |
-| ------------------ | ----------- | ------------ | --------------------------------------------------------------- |
-| `target`           | Yes         | -            | One URL, or a comma/newline-separated URL string for bulk mode. |
-| `type`             | Yes         | -            | Selects `ai` or `manual`.                                       |
-| `bulk`             | No          | `false`      | Selects a bulk endpoint.                                        |
-| `scraper_id`       | Single mode | -            | Saved scraper UUID for one URL.                                 |
-| `id`               | Bulk mode   | -            | Saved scraper UUID for the bulk URL list.                       |
-| `max_depth`        | Single AI   | `2`          | Crawl depth.                                                    |
-| `max_pages`        | Single AI   | `50`         | Page bound.                                                     |
-| `limit`            | Single AI   | `1000`       | Result bound.                                                   |
-| `include_patterns` | Single AI   | empty string | URL inclusion expression.                                       |
-| `exclude_patterns` | Single AI   | empty string | URL exclusion expression.                                       |
+| Input              | Required    | Default | Purpose                                                              |
+| ------------------ | ----------- | ------- | -------------------------------------------------------------------- |
+| `target`           | Yes         | -       | One URL, or a comma/newline-separated URL string for bulk mode.      |
+| `type`             | Yes         | -       | Selects `ai` or `manual`.                                            |
+| `bulk`             | No          | `false` | Selects a bulk endpoint.                                             |
+| `scraper_id`       | Single mode | -       | Saved scraper UUID for one URL.                                      |
+| `id`               | Bulk mode   | -       | Saved scraper UUID for the bulk URL list.                            |
+| `max_depth`        | Single AI   | omitted | Crawl depth; omission preserves the saved scraper/backend default.   |
+| `max_pages`        | Single AI   | omitted | Page bound; omission preserves the saved scraper/backend default.    |
+| `limit`            | Single AI   | omitted | Result bound; omission preserves the saved scraper/backend default.  |
+| `include_patterns` | Single AI   | omitted | URL inclusion expression; omission preserves saved/backend defaults. |
+| `exclude_patterns` | Single AI   | omitted | URL exclusion expression; omission preserves saved/backend defaults. |
+| `proxy_country`    | Single AI   | omitted | Proxy country code.                                                  |
+| `max_retry`        | Single AI   | omitted | Retry limit; zero is accepted.                                       |
+| `timeout`          | Single AI   | omitted | Timeout in seconds, used by listing reruns.                          |
+
+The MCP server sends single-AI controls only when supplied. Manual and bulk
+reruns reject them.
 
 Manual reruns carry a compliance acknowledgment in the MCP server
 instructions. MCP clients should present that acknowledgment before executing
@@ -514,22 +536,30 @@ GET https://api.app.mrscraper.com/api/v1/results
   "page_size": 25,
   "page": 1,
   "search": "scrapethissite.com",
+  "scraper_id": "scraper-uuid",
+  "status": "Finished",
+  "type": "Rerun-AI",
+  "url": "https://www.scrapethissite.com/pages/forms/",
   "date_range_column": "updatedAt",
   "start_at": "2026-08-01T00:00:00Z",
   "end_at": "2026-08-18T23:59:59Z"
 }
 ```
 
-| Input               | Required | Default     | Query mapping     | Purpose                                                       |
-| ------------------- | -------- | ----------- | ----------------- | ------------------------------------------------------------- |
-| `sort_field`        | No       | `updatedAt` | `sortField`       | Field used by the results API for sorting.                    |
-| `sort_order`        | No       | `desc`      | `sortOrder`       | Case-insensitive `asc` or `desc`; sent upstream in uppercase. |
-| `page_size`         | No       | `10`        | `pageSize`        | Number of rows per page.                                      |
-| `page`              | No       | `1`         | `page`            | One-based page index.                                         |
-| `search`            | No       | omitted     | `search`          | Free-text result filter.                                      |
-| `date_range_column` | No       | omitted     | `dateRangeColumn` | Column used by the date range.                                |
-| `start_at`          | No       | omitted     | `startAt`         | Inclusive range start.                                        |
-| `end_at`            | No       | omitted     | `endAt`           | Inclusive range end.                                          |
+| Input               | Required | Default     | Query mapping        | Purpose                                                       |
+| ------------------- | -------- | ----------- | -------------------- | ------------------------------------------------------------- |
+| `sort_field`        | No       | `updatedAt` | `sortField`          | Field used by the results API for sorting.                    |
+| `sort_order`        | No       | `desc`      | `sortOrder`          | Case-insensitive `asc` or `desc`; sent upstream in uppercase. |
+| `page_size`         | No       | `10`        | `pageSize`           | Number of rows per page.                                      |
+| `page`              | No       | `1`         | `page`               | One-based page index.                                         |
+| `search`            | No       | omitted     | `search`             | Free-text result filter.                                      |
+| `scraper_id`        | No       | omitted     | `filters[scraperId]` | Exact saved scraper UUID filter.                              |
+| `status`            | No       | omitted     | `filters[status]`    | Exact Draft, Finished, Running, Failed, or Cancelled filter.  |
+| `type`              | No       | omitted     | `filters[type]`      | Exact result type filter, such as AI or Rerun-AI.             |
+| `url`               | No       | omitted     | `filters[url]`       | Exact stored target URL filter.                               |
+| `date_range_column` | No       | omitted     | `dateRangeColumn`    | Column used by the date range.                                |
+| `start_at`          | No       | omitted     | `startAt`            | Inclusive range start.                                        |
+| `end_at`            | No       | omitted     | `endAt`              | Inclusive range end.                                          |
 
 ### `result`
 
@@ -541,13 +571,15 @@ GET https://api.app.mrscraper.com/api/v1/results/{result_id}
 
 ```json
 {
-  "result_id": "result-uuid"
+  "result_id": "result-uuid",
+  "include_html": false
 }
 ```
 
-| Input       | Required | Purpose                       |
-| ----------- | -------- | ----------------------------- |
-| `result_id` | Yes      | Stored MrScraper result UUID. |
+| Input          | Required | Default | Purpose                                                                  |
+| -------------- | -------- | ------- | ------------------------------------------------------------------------ |
+| `result_id`    | Yes      | -       | Stored MrScraper result UUID.                                            |
+| `include_html` | No       | `true`  | Includes stored HTML; set false for smaller polling or data-only output. |
 
 ## Run the server locally
 
