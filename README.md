@@ -1,9 +1,15 @@
-# MrScraper MCP
+# MrScraper MCP Server for Web Scraping and Google Search
 
-MrScraper MCP exposes the MrScraper web-data service through the
-[Model Context Protocol](https://modelcontextprotocol.io). Agents can fetch a
-known page, extract structured records, search Google, inspect account usage,
-rerun saved scrapers, and read stored results.
+MrScraper MCP is the official [MrScraper](https://mrscraper.com) server for the
+[Model Context Protocol](https://modelcontextprotocol.io). It connects AI
+assistants to web scraping, structured data extraction, and Google search.
+Agents can fetch a known page, extract structured records, inspect account
+usage, rerun saved scrapers, and read stored results.
+
+Use the hosted server with OAuth sign-in, or run the open-source server locally
+with the [`@mrscraper/mcp` npm package](https://www.npmjs.com/package/@mrscraper/mcp).
+See the [MrScraper MCP documentation](https://docs.mrscraper.com/docs/getting-started/mcp-server)
+for setup instructions and client configurations.
 
 The server exposes seven web-data tools:
 
@@ -768,6 +774,18 @@ npm run test:mcp -- \
 
 `npm run test:e2e` exercises all seven tools against the live MrScraper
 service and creates stored scraper results.
+
+## MCP Registry
+
+The hosted server's MCP Registry manifest is defined in
+[`server.json`](server.json). It describes the Streamable HTTP endpoint and
+links to this repository and the setup documentation.
+
+See the [official registry publishing guide](https://modelcontextprotocol.io/registry/github-actions)
+for GitHub Actions authentication and publication. Registry versions are
+immutable, so use a new version in `server.json` when publishing changed
+metadata. Publishing this manifest registers the hosted server; it does not
+publish a new npm package.
 
 ## License
 

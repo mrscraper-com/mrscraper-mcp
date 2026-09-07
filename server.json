@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.mrscraper-com/mrscraper-mcp",
+  "title": "MrScraper MCP",
+  "description": "Web scraping, structured data extraction, and Google search for AI assistants.",
+  "version": "0.1.3",
+  "repository": {
+    "url": "https://github.com/mrscraper-com/mrscraper-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://docs.mrscraper.com/docs/getting-started/mcp-server",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.mrscraper.com/mcp"
+    }
+  ]
+}
