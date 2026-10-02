@@ -519,32 +519,35 @@ Bulk manual rerun:
   "target": "https://www.scrapethissite.com/pages/simple/,https://www.scrapethissite.com/pages/forms/\nhttps://www.scrapethissite.com/pages/ajax-javascript/",
   "type": "manual",
   "bulk": true,
-  "id": "scraper-uuid"
+  "id": "scraper-uuid",
+  "acknowledged": true
 }
 ```
 
-| Input              | Required    | Default | Purpose                                                              |
-| ------------------ | ----------- | ------- | -------------------------------------------------------------------- |
-| `target`           | Yes         | -       | One URL, or a comma/newline-separated URL string for bulk mode.      |
-| `type`             | Yes         | -       | Selects `ai` or `manual`.                                            |
-| `bulk`             | No          | `false` | Selects a bulk endpoint.                                             |
-| `scraper_id`       | Single mode | -       | Saved scraper UUID for one URL.                                      |
-| `id`               | Bulk mode   | -       | Saved scraper UUID for the bulk URL list.                            |
-| `max_depth`        | Single AI   | omitted | Crawl depth; omission preserves the saved scraper/backend default.   |
-| `max_pages`        | Single AI   | omitted | Page bound; omission preserves the saved scraper/backend default.    |
-| `limit`            | Single AI   | omitted | Result bound; omission preserves the saved scraper/backend default.  |
-| `include_patterns` | Single AI   | omitted | URL inclusion expression; omission preserves saved/backend defaults. |
-| `exclude_patterns` | Single AI   | omitted | URL exclusion expression; omission preserves saved/backend defaults. |
-| `proxy_country`    | Single AI   | omitted | Proxy country code.                                                  |
-| `max_retry`        | Single AI   | omitted | Retry limit; zero is accepted.                                       |
-| `timeout`          | Single AI   | omitted | Timeout in seconds, used by listing reruns.                          |
+| Input              | Required    | Default | Purpose                                                                                      |
+| ------------------ | ----------- | ------- | -------------------------------------------------------------------------------------------- |
+| `target`           | Yes         | -       | One URL, or a comma/newline-separated URL string for bulk mode.                              |
+| `type`             | Yes         | -       | Selects `ai` or `manual`.                                                                    |
+| `bulk`             | No          | `false` | Selects a bulk endpoint.                                                                     |
+| `scraper_id`       | Single mode | -       | Saved scraper UUID for one URL.                                                              |
+| `id`               | Bulk mode   | -       | Saved scraper UUID for the bulk URL list.                                                    |
+| `acknowledged`     | Manual      | omitted | Confirms the user accepted the compliance warning; manual reruns run only when it is `true`. |
+| `max_depth`        | Single AI   | omitted | Crawl depth; omission preserves the saved scraper/backend default.                           |
+| `max_pages`        | Single AI   | omitted | Page bound; omission preserves the saved scraper/backend default.                            |
+| `limit`            | Single AI   | omitted | Result bound; omission preserves the saved scraper/backend default.                          |
+| `include_patterns` | Single AI   | omitted | URL inclusion expression; omission preserves saved/backend defaults.                         |
+| `exclude_patterns` | Single AI   | omitted | URL exclusion expression; omission preserves saved/backend defaults.                         |
+| `proxy_country`    | Single AI   | omitted | Proxy country code.                                                                          |
+| `max_retry`        | Single AI   | omitted | Retry limit; zero is accepted.                                                               |
+| `timeout`          | Single AI   | omitted | Timeout in seconds, used by listing reruns.                                                  |
 
 The MCP server sends single-AI controls only when supplied. Manual and bulk
 reruns reject them.
 
-Manual reruns carry a compliance acknowledgment in the MCP server
-instructions. MCP clients should present that acknowledgment before executing
-the manual mode.
+A manual rerun, single or bulk, runs only with `acknowledged: true`, which
+confirms the user accepted MrScraper's compliance warning about scraping
+login-protected pages. Without it, the tool returns that warning as a tool error
+and does not call the API.
 
 ### `results`
 

@@ -2,7 +2,7 @@ import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TOOL_NAMES, VERSION } from "../src/config.js";
-import { createMrscraperServer, SERVER_INSTRUCTIONS } from "../src/server.js";
+import { createMrscraperServer } from "../src/server.js";
 import {
   TOOL_DESCRIPTIONS,
   fetchInputSchema,
@@ -276,6 +276,7 @@ describe("tool behavior", () => {
         type: "manual",
         bulk: true,
         id: "scraper-1",
+        acknowledged: true,
       },
       { fetchFn },
     );
@@ -314,6 +315,32 @@ describe("tool behavior", () => {
         proxy_country: "ID",
       }),
     ).rejects.toThrow("proxy_country is only accepted by single AI reruns");
+  });
+
+  it("requires acknowledgment before any manual rerun reaches the API", async () => {
+    const fetchFn = mockFetch(() => Response.json({ data: { id: "rerun-1" } }));
+    for (const input of [
+      {
+        target: "https://a.example",
+        type: "manual",
+        bulk: false,
+        scraper_id: "scraper-1",
+      },
+      {
+        target: "https://a.example,https://b.example",
+        type: "manual",
+        bulk: true,
+        id: "scraper-1",
+      },
+    ] as const) {
+      await expect(rerunTool("test", input, { fetchFn })).rejects.toThrow(
+        "Compliance & Legal Risk",
+      );
+      await expect(
+        rerunTool("test", { ...input, acknowledged: true }, { fetchFn }),
+      ).resolves.toMatchObject({ status_code: 200 });
+    }
+    expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
   it("preserves backend defaults for single AI reruns", async () => {
@@ -444,49 +471,6 @@ describe("tool behavior", () => {
 });
 
 describe("MCP surface", () => {
-  it("publishes fetch-first routing without companion skills", () => {
-    expect(SERVER_INSTRUCTIONS).toMatch(
-      /always use `fetch` for the first exploration of a known public URL/,
-    );
-    expect(SERVER_INSTRUCTIONS).toMatch(/raw response as the source of truth/);
-    expect(SERVER_INSTRUCTIONS).toMatch(/one reusable local extractor/);
-    expect(SERVER_INSTRUCTIONS).toMatch(
-      /100-page job.*often faster than 100 separate backend-LLM extractions/,
-    );
-    expect(SERVER_INSTRUCTIONS).toMatch(
-      /structured-output request alone is not a reason to call `scrape`/,
-    );
-
-    expect(TOOL_DESCRIPTIONS.fetch).toMatch(
-      /default first content-acquisition step/,
-    );
-    expect(TOOL_DESCRIPTIONS.fetch).toMatch(
-      /Do not call scrape merely because the requested output is structured/,
-    );
-    expect(TOOL_DESCRIPTIONS.fetch).toMatch(
-      /100 similarly structured pages.*one local batch extraction.*often faster/,
-    );
-    expect(TOOL_DESCRIPTIONS.fetch).toMatch(
-      /four false\/false, true\/false, false\/true, and true\/true combinations/,
-    );
-    expect(TOOL_DESCRIPTIONS.fetch).toMatch(
-      /some sites fail or return worse content with browser_rendering=true/,
-    );
-    expect(TOOL_DESCRIPTIONS.scrape).toMatch(
-      /Do not use general or listing for the first exploration/,
-    );
-    expect(TOOL_DESCRIPTIONS.scrape).toMatch(/backend LLM/);
-    expect(TOOL_DESCRIPTIONS.scrape).toMatch(
-      /Prefer one reusable local extractor/,
-    );
-    expect(TOOL_DESCRIPTIONS.scrape).toMatch(
-      /100 same-layout pages.*often faster than 100 separate backend-LLM runs/,
-    );
-    expect(TOOL_DESCRIPTIONS.serp).toMatch(
-      /use fetch for every page whose content will inform the answer/,
-    );
-  });
-
   it("advertises version 0.1.3 and the exact CLI command names", async () => {
     const server = createMrscraperServer(
       { era: "legacy" },
@@ -542,6 +526,7 @@ describe("MCP surface", () => {
           "target",
           "type",
           "bulk",
+          "acknowledged",
           "scraper_id",
           "id",
           "max_depth",
@@ -602,7 +587,6 @@ describe("MCP surface", () => {
           `${tool.name} has no tool description`,
         ).toBeDefined();
         expect(tool.description).toBe(expectedDescription);
-        expect(tool.description).toMatch(/^Use this (?:when|to|only)/);
         expect(tool.outputSchema).not.toEqual({
           type: "object",
           additionalProperties: true,

@@ -16,6 +16,7 @@ import {
   rerunManualScraperApi,
   type Agent,
 } from "./api.js";
+import { MANUAL_RERUN_ACKNOWLEDGMENT_REQUIRED } from "./compliance.js";
 import type { ApiResponse } from "./http.js";
 import { widgetMeta } from "./widgets/index.js";
 import {
@@ -154,13 +155,13 @@ export const fetchInputSchema = z.object({
     .boolean()
     .default(false)
     .describe(
-      "Choose browser loading and execute page JavaScript. This is independent of super_mode: either value may work better for a site, and some pages fail in a browser but load without one. Required for wait_for_selector.",
+      "Loads the page in a browser and runs its JavaScript. Independent of super_mode; some pages fail in a browser but load without one. Required for wait_for_selector.",
     ),
   super_mode: z
     .boolean()
     .default(false)
     .describe(
-      "Choose real-device routing independently of browser_rendering. Try it with either browser_rendering value when the current combination fails or returns worse content.",
+      "Routes the request through real devices. Independent of browser_rendering; it can load pages that fail with standard routing.",
     ),
   geo_code: z
     .string()
@@ -180,13 +181,13 @@ export const fetchInputSchema = z.object({
     .boolean()
     .default(false)
     .describe(
-      "Visit the site's root page before the target URL, which can help establish cookies or session state.",
+      "Visits the site's root page before the target URL, which can establish cookies or session state.",
     ),
   block_resources: z
     .boolean()
     .default(false)
     .describe(
-      "Ask Web Unblocker to block nonessential page resources during loading when only page content is needed.",
+      "Blocks nonessential page resources during loading, which reduces bandwidth when only page content is needed.",
     ),
   max_retries: z
     .number()
@@ -194,7 +195,7 @@ export const fetchInputSchema = z.object({
     .min(0)
     .default(3)
     .describe(
-      "Maximum Web Unblocker retry count. Use 0 to disable retries; the default is 3.",
+      "Maximum Web Unblocker retry count; 0 disables retries, and the default is 3.",
     ),
   token_cap: z
     .number()
@@ -420,7 +421,7 @@ export const serpInputSchema = z.object({
     .boolean()
     .default(false)
     .describe(
-      "Render the Google results page with JavaScript when dynamic features such as AI Overview are needed.",
+      "Renders the Google results page with JavaScript so dynamic features such as AI Overview are included.",
     ),
   raw: z
     .boolean()
@@ -569,12 +570,18 @@ export const rerunInputSchema = z.object({
     .describe(
       "Independently select target count: false for one URL or true to submit all parsed targets as one asynchronous bulk job.",
     ),
+  acknowledged: z
+    .boolean()
+    .optional()
+    .describe(
+      "Confirms that the user accepted MrScraper's compliance warning about scraping login-protected pages. Required for type=manual; a manual rerun without it returns the warning and does not run.",
+    ),
   scraper_id: z
     .string()
     .nullable()
     .optional()
     .describe(
-      "Required saved scraper UUID when bulk=false. Use the scraperId returned by scrape for an AI scraper, or a dashboard workflow's UUID for manual.",
+      "Saved scraper UUID, required when bulk=false: the scraperId that scrape returns for an AI scraper, or a dashboard workflow's UUID for a manual one.",
     ),
   id: z
     .string()
@@ -651,6 +658,14 @@ export const rerunInputSchema = z.object({
     ),
 });
 
+function assertManualAcknowledged(
+  input: z.infer<typeof rerunInputSchema>,
+): void {
+  if (input.type === "manual" && input.acknowledged !== true) {
+    throw new Error(MANUAL_RERUN_ACKNOWLEDGMENT_REQUIRED);
+  }
+}
+
 export async function rerunTool(
   token: string,
   input: z.infer<typeof rerunInputSchema>,
@@ -685,6 +700,7 @@ export async function rerunTool(
     }
     const urls = parseBulkUrls(input.target);
     if (!urls.length) throw new Error("No URLs found in the bulk target");
+    assertManualAcknowledged(input);
     response =
       input.type === "ai"
         ? await bulkRerunAiScraperApi({
@@ -715,6 +731,7 @@ export async function rerunTool(
     }
     const url = input.target.trim();
     if (!url) throw new Error("target URL must not be empty");
+    assertManualAcknowledged(input);
     response =
       input.type === "manual"
         ? await rerunManualScraperApi({
@@ -867,7 +884,7 @@ export const resultInputSchema = z.object({
     .boolean()
     .default(true)
     .describe(
-      "Include stored HTML in the result response. Set false for a smaller response when polling status or reading extracted data only.",
+      "Includes the stored page HTML. false returns a smaller response with the extracted data and job state.",
     ),
 });
 
@@ -902,18 +919,18 @@ function titled(title: string, hints: typeof readAnnotations) {
 
 export const TOOL_DESCRIPTIONS = {
   fetch:
-    "Use this when a public page URL is known; fetch is the default first content-acquisition step for agent-led work. It returns the raw page response through Web Unblocker, preserving source details for reading, analysis, verification, and follow-up transformations. Keep that response as the source of truth. If the user needs fields, JSON, a table, or extraction across many similar pages, fetch and inspect representative pages, define one reusable local extractor, fetch the remaining pages, and apply the extractor locally. For 100 similarly structured pages, run the fetches concurrently when safe and feed the saved responses into one local batch extraction; this is often faster than 100 separate backend-LLM extractions and preserves every raw page. Do not call scrape merely because the requested output is structured. Use scrape only when the user explicitly requests MrScraper-managed extraction or after fetch-led exploration has established a stable output schema and a clear benefit. Use serp when no target URL is known. The url argument is required. browser_rendering selects browser loading and JavaScript execution; super_mode independently selects real-device routing. The four false/false, true/false, false/true, and true/true combinations can return different results. Start with both false, inspect the response, and change one axis at a time when needed. Browser rendering is not strictly stronger: some sites fail or return worse content with browser_rendering=true, so retry the same super_mode value with browser_rendering=false. Try super_mode with either loader when routing may be the problem; use both true for real-device browser loading. Do not repeat an identical combination, and stop once the response is usable unless comparison is requested. wait_for_selector requires browser_rendering=true. geo_code changes proxy location, while home_page, block_resources, max_retries, token_cap, and timeout tune loading and retry behavior.",
+    "Fetches one web page through MrScraper's Web Unblocker and returns its raw response: status code, sanitized headers, and the body as parsed JSON or text. Use it when the page URL is known. browser_rendering loads the page in a browser and runs its JavaScript; super_mode routes the request through real devices. The two options are independent, their four combinations can return different content for the same URL, and browser rendering does not always produce better content. wait_for_selector requires browser_rendering=true. geo_code sets the proxy location; home_page, block_resources, max_retries, token_cap, and timeout control loading, retries, and token spend.",
   scrape:
-    "Use this when the user explicitly wants MrScraper-managed structured extraction or bounded URL discovery within a known site. Do not use general or listing for the first exploration of a known page: they send page content through a backend LLM, which can omit source details, narrow the result to the prompt, and repeat model work across pages. Start with fetch, inspect the raw content, understand the site, and define a stable output schema. Prefer one reusable local extractor across saved fetch responses; requesting fields, JSON, or a table does not by itself justify scrape. This remains true for 100 same-layout pages: safe concurrent fetches plus one local batch extraction are often faster than 100 separate backend-LLM runs and preserve every source response. Use general or listing only when managed extraction was explicitly requested or still has a clear benefit after that exploration. Choose agent=general for defined page fields, agent=listing for repeated records across pages, or agent=map for bounded URL discovery within the known site; map is separate from LLM extraction and does not require a schema. mode=Cheap or mode=Super selects the backend execution tier independently of agent; omit mode to preserve the backend default. General and listing require prompt and optionally accept schema_prompt and proxy_country. max_pages applies to listing and map; max_depth, limit, include_patterns, and exclude_patterns are map-only. A successful run returns scraperId for reuse with rerun.",
-  serp: "Use this when the task starts with a Google query or Google search URL rather than a known target page. After selecting relevant result URLs, use fetch for every page whose content will inform the answer and preserve each raw response. Analyze or transform those responses locally, using one reusable extractor when pages share a structure. Use scrape only when the user explicitly requests MrScraper-managed extraction or after fetch-led exploration has established a stable schema and clear benefit; stop after serp when the user only needs URL discovery. The query_or_url argument is required; region, language, and page control localization and pagination. format=json returns parsed results, format=html returns result-page HTML, render_js includes dynamic features, and client_timeout controls how long this MCP request waits. raw is a deprecated alias for format=html.",
+    "Runs MrScraper's managed extraction on a URL and saves the configuration as a reusable scraper. agent=general extracts the fields described in prompt from one page; agent=listing extracts repeated records and can follow pagination up to max_pages; agent=map discovers URLs within the site, bounded by max_pages, max_depth, limit, include_patterns, and exclude_patterns. general and listing require prompt and send page content to a backend LLM that extracts the requested fields; schema_prompt optionally describes the output shape, and proxy_country sets the proxy location. mode=Cheap or mode=Super selects the backend execution tier, and omitting mode keeps the backend default. A successful run returns the extracted data and the saved scraper's scraperId.",
+  serp: "Searches Google through MrScraper and returns parsed results (format=json, the default) or the results page HTML (format=html). Use it when the starting point is a search query rather than a page URL. query_or_url accepts search text or a complete Google search URL; region and language localize results, page selects a later results page, render_js includes JavaScript-rendered features such as AI Overviews, and client_timeout sets how long the request waits. raw is a deprecated alias for format=html.",
   status:
-    "Use this to check the current MrScraper account's identity, subscription, and usage before or after web-data work. With no arguments it returns an account summary including the user's name, email, and verification state. Supply domain only when request-outcome analytics are also needed; from and to select that analytics window, while action and api_token_name narrow those domain outcomes. This tool reports account and request health, not scrape-job progress; use result for a known asynchronous result ID.",
+    "Returns the connected MrScraper account's identity (name, email, and verification state), subscription, token limit, and token usage. With domain, it also returns request-outcome analytics for that hostname: from and to set the window, and action and api_token_name filter the outcomes. It reports account and request health, not the progress of a scrape job.",
   rerun:
-    "Use this only when you already have a saved scraper UUID and want to apply that configuration to the same or new target URLs. Set type=ai for a scraper created by scrape; type=manual selects a dashboard-built step workflow and requires the conversation's compliance acknowledgment. For one URL, leave bulk=false and pass target with scraper_id. A single AI rerun also accepts max_depth, max_pages, limit, include_patterns, exclude_patterns, proxy_country, max_retry, and timeout; omit controls to preserve saved scraper and backend defaults. Manual and bulk reruns reject those controls. For multiple URLs, set bulk=true, pass comma- or newline-separated target URLs and id; bulk jobs are asynchronous, so retain bulkResultId and inspect it with result until completion. Use scrape to create a new AI configuration.",
+    "Runs a saved MrScraper scraper again on the same or new URLs and stores the result. type=ai runs a scraper saved by scrape; type=manual runs a step workflow built in the MrScraper dashboard. A manual rerun runs only with acknowledged=true, which confirms the user accepted MrScraper's compliance warning about scraping login-protected pages; without it, the tool returns that warning and does not run. With bulk=false, target is one URL and scraper_id is the saved scraper's UUID; a single AI rerun also accepts max_depth, max_pages, limit, include_patterns, exclude_patterns, proxy_country, max_retry, and timeout, and omitted controls keep the saved scraper's and backend defaults. With bulk=true, target is a comma- or newline-separated URL list and id is the saved scraper's UUID; the job runs asynchronously and returns a bulkResultId. Manual and bulk reruns don't accept the single-AI controls.",
   results:
-    "Use this to browse or locate stored scrape results when you do not yet know the exact result UUID. sort_field and sort_order control ordering; page_size and page control pagination; search narrows the list; and date_range_column with start_at or end_at applies a date window. scraper_id, status, type, and url apply exact backend filters. This returns a result list rather than one complete record. Once an ID is known, use result for that record.",
+    "Lists stored MrScraper results with pagination (page and page_size), sorting (sort_field and sort_order), free-text search, a date window (date_range_column with start_at and end_at), and exact filters for scraper_id, status, type, and url. It returns result summaries rather than complete records.",
   result:
-    "Use this when you already know the exact stored result UUID and need the complete record or current job state. Pass that UUID as result_id; this may also be the bulkResultId returned by an asynchronous bulk rerun. include_html defaults to true; set it false for a smaller response while polling status or when extracted data is sufficient. Call result again as needed until an asynchronous job completes. Use results first when the UUID is unknown.",
+    "Returns one stored MrScraper result by its UUID, with the extracted data and the job's current state. result_id also accepts the bulkResultId of an asynchronous bulk rerun, whose state shows the job's progress. include_html, true by default, adds the stored page HTML; false returns a smaller response.",
 } as const;
 
 export function registerTools(
