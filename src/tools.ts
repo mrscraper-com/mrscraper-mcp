@@ -895,6 +895,11 @@ const writeAnnotations = {
   destructiveHint: false,
 };
 
+// Claude's directory reads annotations.title; other clients read title.
+function titled(title: string, hints: typeof readAnnotations) {
+  return { title, annotations: { title, ...hints } };
+}
+
 export const TOOL_DESCRIPTIONS = {
   fetch:
     "Use this when a public page URL is known; fetch is the default first content-acquisition step for agent-led work. It returns the raw page response through Web Unblocker, preserving source details for reading, analysis, verification, and follow-up transformations. Keep that response as the source of truth. If the user needs fields, JSON, a table, or extraction across many similar pages, fetch and inspect representative pages, define one reusable local extractor, fetch the remaining pages, and apply the extractor locally. For 100 similarly structured pages, run the fetches concurrently when safe and feed the saved responses into one local batch extraction; this is often faster than 100 separate backend-LLM extractions and preserves every raw page. Do not call scrape merely because the requested output is structured. Use scrape only when the user explicitly requests MrScraper-managed extraction or after fetch-led exploration has established a stable output schema and a clear benefit. Use serp when no target URL is known. The url argument is required. browser_rendering selects browser loading and JavaScript execution; super_mode independently selects real-device routing. The four false/false, true/false, false/true, and true/true combinations can return different results. Start with both false, inspect the response, and change one axis at a time when needed. Browser rendering is not strictly stronger: some sites fail or return worse content with browser_rendering=true, so retry the same super_mode value with browser_rendering=false. Try super_mode with either loader when routing may be the problem; use both true for real-device browser loading. Do not repeat an identical combination, and stop once the response is usable unless comparison is requested. wait_for_selector requires browser_rendering=true. geo_code changes proxy location, while home_page, block_resources, max_retries, token_cap, and timeout tune loading and retry behavior.",
@@ -919,11 +924,10 @@ export function registerTools(
   server.registerTool(
     "fetch",
     {
-      title: "Fetch Page",
+      ...titled("Fetch Page", readAnnotations),
       description: TOOL_DESCRIPTIONS.fetch,
       inputSchema: fetchInputSchema,
       outputSchema: fetchOutputSchema,
-      annotations: readAnnotations,
     },
     async (input) =>
       asStructured(await fetchTool(getToken(), input, dependencies)),
@@ -931,12 +935,11 @@ export function registerTools(
   server.registerTool(
     "scrape",
     {
-      title: "Extract Data",
+      ...titled("Extract Data", writeAnnotations),
       description: TOOL_DESCRIPTIONS.scrape,
       inputSchema: scrapeInputSchema,
       outputSchema: scrapeOutputSchema,
       _meta: widgetMeta("records", "Extracting data…", "Extraction complete."),
-      annotations: writeAnnotations,
     },
     async (input) =>
       asStructured(await scrapeTool(getToken(), input, dependencies)),
@@ -944,12 +947,11 @@ export function registerTools(
   server.registerTool(
     "serp",
     {
-      title: "Google Search",
+      ...titled("Google Search", readAnnotations),
       description: TOOL_DESCRIPTIONS.serp,
       inputSchema: serpInputSchema,
       outputSchema: serpOutputSchema,
       _meta: widgetMeta("serp", "Searching Google…", "Search complete."),
-      annotations: readAnnotations,
     },
     async (input) =>
       asStructured(await serpTool(getToken(), input, dependencies)),
@@ -957,7 +959,7 @@ export function registerTools(
   server.registerTool(
     "status",
     {
-      title: "Account Status",
+      ...titled("Account Status", readAnnotations),
       description: TOOL_DESCRIPTIONS.status,
       inputSchema: statusInputSchema,
       outputSchema: statusOutputSchema,
@@ -966,7 +968,6 @@ export function registerTools(
         "Checking your account…",
         "Account status loaded.",
       ),
-      annotations: readAnnotations,
     },
     async (input) =>
       asStructured(await statusTool(getToken(), input, dependencies)),
@@ -974,11 +975,10 @@ export function registerTools(
   server.registerTool(
     "rerun",
     {
-      title: "Rerun Saved Scraper",
+      ...titled("Rerun Saved Scraper", writeAnnotations),
       description: TOOL_DESCRIPTIONS.rerun,
       inputSchema: rerunInputSchema,
       outputSchema: rerunOutputSchema,
-      annotations: writeAnnotations,
     },
     async (input) =>
       asStructured(await rerunTool(getToken(), input, dependencies)),
@@ -986,12 +986,11 @@ export function registerTools(
   server.registerTool(
     "results",
     {
-      title: "List Results",
+      ...titled("List Results", readAnnotations),
       description: TOOL_DESCRIPTIONS.results,
       inputSchema: resultsInputSchema,
       outputSchema: resultsOutputSchema,
       _meta: widgetMeta("records", "Loading results…", "Results loaded."),
-      annotations: readAnnotations,
     },
     async (input) =>
       asStructured(await resultsTool(getToken(), input, dependencies)),
@@ -999,12 +998,11 @@ export function registerTools(
   server.registerTool(
     "result",
     {
-      title: "Get Result",
+      ...titled("Get Result", readAnnotations),
       description: TOOL_DESCRIPTIONS.result,
       inputSchema: resultInputSchema,
       outputSchema: resultOutputSchema,
       _meta: widgetMeta("records", "Loading result…", "Result loaded."),
-      annotations: readAnnotations,
     },
     async (input) =>
       asStructured(await resultTool(getToken(), input, dependencies)),
