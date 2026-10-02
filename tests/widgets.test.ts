@@ -128,6 +128,12 @@ describe("widget resources", () => {
     const client = await connect();
     const { tools } = await client.listTools();
     expect(tools.every((tool) => Boolean(tool.title))).toBe(true);
+    // Claude's connector directory flags tools without annotations.title.
+    expect(
+      tools
+        .filter((tool) => tool.annotations?.title !== tool.title)
+        .map((tool) => tool.name),
+    ).toEqual([]);
     expect(
       tools.every(
         (tool) =>
