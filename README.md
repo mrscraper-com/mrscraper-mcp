@@ -142,6 +142,13 @@ Connect MrScraper MCP to this agent. Detect the current MCP client and configure
 A common discovery workflow is `serp` → `fetch` or `scrape`. A saved
 scraper workflow is `scrape` → `rerun` → `result`.
 
+`fetch`, `scrape`, `serp`, and `rerun` advertise `openWorldHint: true` because
+they access public websites or user-supplied destinations. `status`, `results`,
+and `result` advertise `openWorldHint: false` because they only read the connected
+MrScraper account. These annotations describe tool reach; they do not grant
+permission to access a source. `scrape` and `rerun` remain write tools because
+they create saved configurations or run results.
+
 ## Response contract
 
 API-backed tools return a response envelope in both MCP `structuredContent`

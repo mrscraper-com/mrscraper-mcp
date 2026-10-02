@@ -906,9 +906,13 @@ const readAnnotations = {
   openWorldHint: false,
   destructiveHint: false,
 };
+const openWorldReadAnnotations = {
+  ...readAnnotations,
+  openWorldHint: true,
+};
 const writeAnnotations = {
   readOnlyHint: false,
-  openWorldHint: false,
+  openWorldHint: true,
   destructiveHint: false,
 };
 
@@ -941,7 +945,7 @@ export function registerTools(
   server.registerTool(
     "fetch",
     {
-      ...titled("Fetch Page", readAnnotations),
+      ...titled("Fetch Page", openWorldReadAnnotations),
       description: TOOL_DESCRIPTIONS.fetch,
       inputSchema: fetchInputSchema,
       outputSchema: fetchOutputSchema,
@@ -964,7 +968,7 @@ export function registerTools(
   server.registerTool(
     "serp",
     {
-      ...titled("Google Search", readAnnotations),
+      ...titled("Google Search", openWorldReadAnnotations),
       description: TOOL_DESCRIPTIONS.serp,
       inputSchema: serpInputSchema,
       outputSchema: serpOutputSchema,

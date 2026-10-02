@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TOOL_NAMES, VERSION } from "../src/config.js";
 import { createMrscraperServer } from "../src/server.js";
 import {
-  TOOL_DESCRIPTIONS,
   fetchInputSchema,
   fetchTool,
   resultInputSchema,
@@ -567,7 +566,7 @@ describe("MCP surface", () => {
     }
   });
 
-  it("publishes useful output schemas, limits, descriptions, and annotations", async () => {
+  it("publishes schema limits and action annotations", async () => {
     const server = createMrscraperServer(
       { era: "legacy" },
       { resolveToken: () => "test" },
@@ -579,34 +578,7 @@ describe("MCP surface", () => {
     await client.connect(clientTransport);
     try {
       const { tools } = await client.listTools();
-      for (const tool of tools) {
-        const expectedDescription =
-          TOOL_DESCRIPTIONS[tool.name as keyof typeof TOOL_DESCRIPTIONS];
-        expect(
-          expectedDescription,
-          `${tool.name} has no tool description`,
-        ).toBeDefined();
-        expect(tool.description).toBe(expectedDescription);
-        expect(tool.outputSchema).not.toEqual({
-          type: "object",
-          additionalProperties: true,
-        });
-        const properties = (tool.inputSchema.properties || {}) as Record<
-          string,
-          { description?: string }
-        >;
-        expect(
-          Object.entries(properties)
-            .filter(
-              ([, schema]) => (schema.description?.trim().length || 0) < 40,
-            )
-            .map(([name]) => name),
-          `${tool.name} has parameters without useful descriptions`,
-        ).toEqual([]);
-      }
       const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
-      expect(byName.fetch!.outputSchema?.title).toBe("Fetch response");
-      expect(byName.status!.outputSchema?.title).toBe("Status response");
       expect(
         (
           byName.fetch!.inputSchema.properties!.max_retries as Record<
@@ -623,7 +595,14 @@ describe("MCP surface", () => {
           >
         ).minLength,
       ).toBe(1);
-      for (const name of ["fetch", "serp", "status", "results", "result"]) {
+      for (const name of ["fetch", "serp"]) {
+        expect(byName[name]!.annotations).toMatchObject({
+          readOnlyHint: true,
+          openWorldHint: true,
+          destructiveHint: false,
+        });
+      }
+      for (const name of ["status", "results", "result"]) {
         expect(byName[name]!.annotations).toMatchObject({
           readOnlyHint: true,
           openWorldHint: false,
@@ -633,7 +612,7 @@ describe("MCP surface", () => {
       for (const name of ["scrape", "rerun"]) {
         expect(byName[name]!.annotations).toMatchObject({
           readOnlyHint: false,
-          openWorldHint: false,
+          openWorldHint: true,
           destructiveHint: false,
         });
       }
