@@ -64,4 +64,3 @@ jobs:
             docker tag docker-mrscraper-mcp:latest $TAG
             docker push $TAG
           EOF
-
