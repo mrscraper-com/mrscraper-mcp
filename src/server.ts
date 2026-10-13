@@ -10,10 +10,8 @@ import { registerTools, type ToolDependencies } from "./tools.js";
 import { registerWidgets } from "./widgets/index.js";
 
 export const SERVER_INSTRUCTIONS =
-  "MrScraper provides seven web-data tools. `fetch` returns a known page's raw response through Web Unblocker. " +
-  "`scrape` runs MrScraper's managed extraction or URL mapping and saves the configuration as a reusable scraper. " +
-  "`serp` returns Google search results. `rerun` runs a saved scraper on the same or new URLs. " +
-  "`results` lists stored results, `result` returns one stored result or an asynchronous job's state, and `status` reports account usage. " +
+  "MrScraper provides two tools. `scraperAPI` retrieves a known page as HTML, Markdown, or a screenshot. " +
+  "`webSearch` searches Google from query text or a Google search URL; use raw=false and format=json for parsed results. " +
   "Tools authenticate through the MCP connection and do not accept API tokens as arguments.";
 
 export interface ServerFactoryOptions extends ToolDependencies {

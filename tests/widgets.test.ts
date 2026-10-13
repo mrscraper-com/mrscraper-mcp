@@ -69,7 +69,9 @@ describe("widget resources", () => {
 
   it("serves a self-contained document with no external references", async () => {
     const client = await connect();
-    const { contents } = await client.readResource({ uri: WIDGETS.serp.uri });
+    const { contents } = await client.readResource({
+      uri: WIDGETS.webSearch.uri,
+    });
     const document = contents[0];
     expect(document?.mimeType).toBe(WIDGET_MIME_TYPE);
 
@@ -84,7 +86,9 @@ describe("widget resources", () => {
 
   it("declares an empty CSP allowlist, since widgets need no network", async () => {
     const client = await connect();
-    const { contents } = await client.readResource({ uri: WIDGETS.status.uri });
+    const { contents } = await client.readResource({
+      uri: WIDGETS.webSearch.uri,
+    });
     expect((contents[0] as { _meta?: unknown })._meta).toMatchObject({
       ui: { csp: { connectDomains: [], resourceDomains: [] } },
     });
@@ -111,16 +115,13 @@ describe("widget resources", () => {
     const { tools } = await client.listTools();
     const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
-    expect(byName.get("serp")?._meta).toMatchObject({
-      ui: { resourceUri: WIDGETS.serp.uri },
-      "openai/outputTemplate": WIDGETS.serp.uri,
-    });
-    expect(byName.get("scrape")?._meta).toMatchObject({
-      "openai/outputTemplate": WIDGETS.records.uri,
+    expect(byName.get("webSearch")?._meta).toMatchObject({
+      ui: { resourceUri: WIDGETS.webSearch.uri },
+      "openai/outputTemplate": WIDGETS.webSearch.uri,
     });
 
     expect(
-      byName.get("fetch")?._meta?.["openai/outputTemplate"],
+      byName.get("scraperAPI")?._meta?.["openai/outputTemplate"],
     ).toBeUndefined();
   });
 
@@ -144,9 +145,9 @@ describe("widget resources", () => {
   });
 
   it("names both metadata keys with the same URI", () => {
-    const meta = widgetMeta("records", "Working…", "Done.");
-    expect(meta.ui).toEqual({ resourceUri: WIDGETS.records.uri });
-    expect(meta["openai/outputTemplate"]).toBe(WIDGETS.records.uri);
+    const meta = widgetMeta("webSearch", "Working…", "Done.");
+    expect(meta.ui).toEqual({ resourceUri: WIDGETS.webSearch.uri });
+    expect(meta["openai/outputTemplate"]).toBe(WIDGETS.webSearch.uri);
   });
 });
 

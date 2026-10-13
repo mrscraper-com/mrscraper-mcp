@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { WIDGETS, widgetHtml, type WidgetName } from "../src/widgets/index.js";
 
 const SAMPLES: Record<WidgetName, unknown> = {
-  serp: {
+  webSearch: {
     status_code: 200,
     data: {
       organic_results: [
@@ -25,50 +25,6 @@ const SAMPLES: Record<WidgetName, unknown> = {
           snippet: "Plans, token limits, and enterprise options.",
         },
       ],
-    },
-  },
-  records: {
-    status_code: 200,
-    data: {
-      records: [
-        {
-          name: "Aeron Chair",
-          price: "$1,395",
-          rating: 4.8,
-          stock: "In stock",
-        },
-        {
-          name: "Embody Chair",
-          price: "$1,795",
-          rating: 4.7,
-          stock: "In stock",
-        },
-        {
-          name: "Sayl Chair",
-          price: "$695",
-          rating: 4.4,
-          stock: "Backordered",
-        },
-      ],
-    },
-  },
-  status: {
-    status_code: 200,
-    data: {
-      account: {
-        subscription_status: "active",
-        enterprise: false,
-        token_usage: 61_240,
-        token_limit: 100_000,
-        token_remaining: 38_760,
-        usage_percent: 61.24,
-        ends_at: "2026-09-14",
-        user: {
-          name: "Test Account",
-          email: "you@example.test",
-          verified: true,
-        },
-      },
     },
   },
 };

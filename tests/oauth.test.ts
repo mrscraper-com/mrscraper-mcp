@@ -50,7 +50,7 @@ function oauthConfig(): OAuthConfig {
     jwksUrl: `${issuer}/.well-known/jwks.json`,
     publicUrl: "https://mcp.mrscraper.test",
     resourceUrl: RESOURCE,
-    scopesSupported: ["scrape:read", "scrape:write", "account:read"],
+    scopesSupported: ["scrape:read"],
     documentationUrl:
       "https://docs.mrscraper.com/docs/getting-started/mcp-server",
   };
@@ -66,7 +66,7 @@ async function mintToken(
   } = {},
 ) {
   return new SignJWT({
-    scope: overrides.scope ?? "scrape:read scrape:write account:read",
+    scope: overrides.scope ?? "scrape:read",
     client_id: "https://claude.ai/oauth/claude-code-client-metadata",
   })
     .setProtectedHeader({ alg: "RS256", kid: "test" })
@@ -131,15 +131,7 @@ describe("token shape detection", () => {
 describe("scope mapping", () => {
   it("covers every registered tool", () => {
     expect(Object.keys(TOOL_SCOPES).sort()).toEqual(
-      [
-        "fetch",
-        "rerun",
-        "result",
-        "results",
-        "scrape",
-        "serp",
-        "status",
-      ].sort(),
+      ["scraperAPI", "webSearch"].sort(),
     );
   });
 
@@ -149,18 +141,18 @@ describe("scope mapping", () => {
     expect(
       requiredScopesForRequest({
         method: "tools/call",
-        params: { name: "scrape" },
+        params: { name: "scraperAPI" },
       }),
-    ).toEqual(["scrape:write"]);
+    ).toEqual(["scrape:read"]);
   });
 
   it("unions the scopes a batched payload needs", () => {
     expect(
       requiredScopesForRequest([
-        { method: "tools/call", params: { name: "serp" } },
-        { method: "tools/call", params: { name: "rerun" } },
+        { method: "tools/call", params: { name: "webSearch" } },
+        { method: "tools/call", params: { name: "scraperAPI" } },
       ]).sort(),
-    ).toEqual(["scrape:read", "scrape:write"]);
+    ).toEqual(["scrape:read"]);
   });
 });
 
@@ -176,7 +168,7 @@ describe("OAuth discovery documents", () => {
       expect(await response.json()).toMatchObject({
         resource: RESOURCE,
         authorization_servers: [issuer],
-        scopes_supported: ["scrape:read", "scrape:write", "account:read"],
+        scopes_supported: ["scrape:read"],
       });
     }
   });
@@ -207,19 +199,21 @@ describe("OAuth discovery documents", () => {
       expect((await fetch(`${baseUrl}${path}`)).status).toBe(404);
     }
 
-    const response = await toolCall(baseUrl, "status");
+    const response = await toolCall(baseUrl, "scraperAPI");
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).not.toContain(
       "resource_metadata=",
     );
-    expect((await toolCall(baseUrl, "status", "valid-key")).status).toBe(200);
+    expect((await toolCall(baseUrl, "scraperAPI", "valid-key")).status).toBe(
+      200,
+    );
   });
 });
 
 describe("bearer challenges", () => {
   it("points unauthenticated callers at the resource metadata document", async () => {
     const baseUrl = await startApp();
-    const response = await toolCall(baseUrl, "status");
+    const response = await toolCall(baseUrl, "scraperAPI");
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toContain(
       'resource_metadata="https://mcp.mrscraper.test/.well-known/oauth-protected-resource/mcp"',
@@ -228,7 +222,7 @@ describe("bearer challenges", () => {
 
   it("accepts a valid access token", async () => {
     const baseUrl = await startApp();
-    const response = await toolCall(baseUrl, "status", await mintToken());
+    const response = await toolCall(baseUrl, "scraperAPI", await mintToken());
     expect(response.status).toBe(200);
   });
 
@@ -237,7 +231,7 @@ describe("bearer challenges", () => {
     const token = await mintToken({
       audience: "https://elsewhere.example/mcp",
     });
-    expect((await toolCall(baseUrl, "status", token)).status).toBe(401);
+    expect((await toolCall(baseUrl, "scraperAPI", token)).status).toBe(401);
   });
 
   it("rejects a token minted for the bare public origin", async () => {
@@ -245,31 +239,31 @@ describe("bearer challenges", () => {
     const token = await mintToken({
       audience: "https://mcp.mrscraper.test",
     });
-    expect((await toolCall(baseUrl, "status", token)).status).toBe(401);
+    expect((await toolCall(baseUrl, "scraperAPI", token)).status).toBe(401);
   });
 
   it("rejects a token from another issuer", async () => {
     const baseUrl = await startApp();
     const token = await mintToken({ issuer: ISSUER_PLACEHOLDER });
-    expect((await toolCall(baseUrl, "status", token)).status).toBe(401);
+    expect((await toolCall(baseUrl, "scraperAPI", token)).status).toBe(401);
   });
 
   it("rejects an expired token", async () => {
     const baseUrl = await startApp();
     const token = await mintToken({ expiresIn: "-1m" });
-    expect((await toolCall(baseUrl, "status", token)).status).toBe(401);
+    expect((await toolCall(baseUrl, "scraperAPI", token)).status).toBe(401);
   });
 });
 
 describe("per-tool scope gate", () => {
-  it("refuses a write tool held by a read-only token with insufficient_scope", async () => {
+  it("refuses a tool when its read scope is missing", async () => {
     const baseUrl = await startApp();
-    const token = await mintToken({ scope: "scrape:read" });
-    const response = await toolCall(baseUrl, "scrape", token);
+    const token = await mintToken({ scope: "account:read" });
+    const response = await toolCall(baseUrl, "scraperAPI", token);
     expect(response.status).toBe(403);
     const challenge = response.headers.get("www-authenticate") ?? "";
     expect(challenge).toContain('error="insufficient_scope"');
-    expect(challenge).toContain("scrape:write");
+    expect(challenge).toContain("account:read");
 
     expect(challenge).toContain("scrape:read");
     expect(challenge).toContain("resource_metadata=");
@@ -278,7 +272,7 @@ describe("per-tool scope gate", () => {
   it("allows a read tool held by a read-only token", async () => {
     const baseUrl = await startApp();
     const token = await mintToken({ scope: "scrape:read" });
-    expect((await toolCall(baseUrl, "results", token)).status).toBe(200);
+    expect((await toolCall(baseUrl, "webSearch", token)).status).toBe(200);
   });
 
   it("never gates the handshake", async () => {
@@ -309,16 +303,20 @@ describe("per-tool scope gate", () => {
 describe("API key compatibility", () => {
   it("still accepts a MrScraper API key as the bearer credential", async () => {
     const baseUrl = await startApp();
-    expect((await toolCall(baseUrl, "status", "valid-key")).status).toBe(200);
+    expect((await toolCall(baseUrl, "scraperAPI", "valid-key")).status).toBe(
+      200,
+    );
   });
 
   it("grants an API key every scope so no tool is gated", async () => {
     const baseUrl = await startApp();
-    expect((await toolCall(baseUrl, "scrape", "valid-key")).status).toBe(200);
+    expect((await toolCall(baseUrl, "scraperAPI", "valid-key")).status).toBe(
+      200,
+    );
   });
 
   it("still rejects an unknown API key", async () => {
     const baseUrl = await startApp();
-    expect((await toolCall(baseUrl, "status", "nope")).status).toBe(401);
+    expect((await toolCall(baseUrl, "scraperAPI", "nope")).status).toBe(401);
   });
 });

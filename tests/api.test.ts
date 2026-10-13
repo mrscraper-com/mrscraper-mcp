@@ -1,15 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createAiScraperApi,
-  fetchContentApi,
-  getAllResultsApi,
-  getResultByIdApi,
-  googleSerpSyncApi,
-  normalizeSerpInput,
-  parseBulkUrls,
-  rerunAiScraperApi,
-} from "../src/api.js";
+import { scraperApi, webSearchApi, normalizeSearchInput } from "../src/api.js";
 import { request, sanitizeResponseData } from "../src/http.js";
 
 function mockFetch(
@@ -103,169 +94,161 @@ describe("HTTP helpers", () => {
   });
 });
 
-describe("CLI-aligned API calls", () => {
-  it("fetches once with the exact Web Unblocker parameters", async () => {
-    const requests: Array<{ url: URL; init: RequestInit }> = [];
+describe("Python SDK request compatibility", () => {
+  it("POSTs page options in the query and the URL and retry controls in JSON", async () => {
     const fetchFn = mockFetch((url, init) => {
-      requests.push({ url, init });
-      return new Response("<html>Checking your browser - captcha</html>", {
-        status: 200,
-        headers: { "content-type": "text/html" },
+      expect(init.method).toBe("POST");
+      expect(url.origin).toBe("https://api.mrscraper.com");
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        token: "test-token",
+        timeout: "45",
+        geoCode: "ID",
+        proxyCountry: "SG",
+        browserRendering: "true",
+        super: "true",
+        useProxy: "false",
+        proxy: "user:pass@proxy.example:8000",
+        html: "true",
+        markdown: "true",
+        waitForSelector: ".ready",
+        warmStart: "true",
+        screenshot: "true",
+        blockResources: "true",
+        bypassProxy: "true",
+        cookieJar: "domain=example.com&country=sg",
+        headers: '{"accept-language":"en-US"}',
+        stream: "true",
+      });
+      expect(JSON.parse(String(init.body))).toEqual({
+        url: "https://example.com/page",
+        maxRetries: 4,
+        tokenCap: 100,
+      });
+      const headers = new Headers(init.headers);
+      expect(headers.get("authorization")).toBe("Bearer test-token");
+      expect(headers.get("x-api-token")).toBe("test-token");
+      expect(headers.get("x-discard-token-secret")).toBe("discard-secret");
+      expect(headers.get("content-type")).toBe("application/json");
+      return Response.json({
+        html: "<p>Hello</p>",
+        markdown: "Hello",
+        screenshot: "image-data",
       });
     });
-    const result = await fetchContentApi({
+    const result = await scraperApi({
       token: "test-token",
-      url: "https://target.example",
-      browserRendering: true,
-      superMode: true,
+      url: "https://example.com/page",
+      timeout: 45,
       geoCode: "ID",
+      proxyCountry: "SG",
+      browserRendering: false,
+      super: true,
+      useProxy: false,
+      proxy: "user:pass@proxy.example:8000",
+      markdown: true,
       waitForSelector: ".ready",
       homePage: true,
+      screenshot: true,
       blockResources: true,
+      bypassProxy: true,
+      cookieJar: "domain=example.com&country=sg",
+      headers: { "accept-language": "en-US" },
       maxRetries: 4,
       tokenCap: 100,
-      timeout: 45,
+      stream: true,
+      discardTokenSecret: "discard-secret",
       fetchFn,
     });
-    expect(requests).toHaveLength(1);
-    expect(requests[0]!.url.searchParams.get("browserRendering")).toBe("true");
-    expect(requests[0]!.url.searchParams.get("super")).toBe("true");
-    expect(requests[0]!.url.searchParams.get("geoCode")).toBe("ID");
-    expect(requests[0]!.url.searchParams.get("waitForSelector")).toBe(".ready");
-    expect(requests[0]!.url.searchParams.get("homePage")).toBe("true");
-    expect(requests[0]!.url.searchParams.get("blockResources")).toBe("true");
-    expect(requests[0]!.url.searchParams.get("maxRetries")).toBe("4");
-    expect(requests[0]!.url.searchParams.get("tokenCap")).toBe("100");
-    expect(requests[0]!.url.searchParams.get("timeout")).toBe("45");
-    expect(requests[0]!.url.searchParams.has("token")).toBe(false);
-    expect(new Headers(requests[0]!.init.headers).get("authorization")).toBe(
-      "Bearer test-token",
-    );
-    expect(result).not.toHaveProperty("unblocker");
-  });
-
-  it("sends listing maxPages", async () => {
-    let body: Record<string, unknown> = {};
-    const fetchFn = mockFetch((_url, init) => {
-      body = JSON.parse(String(init.body));
-      return Response.json({ data: { id: "listing-1" } });
-    });
-    const result = await createAiScraperApi({
-      token: "test",
-      url: "https://target.example/listings",
-      message: "Extract every listing",
-      agent: "listing",
-      mode: "Super",
-      maxPages: 4,
-      fetchFn,
-    });
-    expect(result.status_code).toBe(200);
-    expect(body).toMatchObject({
-      agent: "listing",
-      mode: "Super",
-      maxPages: 4,
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(result.data).toMatchObject({
+      markdown: "Hello",
+      screenshot: "image-data",
     });
   });
 
-  it("omits unspecified scrape controls and proxyCountry", async () => {
-    let body: Record<string, unknown> = {};
-    const fetchFn = mockFetch((_url, init) => {
-      body = JSON.parse(String(init.body));
-      return Response.json({ data: { id: "general-1" } });
+  it("keeps automatic browser fallback by omitting unset options", async () => {
+    const fetchFn = mockFetch((url, init) => {
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        token: "test-token",
+        timeout: "120",
+        geoCode: "US",
+        html: "true",
+        markdown: "false",
+      });
+      expect(JSON.parse(String(init.body))).toEqual({
+        url: "https://example.com",
+        maxRetries: 3,
+      });
+      return new Response("<p>Hello</p>");
     });
-    await createAiScraperApi({
-      token: "test",
-      url: "https://target.example",
-      message: "Extract the title",
-      agent: "general",
-      fetchFn,
-    });
-    expect(body).toEqual({
-      url: "https://target.example",
-      message: "Extract the title",
-      agent: "general",
-    });
-  });
-
-  it("preserves the CLI Node request profile without overriding rerun defaults", async () => {
-    let headers = new Headers();
-    let body: Record<string, unknown> = {};
-    const fetchFn = mockFetch((_url, init) => {
-      headers = new Headers(init.headers);
-      body = JSON.parse(String(init.body));
-      return Response.json({ data: { id: "rerun-1" } }, { status: 201 });
-    });
-    await rerunAiScraperApi({
+    await scraperApi({
       token: "test-token",
-      scraperId: "scraper-1",
-      url: "https://target.example",
+      url: "https://example.com",
       fetchFn,
-    });
-    expect(headers.get("user-agent")).toBe("node");
-    expect(headers.get("accept-language")).toBe("*");
-    expect(headers.get("sec-fetch-mode")).toBe("cors");
-    expect(headers.get("authorization")).toBe("Bearer test-token");
-    expect(headers.get("x-api-token")).toBe("test-token");
-    expect(body).toEqual({
-      scraperId: "scraper-1",
-      url: "https://target.example",
     });
   });
 
-  it("sends explicitly supplied AI rerun controls", async () => {
-    let body: Record<string, unknown> = {};
-    const fetchFn = mockFetch((_url, init) => {
-      body = JSON.parse(String(init.body));
-      return Response.json({ data: { id: "rerun-1" } });
+  it("preserves explicit false browser/stream/output controls and zero retry budgets", async () => {
+    const fetchFn = mockFetch((url, init) => {
+      expect(url.searchParams.get("browserRendering")).toBe("false");
+      expect(url.searchParams.get("stream")).toBe("false");
+      expect(url.searchParams.get("html")).toBe("false");
+      expect(JSON.parse(String(init.body))).toEqual({
+        url: "https://example.com",
+        maxRetries: 0,
+        tokenCap: 0,
+      });
+      return new Response("Hello");
     });
-    await rerunAiScraperApi({
-      token: "test-token",
-      scraperId: "scraper-1",
-      url: "https://target.example",
-      proxyCountry: "ID",
-      maxRetry: 4,
-      timeout: 120,
+    await scraperApi({
+      token: "test",
+      url: "https://example.com",
+      browserRendering: false,
+      stream: false,
+      html: false,
+      maxRetries: 0,
+      tokenCap: 0,
       fetchFn,
-    });
-    expect(body).toMatchObject({
-      proxyCountry: "ID",
-      maxRetry: 4,
-      timeout: 120,
     });
   });
 
-  it("sends exact result filters and controls stored HTML inclusion", async () => {
-    const requests: URL[] = [];
+  it("keeps OAuth credentials only in Authorization", async () => {
+    const fetchFn = mockFetch((url, init) => {
+      expect(url.searchParams.has("token")).toBe(false);
+      expect(new Headers(init.headers).get("x-api-token")).toBeNull();
+      expect(new Headers(init.headers).get("authorization")).toBe(
+        "Bearer header.payload.signature",
+      );
+      return Response.json({ ok: true });
+    });
+    await scraperApi({
+      token: "header.payload.signature",
+      url: "https://example.com",
+      fetchFn,
+    });
+    await webSearchApi({
+      token: "header.payload.signature",
+      url: "example",
+      fetchFn,
+    });
+  });
+
+  it("does not leak the query token when a network error includes the URL", async () => {
     const fetchFn = mockFetch((url) => {
-      requests.push(url);
-      return Response.json({ data: [] });
+      throw new Error(`Failed to load ${url}`);
     });
-    await getAllResultsApi({
-      token: "test-token",
-      scraperId: "scraper-1",
-      status: "Finished",
-      type: "Rerun-AI",
-      url: "https://target.example/?page=2",
+    const result = await scraperApi({
+      token: "query-secret",
+      url: "https://example.com",
       fetchFn,
     });
-    await getResultByIdApi("test-token", "result-1", {
-      includeHtml: false,
-      fetchFn,
-    });
-    expect(requests[0]!.searchParams.get("filters[scraperId]")).toBe(
-      "scraper-1",
-    );
-    expect(requests[0]!.searchParams.get("filters[status]")).toBe("Finished");
-    expect(requests[0]!.searchParams.get("filters[type]")).toBe("Rerun-AI");
-    expect(requests[0]!.searchParams.get("filters[url]")).toBe(
-      "https://target.example/?page=2",
-    );
-    expect(requests[1]!.searchParams.get("includeHtml")).toBe("false");
+    expect(result.error).toContain("[REDACTED]");
+    expect(JSON.stringify(result)).not.toContain("query-secret");
   });
 
-  it("normalizes Google URLs and emits the v2 SERP payload", async () => {
+  it("extracts search fields from a Google URL and allows explicit overrides", async () => {
     expect(
-      normalizeSerpInput(
+      normalizeSearchInput(
         "https://www.google.com/search?q=running+shoes&gl=us&hl=en&start=20",
       ),
     ).toEqual({
@@ -274,39 +257,87 @@ describe("CLI-aligned API calls", () => {
       language: "en",
       page: 3,
     });
-    let path = "";
-    let body: Record<string, unknown> = {};
+    const bodies: unknown[] = [];
     const fetchFn = mockFetch((url, init) => {
-      path = url.pathname;
-      body = JSON.parse(String(init.body));
-      return Response.json({ success: true });
+      expect(init.method).toBe("POST");
+      expect(url.href).toBe(
+        "https://sync.scraper.mrscraper.com/api/google/serp/v2/sync",
+      );
+      bodies.push(JSON.parse(String(init.body)));
+      return Response.json({ organic_results: [] });
     });
-    await googleSerpSyncApi({
+    const url =
+      "https://www.google.com/search?q=running+shoes&gl=us&hl=en&start=20";
+    await webSearchApi({
       token: "test",
-      queryOrUrl: "iphone 17",
-      region: "id",
-      language: "id",
-      page: 2,
+      url,
+      raw: false,
       renderJs: true,
       fetchFn,
     });
-    expect(path).toBe("/api/google/serp/v2/sync");
-    expect(body).toEqual({
-      query: "iphone 17",
+    await webSearchApi({
+      token: "test",
+      url,
+      raw: false,
       region: "id",
       language: "id",
       page: 2,
+      timeout: 2.5,
+      fetchFn,
+    });
+    expect(bodies).toEqual([
+      {
+        query: "running shoes",
+        region: "us",
+        language: "en",
+        page: 3,
+        format: "json",
+        renderJs: true,
+      },
+      {
+        query: "running shoes",
+        region: "id",
+        language: "id",
+        page: 2,
+        format: "json",
+        renderJs: false,
+      },
+    ]);
+  });
+
+  it("defaults to raw HTML like web_search and lets raw override format", async () => {
+    const fetchFn = mockFetch((_url, init) => {
+      expect(JSON.parse(String(init.body))).toEqual({
+        query: "iphone 17",
+        format: "html",
+        renderJs: false,
+      });
+      return new Response("<html>Search</html>");
+    });
+    await webSearchApi({ token: "test", url: "iphone 17", fetchFn });
+    await webSearchApi({
+      token: "test",
+      url: "iphone 17",
+      raw: true,
       format: "json",
-      renderJs: true,
+      fetchFn,
     });
   });
 
-  it("parses CLI-style bulk targets", () => {
+  it("ignores invalid start values and requires a query in search URLs", () => {
     expect(
-      parseBulkUrls("https://a.example,https://b.example\nhttps://c.example"),
-    ).toEqual(["https://a.example", "https://b.example", "https://c.example"]);
-    expect(parseBulkUrls("https://a.example|https://b.example")).toEqual([
-      "https://a.example|https://b.example",
-    ]);
+      normalizeSearchInput("https://www.google.com/search?q=test&start=abc")
+        .page,
+    ).toBeNull();
+    expect(
+      normalizeSearchInput("https://www.google.com/search?q=test&start=20.5")
+        .page,
+    ).toBeNull();
+    expect(normalizeSearchInput("site:example.com").query).toBe(
+      "site:example.com",
+    );
+    expect(() => normalizeSearchInput("https://www.google.com/search")).toThrow(
+      "q parameter",
+    );
   });
 });

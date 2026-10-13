@@ -49,7 +49,7 @@ describe("HTTP application", () => {
       status: "ready",
       service: "mrscraper-mcp",
       version: VERSION,
-      tools: 7,
+      tools: 2,
     });
     expect((await fetch(`${baseUrl}/chatgpt`)).status).toBe(404);
   });
@@ -181,7 +181,10 @@ describe("HTTP application", () => {
     );
     await client.connect(transport);
     try {
-      const response = await client.callTool({ name: "status", arguments: {} });
+      const response = await client.callTool({
+        name: "scraperAPI",
+        arguments: { url: "https://example.com" },
+      });
       expect(response.isError).toBe(true);
       expect(JSON.stringify(response.content)).toContain(
         "MrScraper API token is required",

@@ -8,7 +8,7 @@ const outFile = fileURLToPath(
   new URL("../src/widgets/bundles.generated.ts", import.meta.url),
 );
 
-const ENTRIES = ["serp", "records", "status"] as const;
+const ENTRIES = ["serp"] as const;
 
 async function bundle(entry: string): Promise<string> {
   const result = await build({

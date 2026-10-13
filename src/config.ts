@@ -1,14 +1,6 @@
 export const VERSION = "0.1.3";
 
-export const TOOL_NAMES = [
-  "fetch",
-  "scrape",
-  "serp",
-  "status",
-  "rerun",
-  "results",
-  "result",
-] as const;
+export const TOOL_NAMES = ["scraperAPI", "webSearch"] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 
@@ -16,17 +8,10 @@ export type Transport = "stdio" | "http";
 
 export interface ApiEndpoints {
   apiBaseUrl: string;
-  fetchHtmlBaseUrl: string;
+  scraperApiUrl: string;
   syncScraperBaseUrl: string;
   subscriptionAccounts: string;
-  analyticStatuses: string;
-  scrapersAi: string;
-  scrapersAiRerun: string;
-  scrapersAiRerunBulk: string;
-  scrapersManualRerun: string;
-  scrapersManualRerunBulk: string;
-  results: string;
-  googleSerpSync: string;
+  webSearchUrl: string;
 }
 
 function baseUrl(environmentName: string, fallback: string): string {
@@ -38,7 +23,7 @@ export function getApiEndpoints(): ApiEndpoints {
     "MRSCRAPER_API_BASE_URL",
     "https://api.app.mrscraper.com/api/v1",
   );
-  const fetchHtmlBaseUrl = baseUrl(
+  const scraperApiUrl = baseUrl(
     "MRSCRAPER_FETCH_BASE_URL",
     "https://api.mrscraper.com",
   );
@@ -49,17 +34,10 @@ export function getApiEndpoints(): ApiEndpoints {
 
   return {
     apiBaseUrl,
-    fetchHtmlBaseUrl,
+    scraperApiUrl,
     syncScraperBaseUrl,
     subscriptionAccounts: `${apiBaseUrl}/subscription-accounts`,
-    analyticStatuses: `${apiBaseUrl}/analytic/statuses`,
-    scrapersAi: `${apiBaseUrl}/scrapers-ai`,
-    scrapersAiRerun: `${apiBaseUrl}/scrapers-ai-rerun`,
-    scrapersAiRerunBulk: `${apiBaseUrl}/scrapers-ai-rerun/bulk`,
-    scrapersManualRerun: `${apiBaseUrl}/scrapers-manual-rerun`,
-    scrapersManualRerunBulk: `${apiBaseUrl}/scrapers-manual-rerun/bulk`,
-    results: `${apiBaseUrl}/results`,
-    googleSerpSync: `${syncScraperBaseUrl}/api/google/serp/v2/sync`,
+    webSearchUrl: `${syncScraperBaseUrl}/api/google/serp/v2/sync`,
   };
 }
 
@@ -109,11 +87,7 @@ export function httpRuntimeConfig(): {
   return { host, port, allowedOrigins: parseAllowedOrigins() };
 }
 
-export const OAUTH_SCOPES = [
-  "scrape:read",
-  "scrape:write",
-  "account:read",
-] as const;
+export const OAUTH_SCOPES = ["scrape:read"] as const;
 
 export type OAuthScope = (typeof OAUTH_SCOPES)[number];
 
