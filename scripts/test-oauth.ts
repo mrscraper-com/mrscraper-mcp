@@ -38,7 +38,7 @@ const call = (name: string, token?: string) => ({
 await show("/.well-known/oauth-protected-resource/mcp");
 await show("/.well-known/oauth-protected-resource");
 await show("/.well-known/oauth-authorization-server");
-await show("/mcp", call("status"));
+await show("/mcp", call("scraperAPI"));
 
 await handler.close();
 server.close();

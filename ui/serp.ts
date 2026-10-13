@@ -18,7 +18,16 @@ const render = mount((output) => {
     return container;
   }
 
-  const rows = findRecords(payload(output));
+  const data = payload(output);
+  if (typeof data === "string") {
+    container.append(
+      empty(
+        "Search returned an HTML page. Use raw=false and format=json to display parsed results.",
+      ),
+    );
+    return container;
+  }
+  const rows = findRecords(data);
   if (!rows?.length) {
     container.append(empty("No results were returned for that search."));
     return container;

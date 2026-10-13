@@ -13,23 +13,11 @@ interface WidgetDefinition {
 }
 
 export const WIDGETS = {
-  serp: {
+  webSearch: {
     bundle: "serp",
     uri: "ui://mrscraper/serp/v1.html",
     title: "Google results",
     description: "Google search results with titles, links, and snippets.",
-  },
-  records: {
-    bundle: "records",
-    uri: "ui://mrscraper/records/v1.html",
-    title: "Extracted data",
-    description: "Extracted records and stored scrape results as a table.",
-  },
-  status: {
-    bundle: "status",
-    uri: "ui://mrscraper/status/v1.html",
-    title: "Account status",
-    description: "MrScraper subscription plan and token usage.",
   },
 } satisfies Record<string, WidgetDefinition>;
 

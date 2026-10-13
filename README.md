@@ -2,19 +2,19 @@
 
 MrScraper MCP is the official [MrScraper](https://mrscraper.com) server for the
 [Model Context Protocol](https://modelcontextprotocol.io). It connects AI
-assistants to web scraping, structured data extraction, and Google search.
-Agents can fetch a known page, extract structured records, inspect account
-usage, rerun saved scrapers, and read stored results.
+assistants to page content and Google search through two SDK-compatible tools.
+Retrieve HTML, Markdown, or screenshots with `scraperAPI`, and discover pages
+with `webSearch`.
 
 Use the hosted server with OAuth sign-in, or run the open-source server locally
 with the [`@mrscraper/mcp` npm package](https://www.npmjs.com/package/@mrscraper/mcp).
 See the [MrScraper MCP documentation](https://docs.mrscraper.com/docs/getting-started/mcp-server)
 for setup instructions and client configurations.
 
-The server exposes seven web-data tools:
+The server exposes two tools:
 
 ```text
-fetch  scrape  serp  status  rerun  results  result
+scraperAPI  webSearch
 ```
 
 ## Deployment options
@@ -60,11 +60,9 @@ the address will be refused.
 
 ### What you are approving
 
-| Scope          | Grants                                                    |
-| -------------- | --------------------------------------------------------- |
-| `scrape:read`  | `fetch`, `serp`, `results`, `result`                      |
-| `scrape:write` | `scrape`, `rerun`: creating scrapers and running them     |
-| `account:read` | `status`: subscription plan, quota, and request analytics |
+| Scope         | Grants                       |
+| ------------- | ---------------------------- |
+| `scrape:read` | `scraperAPI` and `webSearch` |
 
 A tool called without its scope is refused with `403 insufficient_scope`, and
 your client will offer to grant the missing permission.
@@ -124,69 +122,48 @@ matches how broadly the connection should be available.
 ## Copyable agent setup prompt
 
 ```text
-Connect MrScraper MCP to this agent. Detect the current MCP client and configure a Streamable HTTP server named mrscraper at https://mcp.mrscraper.com/mcp with no credential. The server uses OAuth 2.1, so the client will open a browser to sign in. If the client cannot do OAuth, fall back to a MrScraper API key from https://app.mrscraper.com/api-tokens stored through the client's environment-variable or secret-storage mechanism and sent as Authorization: Bearer <key>. Reload the MCP client when required, then list the tools and confirm that fetch, scrape, serp, status, rerun, results, and result are available.
+Connect MrScraper MCP to this agent. Detect the current MCP client and configure a Streamable HTTP server named mrscraper at https://mcp.mrscraper.com/mcp with no credential. The server uses OAuth 2.1, so the client will open a browser to sign in. If the client cannot do OAuth, fall back to a MrScraper API key from https://app.mrscraper.com/api-tokens stored through the client's environment-variable or secret-storage mechanism and sent as Authorization: Bearer <key>. Reload the MCP client when required, then list the tools and confirm that scraperAPI and webSearch are the only available tools.
 ```
 
 ## Choosing a tool
 
-| Tool      | Choose it when                                                                    |
-| --------- | --------------------------------------------------------------------------------- |
-| `fetch`   | You already have a URL and need the page response from Web Unblocker.             |
-| `scrape`  | You already have a URL and need defined fields, records, listings, or a site map. |
-| `serp`    | You are starting from a Google query or Google search URL.                        |
-| `status`  | You need subscription, quota, token usage, or domain request outcomes.            |
-| `rerun`   | You have a saved AI or manual scraper ID and want to run it again.                |
-| `results` | You need a paginated or filtered list of stored results.                          |
-| `result`  | You know one result ID and need its complete stored record.                       |
+| Tool         | Choose it when                                                               |
+| ------------ | ---------------------------------------------------------------------------- |
+| `scraperAPI` | You have a page URL and need HTML, Markdown, a screenshot, or a combination. |
+| `webSearch`  | You have a Google query or Google search URL and need search results.        |
 
-A common discovery workflow is `serp` → `fetch` or `scrape`. A saved
-scraper workflow is `scrape` → `rerun` → `result`.
+A discovery workflow is `webSearch` → `scraperAPI`. Both tools advertise
+`readOnlyHint: true`, `openWorldHint: true`, and `destructiveHint: false`.
+Authentication comes from the MCP connection; neither tool takes an API token
+argument.
 
-`fetch`, `scrape`, `serp`, and `rerun` advertise `openWorldHint: true` because
-they access public websites or user-supplied destinations. `status`, `results`,
-and `result` advertise `openWorldHint: false` because they only read the connected
-MrScraper account. These annotations describe tool reach; they do not grant
-permission to access a source. `scrape` and `rerun` remain write tools because
-they create saved configurations or run results.
+### Migration from the previous tool set
 
-## Response contract
+Only `scraperAPI` and `webSearch` are registered. The old tool names are removed.
 
-API-backed tools return a response envelope in both MCP `structuredContent`
-and a formatted JSON text block:
+| Previous call                                    | Replacement                                                                                              |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `fetch`                                          | `scraperAPI`; uses POST, SDK options, and automatic browser fallback by default.                         |
+| `serp`                                           | `webSearch`; rename `query_or_url` to `url` and `client_timeout` to `timeout`. Set `raw=false` for JSON. |
+| `scrape`, `status`, `rerun`, `results`, `result` | Removed from this MCP server.                                                                            |
 
-```json
-{
-  "status_code": 200,
-  "data": {},
-  "headers": {
-    "content-type": "application/json"
-  }
-}
-```
-
-| Field         | Type                          | Meaning                                                                              |
-| ------------- | ----------------------------- | ------------------------------------------------------------------------------------ |
-| `status_code` | number or `null`              | Upstream HTTP status, or `null` when a request ends before an HTTP response arrives. |
-| `data`        | JSON value, string, or `null` | Parsed JSON or response text supplied by the MrScraper service.                      |
-| `headers`     | object                        | Response headers with credential-bearing headers filtered out.                       |
-| `error`       | string, when present          | Request failure summary.                                                             |
-
-An API failure keeps this envelope in `structuredContent` and sets the MCP
-result's `isError` flag. Input-contract errors are returned as MCP tool
-errors. Parsed credential metadata and generated curl credentials are
-sanitized while extracted scraper data remains available to the caller.
+`super_mode` becomes `super`. `home_page` now maps to `warmStart`, and
+`token_cap=0` is accepted. Restart the server and reconnect the MCP client after
+updating so it refreshes `tools/list`.
 
 ## Tool reference
 
-### `fetch`
+The options and defaults follow the Python SDK's `scraper_api` and `web_search`
+methods. MCP tool names use camel case; their argument names use the SDK's
+snake case.
 
-`fetch` calls the Web Unblocker endpoint once:
+### `scraperAPI`
 
 ```text
-GET https://api.mrscraper.com/
+POST https://api.mrscraper.com/
 ```
 
-Start with the URL alone:
+Start with a known URL:
 
 ```json
 {
@@ -194,427 +171,179 @@ Start with the URL alone:
 }
 ```
 
-Browser loading and real-device routing are independent controls. These four
-inputs can return different results for the same URL:
-
-| Browser rendering | Super Mode | Input                                                             | Loading path                                             |
-| ----------------- | ---------- | ----------------------------------------------------------------- | -------------------------------------------------------- |
-| Off               | Off        | `{ "url": "URL" }`                                                | Standard routing with the non-browser loader.            |
-| On                | Off        | `{ "url": "URL", "browser_rendering": true }`                     | Standard routing with browser loading and JavaScript.    |
-| Off               | On         | `{ "url": "URL", "super_mode": true }`                            | Real-device routing with the non-browser loader.         |
-| On                | On         | `{ "url": "URL", "browser_rendering": true, "super_mode": true }` | Real-device routing with browser loading and JavaScript. |
-
-Start with both controls off, inspect the response, and change one axis at a
-time when needed. Browser rendering is not guaranteed to work better: some
-sites fail with it enabled but load without it. Try the remaining combinations
-without repeating an identical failed request.
-
-Use browser rendering for JavaScript-driven content:
+Request HTML, Markdown, and a screenshot together:
 
 ```json
 {
-  "url": "https://www.scrapethissite.com/pages/ajax-javascript/",
-  "browser_rendering": true,
-  "wait_for_selector": "body",
+  "url": "https://example.com",
+  "html": true,
+  "markdown": true,
+  "screenshot": true,
+  "super": true,
+  "home_page": true,
   "geo_code": "ID",
-  "timeout": 45
+  "timeout": 120
 }
 ```
 
-Use both controls for real-device browser loading:
+Omit `browser_rendering` or use `null` to let the service try without a browser
+and fall back to browser loading. `true` forces browser loading and `false`
+disables it. A screenshot always forces browser loading, even when
+`browser_rendering=false`. `super` selects real-device routing independently.
 
-```json
-{
-  "url": "https://www.scrapethissite.com/pages/ajax-javascript/",
-  "browser_rendering": true,
-  "super_mode": true
-}
-```
+The JSON body contains `url`, `maxRetries`, and optional `tokenCap`. Page
+options are query parameters. For API keys, the request also includes the
+SDK-compatible `token` query parameter and `Authorization`/`x-api-token`
+headers. OAuth JWTs are sent only through `Authorization`.
 
-| Input               | Required | Default | API mapping              | Purpose                                                                              |
-| ------------------- | -------- | ------- | ------------------------ | ------------------------------------------------------------------------------------ |
-| `url`               | Yes      | -       | Query `url`              | Target page URL.                                                                     |
-| `browser_rendering` | No       | `false` | Query `browserRendering` | Executes page JavaScript in a browser.                                               |
-| `super_mode`        | No       | `false` | Query `super`            | Selects real-device routing independently of browser rendering.                      |
-| `geo_code`          | No       | omitted | Query `geoCode`          | Selects proxy-country routing.                                                       |
-| `wait_for_selector` | No       | omitted | Query `waitForSelector`  | Waits for a CSS selector together with `browser_rendering: true`.                    |
-| `home_page`         | No       | `false` | Query `homePage`         | Visits the site root before the target URL.                                          |
-| `block_resources`   | No       | `false` | Query `blockResources`   | Applies resource blocking during page loading.                                       |
-| `max_retries`       | No       | `3`     | Query `maxRetries`       | Sets the Web Unblocker retry limit; zero is accepted.                                |
-| `token_cap`         | No       | omitted | Query `tokenCap`         | Sets the retry token budget.                                                         |
-| `timeout`           | No       | `30`    | Query `timeout`          | Sets the page-load deadline in seconds; transport receives an additional 30 seconds. |
+| Input                  | Default  | API mapping / purpose                                                                   |
+| ---------------------- | -------- | --------------------------------------------------------------------------------------- |
+| `url`                  | required | Body `url`; absolute HTTP(S) page URL.                                                  |
+| `html`                 | `true`   | Query `html`; request HTML.                                                             |
+| `markdown`             | `false`  | Query `markdown`; request Markdown.                                                     |
+| `timeout`              | `120`    | Query `timeout`; integer from 1 to 300 seconds. Transport allows 30 additional seconds. |
+| `geo_code`             | `"US"`   | Query `geoCode`; proxy country code.                                                    |
+| `proxy_country`        | omitted  | Query `proxyCountry`; compatibility country field.                                      |
+| `browser_rendering`    | omitted  | Query `browserRendering`; true/false, or omit/null for automatic fallback.              |
+| `super`                | `false`  | Query `super=true` when enabled.                                                        |
+| `use_proxy`            | `true`   | Query `useProxy=false` when disabled.                                                   |
+| `proxy`                | omitted  | Query `proxy`; custom `username:password@host:port` proxy.                              |
+| `wait_for_selector`    | omitted  | Query `waitForSelector`; CSS selector to wait for.                                      |
+| `home_page`            | `false`  | Query `warmStart=true` when enabled.                                                    |
+| `screenshot`           | `false`  | Query `screenshot=true`; also sets `browserRendering=true`.                             |
+| `block_resources`      | `false`  | Query `blockResources=true`; block images, CSS, and fonts.                              |
+| `bypass_proxy`         | `false`  | Query `bypassProxy=true`; proxy-bypass/resource-blocking option.                        |
+| `cookie_jar`           | omitted  | Query `cookieJar`; cookie configuration string.                                         |
+| `headers`              | omitted  | Query `headers`; target request headers as an object or JSON string.                    |
+| `max_retries`          | `3`      | Body `maxRetries`; nonnegative integer, 0 disables retries.                             |
+| `token_cap`            | omitted  | Body `tokenCap`; nonnegative integer retry-token budget.                                |
+| `stream`               | omitted  | Query `stream`; response is buffered into the normal MCP envelope.                      |
+| `discard_token_secret` | `""`     | Optional `x-discard-token-secret` header.                                               |
 
-The response body's value is returned in `data`, commonly as HTML. Toggle
-`browser_rendering` for JavaScript needs and `super_mode` for routing needs.
-When browser loading fails, is blocked, or returns worse content, retry the same
-`super_mode` value with `browser_rendering: false`. Stop after a usable response
-unless the task requires comparing modes.
-
-### `scrape`
-
-`scrape` creates an AI scraper through:
-
-```text
-POST https://api.app.mrscraper.com/api/v1/scrapers-ai
-```
-
-Choose an agent based on the extraction shape:
-
-| Agent     | Designed for                          | Available inputs                                                          |
-| --------- | ------------------------------------- | ------------------------------------------------------------------------- |
-| `general` | Defined fields from a page            | `prompt`, `schema_prompt`, `proxy_country`                                |
-| `listing` | Repeated records across listing pages | `prompt`, `schema_prompt`, `proxy_country`, `max_pages`                   |
-| `map`     | URL discovery across a site           | `max_depth`, `max_pages`, `limit`, `include_patterns`, `exclude_patterns` |
-
-General extraction:
-
-```json
-{
-  "url": "https://www.scrapethissite.com/pages/simple/",
-  "agent": "general",
-  "mode": "Super",
-  "prompt": "Extract Andorra's name, capital, population, and area"
-}
-```
-
-Listing extraction:
-
-```json
-{
-  "url": "https://www.scrapethissite.com/pages/forms/",
-  "agent": "listing",
-  "prompt": "Extract every hockey team, year, wins, losses, and win percentage",
-  "max_pages": 5
-}
-```
-
-Site map:
-
-```json
-{
-  "url": "https://www.scrapethissite.com/",
-  "agent": "map",
-  "max_depth": 2,
-  "max_pages": 50,
-  "limit": 1000,
-  "include_patterns": "/pages/",
-  "exclude_patterns": "/login/"
-}
-```
-
-Best-effort schema guidance:
-
-```json
-{
-  "url": "https://www.scrapethissite.com/pages/simple/",
-  "prompt": "Extract Andorra's name and capital",
-  "schema_prompt": {
-    "type": "object",
-    "properties": {
-      "name": { "type": "string" },
-      "capital": { "type": "string" }
-    },
-    "required": ["name", "capital"]
-  }
-}
-```
-
-`schema_prompt` is appended to the natural-language instruction. Treat it as
-shape guidance and validate returned data in the consuming application when
-strict conformance is required.
-
-| Input              | Required        | Default         | Request mapping        | Purpose                                                     |
-| ------------------ | --------------- | --------------- | ---------------------- | ----------------------------------------------------------- |
-| `url`              | Yes             | -               | Body `url`             | Target URL for every agent.                                 |
-| `prompt`           | General/listing | -               | Body `message`         | Natural-language extraction instructions.                   |
-| `schema_prompt`    | No              | omitted         | Appended to `message`  | Best-effort JSON Schema shape guidance for general/listing. |
-| `agent`            | No              | `general`       | Body `agent`           | Selects `general`, `listing`, or `map`.                     |
-| `mode`             | No              | service default | Body `mode`            | Selects `Cheap` or `Super` independently of the agent.      |
-| `proxy_country`    | No              | omitted         | Body `proxyCountry`    | Proxy country for general/listing.                          |
-| `max_pages`        | No              | service default | Body `maxPages`        | Page bound for listing/map.                                 |
-| `max_depth`        | No              | service default | Body `maxDepth`        | Link-depth bound for map.                                   |
-| `limit`            | No              | service default | Body `limit`           | URL-result bound for map.                                   |
-| `include_patterns` | No              | service default | Body `includePatterns` | URL inclusion expression for map.                           |
-| `exclude_patterns` | No              | service default | Body `excludePatterns` | URL exclusion expression for map.                           |
-
-General and listing send `url`, `message`, and `agent`, plus the supplied
-agent inputs. Map sends `url`, `agent`, and only the supplied crawl inputs.
-
-#### Reproduce a scrape with `rerun`
-
-Every successful `scrape` creates a saved AI scraper configuration by default.
-Its response run object contains `scraperId`. Pass that UUID to `rerun` as
-`scraper_id` to apply the same saved extraction configuration to the original
-URL or another URL without rebuilding the prompt and agent settings:
-
-```json
-{
-  "target": "https://www.scrapethissite.com/pages/forms/?page_num=2",
-  "type": "ai",
-  "scraper_id": "scraper-uuid"
-}
-```
-
-This makes the scraper configuration reproducible, but it does not guarantee
-identical extracted values when the page or model behavior changes.
-
-`rerun` also supports dashboard-built manual workflows and asynchronous bulk
-jobs across multiple target URLs. See the full [`rerun`](#rerun) section below
-for the available modes and result-tracking workflow.
-
-### `serp`
-
-`serp` calls the synchronous Google endpoint:
+### `webSearch`
 
 ```text
 POST https://sync.scraper.mrscraper.com/api/google/serp/v2/sync
 ```
 
-Search from a query:
+Request parsed Google results:
 
 ```json
 {
-  "query_or_url": "iphone 17",
+  "url": "MrScraper web scraping",
+  "raw": false,
   "region": "id",
   "language": "id",
-  "page": 2,
+  "page": 1,
   "format": "json"
 }
 ```
 
-A Google search URL can supply the query, locale, and page:
+`raw=true` is the Python SDK-compatible default and requests HTML regardless
+of `format`. Set `raw=false` and `format="json"` for parsed results.
+
+A Google search URL supplies the query, locale, and page:
 
 ```json
 {
-  "query_or_url": "https://www.google.com/search?q=iphone+17&gl=us&hl=en&start=20"
+  "url": "https://www.google.com/search?q=web+scraping&gl=us&hl=en&start=20",
+  "raw": false
 }
 ```
 
-The server derives `query` from `q`, `region` from `gl`, `language`
-from `hl`, and a one-based page number from `start). Explicit tool inputs
-take priority over URL-derived values.
+This derives `query="web scraping"`, `region="us"`, `language="en"`, and
+`page=3`. Explicit options override URL-derived values.
 
-| Input            | Required | Default              | Request mapping        | Purpose                                      |
-| ---------------- | -------- | -------------------- | ---------------------- | -------------------------------------------- |
-| `query_or_url`   | Yes      | -                    | Body `query`           | Google query or Google search URL.           |
-| `region`         | No       | URL value or omitted | Body `region`          | Result country.                              |
-| `language`       | No       | URL value or omitted | Body `language`        | Result language.                             |
-| `page`           | No       | URL value or omitted | Body `page`            | One-based result page.                       |
-| `format`         | No       | `json`               | Body `format`          | Selects parsed JSON or result-page HTML.     |
-| `render_js`      | No       | `false`              | Body `renderJs`        | Waits for JavaScript-rendered SERP features. |
-| `raw`            | No       | `false`              | Body `format=html`     | Compatibility alias for HTML output.         |
-| `client_timeout` | No       | `120`                | Local request deadline | Sets the upstream HTTP timeout in seconds.   |
+| Input       | Default              | Request mapping / purpose                                   |
+| ----------- | -------------------- | ----------------------------------------------------------- |
+| `url`       | required             | Search text or Google URL; normalized to body `query`.      |
+| `raw`       | `true`               | Forces body `format="html"`; false allows `format`.         |
+| `format`    | `"json"`             | Body `format`, either `json` or `html`, when raw is false.  |
+| `region`    | URL value or omitted | Body `region`; overrides `gl`.                              |
+| `language`  | URL value or omitted | Body `language`; overrides `hl`.                            |
+| `page`      | URL value or omitted | Body `page`; positive one-based integer, overrides `start`. |
+| `render_js` | `false`              | Body `renderJs`; render dynamic search features.            |
+| `timeout`   | `600`                | Local HTTP deadline in seconds; omitted from the body.      |
 
-### `status`
+### Response envelope
 
-`status` always reads account data from:
-
-```text
-GET https://api.app.mrscraper.com/api/v1/subscription-accounts
-```
-
-With `domain`, it also reads request-outcome analytics from:
-
-```text
-GET https://api.app.mrscraper.com/api/v1/analytic/statuses
-```
+Both tools return `status_code`, `data`, and `headers` in `structuredContent`
+and as JSON text. JSON bodies are parsed; other response bodies remain text.
+`data` may contain HTML, Markdown, screenshot data, or parsed search records,
+depending on your options and the upstream response.
 
 ```json
 {
-  "domain": "https://www.scrapethissite.com/pages/",
-  "from": "7d",
-  "to": "now",
-  "action": "fetch",
-  "api_token_name": "production"
-}
-```
-
-| Input            | Required | Default      | Purpose                                                                                     |
-| ---------------- | -------- | ------------ | ------------------------------------------------------------------------------------------- |
-| `domain`         | No       | omitted      | Adds request-outcome analytics for a hostname or URL.                                       |
-| `from`           | No       | `24h`        | Range start as ISO 8601, `now`, or a relative duration such as `30m`, `24h`, `7d`, or `2w`. |
-| `to`             | No       | `now`        | Range end using the same date syntax.                                                       |
-| `action`         | No       | empty filter | Filters analytics by exact action.                                                          |
-| `api_token_name` | No       | empty filter | Filters analytics by API-token name.                                                        |
-
-Successful output is a normalized account and analytics summary:
-
-```json
-{
-  "kind": "mrscraper-cli-status-summary",
-  "source_endpoints": ["/subscription-accounts", "/analytic/statuses"],
   "status_code": 200,
-  "data": {
-    "account": {
-      "subscription_status": "active",
-      "enterprise": false,
-      "token_usage": 250,
-      "token_limit": 1000,
-      "token_remaining": 750,
-      "usage_percent": 25,
-      "rate_limit": 10,
-      "rate_ttl": 60,
-      "auto_renew": true,
-      "ends_at": null,
-      "user": {
-        "name": "Ada",
-        "email": "ada@example.test",
-        "verified": true
-      }
-    },
-    "analytics": {
-      "domain": "www.scrapethissite.com",
-      "from": "2026-08-11 00:00:00 UTC",
-      "to": "2026-08-18 00:00:00 UTC"
-    }
+  "data": "<html>...</html>",
+  "headers": {
+    "content-type": "text/html"
   }
 }
 ```
 
-The summary calculates `token_remaining` and `usage_percent`, normalizes a
-URL to its hostname, and records the source endpoints used for the response.
+Failures include `error` and set MCP `isError=true`. Network failures have
+`status_code=null`. Credential-bearing response headers and JSON metadata
+are filtered; network errors redact signed query credentials.
 
-### `rerun`
+## Manual testing: one tool at a time
 
-`type` and `bulk` describe different parts of the request:
+[`scripts/test-tools.ts`](scripts/test-tools.ts) starts the compiled local MCP
+server over stdio, verifies that exactly the two tools are exposed, calls one
+tool, prints its response, and exits. No separate server terminal is needed.
+The runner loads `.env`, or reads `MRSCRAPER_API_KEY` / `MRSCRAPER_API_TOKEN`
+from your shell. Each tool call uses the live MrScraper service.
 
-- Set `type` to `ai` for a saved AI scraper created by the `scrape` tool.
-- Set `type` to `manual` for a saved step-based workflow created in the
-  MrScraper dashboard. MCP reruns that workflow but does not create it.
-- Leave `bulk` as `false` for one URL. Set it to `true` to apply the same saved
-  configuration to a comma- or newline-separated URL list in one bulk request.
+Run these commands individually from the repository directory:
 
-Manual reruns can be single or bulk, and bulk reruns can use either scraper
-type. Bulk describes the number of targets; manual describes how the saved
-scraper was built.
+1. Install dependencies:
 
-Bulk mode submits one asynchronous backend job; MCP does not repeat the
-single-URL tool call locally. Save `data.data.bulkResultId` from the response
-and pass it to `result` as `result_id` until the stored result is finished.
+   ```sh
+   npm ci
+   ```
 
-`rerun` routes one tool contract to four saved-scraper endpoints:
+2. Build the current server:
 
-| Mode          | Endpoint                           | ID input     | Target format                | Crawl controls      |
-| ------------- | ---------------------------------- | ------------ | ---------------------------- | ------------------- |
-| Single AI     | `POST /scrapers-ai-rerun`          | `scraper_id` | One URL                      | Available           |
-| Bulk AI       | `POST /scrapers-ai-rerun/bulk`     | `id`         | Comma/newline-separated URLs | Saved configuration |
-| Single manual | `POST /scrapers-manual-rerun`      | `scraper_id` | One URL                      | Saved configuration |
-| Bulk manual   | `POST /scrapers-manual-rerun/bulk` | `id`         | Comma/newline-separated URLs | Saved configuration |
+   ```sh
+   npm run build
+   ```
 
-Single AI rerun:
+3. Set your API key:
 
-```json
-{
-  "target": "https://www.scrapethissite.com/pages/forms/",
-  "type": "ai",
-  "scraper_id": "scraper-uuid",
-  "max_depth": 2,
-  "max_pages": 50,
-  "limit": 1000,
-  "include_patterns": "/pages/forms/",
-  "exclude_patterns": "/login/",
-  "proxy_country": "ID",
-  "max_retry": 4,
-  "timeout": 120
-}
+   ```sh
+   export MRSCRAPER_API_KEY="YOUR_MRSCRAPER_API_KEY"
+   ```
+
+4. Test `scraperAPI`:
+
+   ```sh
+   npm run test:manual -- scraperAPI --url "https://www.scrapethissite.com/pages/simple/"
+   ```
+
+5. Test `webSearch`:
+
+   ```sh
+   npm run test:manual -- webSearch --query "MrScraper web scraping"
+   ```
+
+The webSearch sample explicitly requests `raw=false`, `format="json"`, US
+results, and English. Both commands print `Tools: scraperAPI, webSearch` and
+`PASS <tool>` on success. Exit codes are 0 for success, 1 for a tool or
+connection failure, and 2 for invalid command arguments.
+
+Pass a complete JSON object to test any supported options:
+
+```sh
+npm run test:manual -- scraperAPI --args '{"url":"https://example.com","markdown":true,"screenshot":true,"super":true}'
 ```
 
-Bulk manual rerun:
-
-```json
-{
-  "target": "https://www.scrapethissite.com/pages/simple/,https://www.scrapethissite.com/pages/forms/\nhttps://www.scrapethissite.com/pages/ajax-javascript/",
-  "type": "manual",
-  "bulk": true,
-  "id": "scraper-uuid",
-  "acknowledged": true
-}
+```sh
+npm run test:manual -- webSearch --args '{"url":"web scraping","raw":false,"region":"id","language":"id","page":1,"render_js":true}'
 ```
 
-| Input              | Required    | Default | Purpose                                                                                      |
-| ------------------ | ----------- | ------- | -------------------------------------------------------------------------------------------- |
-| `target`           | Yes         | -       | One URL, or a comma/newline-separated URL string for bulk mode.                              |
-| `type`             | Yes         | -       | Selects `ai` or `manual`.                                                                    |
-| `bulk`             | No          | `false` | Selects a bulk endpoint.                                                                     |
-| `scraper_id`       | Single mode | -       | Saved scraper UUID for one URL.                                                              |
-| `id`               | Bulk mode   | -       | Saved scraper UUID for the bulk URL list.                                                    |
-| `acknowledged`     | Manual      | omitted | Confirms the user accepted the compliance warning; manual reruns run only when it is `true`. |
-| `max_depth`        | Single AI   | omitted | Crawl depth; omission preserves the saved scraper/backend default.                           |
-| `max_pages`        | Single AI   | omitted | Page bound; omission preserves the saved scraper/backend default.                            |
-| `limit`            | Single AI   | omitted | Result bound; omission preserves the saved scraper/backend default.                          |
-| `include_patterns` | Single AI   | omitted | URL inclusion expression; omission preserves saved/backend defaults.                         |
-| `exclude_patterns` | Single AI   | omitted | URL exclusion expression; omission preserves saved/backend defaults.                         |
-| `proxy_country`    | Single AI   | omitted | Proxy country code.                                                                          |
-| `max_retry`        | Single AI   | omitted | Retry limit; zero is accepted.                                                               |
-| `timeout`          | Single AI   | omitted | Timeout in seconds, used by listing reruns.                                                  |
-
-The MCP server sends single-AI controls only when supplied. Manual and bulk
-reruns reject them.
-
-A manual rerun, single or bulk, runs only with `acknowledged: true`, which
-confirms the user accepted MrScraper's compliance warning about scraping
-login-protected pages. Without it, the tool returns that warning as a tool error
-and does not call the API.
-
-### `results`
-
-`results` reads the stored result collection:
-
-```text
-GET https://api.app.mrscraper.com/api/v1/results
-```
-
-```json
-{
-  "sort_field": "updatedAt",
-  "sort_order": "desc",
-  "page_size": 25,
-  "page": 1,
-  "search": "scrapethissite.com",
-  "scraper_id": "scraper-uuid",
-  "status": "Finished",
-  "type": "Rerun-AI",
-  "url": "https://www.scrapethissite.com/pages/forms/",
-  "date_range_column": "updatedAt",
-  "start_at": "2026-08-01T00:00:00Z",
-  "end_at": "2026-08-18T23:59:59Z"
-}
-```
-
-| Input               | Required | Default     | Query mapping        | Purpose                                                       |
-| ------------------- | -------- | ----------- | -------------------- | ------------------------------------------------------------- |
-| `sort_field`        | No       | `updatedAt` | `sortField`          | Field used by the results API for sorting.                    |
-| `sort_order`        | No       | `desc`      | `sortOrder`          | Case-insensitive `asc` or `desc`; sent upstream in uppercase. |
-| `page_size`         | No       | `10`        | `pageSize`           | Number of rows per page.                                      |
-| `page`              | No       | `1`         | `page`               | One-based page index.                                         |
-| `search`            | No       | omitted     | `search`             | Free-text result filter.                                      |
-| `scraper_id`        | No       | omitted     | `filters[scraperId]` | Exact saved scraper UUID filter.                              |
-| `status`            | No       | omitted     | `filters[status]`    | Exact Draft, Finished, Running, Failed, or Cancelled filter.  |
-| `type`              | No       | omitted     | `filters[type]`      | Exact result type filter, such as AI or Rerun-AI.             |
-| `url`               | No       | omitted     | `filters[url]`       | Exact stored target URL filter.                               |
-| `date_range_column` | No       | omitted     | `dateRangeColumn`    | Column used by the date range.                                |
-| `start_at`          | No       | omitted     | `startAt`            | Inclusive range start.                                        |
-| `end_at`            | No       | omitted     | `endAt`              | Inclusive range end.                                          |
-
-### `result`
-
-`result` reads one stored result:
-
-```text
-GET https://api.app.mrscraper.com/api/v1/results/{result_id}
-```
-
-```json
-{
-  "result_id": "result-uuid",
-  "include_html": false
-}
-```
-
-| Input          | Required | Default | Purpose                                                                  |
-| -------------- | -------- | ------- | ------------------------------------------------------------------------ |
-| `result_id`    | Yes      | -       | Stored MrScraper result UUID.                                            |
-| `include_html` | No       | `true`  | Includes stored HTML; set false for smaller polling or data-only output. |
+To test an already running HTTP MCP server, append
+`--target http://127.0.0.1:8000/mcp`. Rebuild after source changes when testing
+local stdio. `npm run test:manual -- --help` lists runner options.
 
 ## Run the server locally
 
@@ -691,7 +420,7 @@ server environment credentials are never used on the HTTP transport.
 
 The server filters credential-bearing response headers. Parsed JSON credential
 metadata and credentials embedded in generated curl commands are redacted.
-Scraper run extraction values remain available in `data`.
+Page content remains available in `data`.
 
 Browser-origin requests are accepted from trusted local origins, from
 `claude.ai` and `chatgpt.com`, and from exact origins configured through
@@ -701,10 +430,9 @@ checks, since any client must be able to read them before it has credentials.
 
 ## Interactive widgets
 
-Tool results that suit a visual answer carry a UI resource: `serp` renders a
-result list, `scrape`/`results`/`result` render a record table, and `status`
-renders a quota card. Hosts that do not support MCP Apps ignore them and show
-the JSON as before.
+`webSearch` carries a self-contained Google results widget for parsed JSON
+results. HTML responses show a prompt to request parsed results. Hosts without
+MCP Apps support display the normal JSON tool response.
 
 Each widget is a self-contained document with its script and styles inlined,
 because strict host CSP blocks anything external. Each one declares an empty
@@ -730,7 +458,7 @@ deployment and keep bearer authentication enabled.
 | `HOST`                           | `127.0.0.1`                       | HTTP bind address; the Docker image uses `0.0.0.0`.              |
 | `PORT`                           | `8000`                            | HTTP listen port.                                                |
 | `MRSCRAPER_API_KEY`              | -                                 | Primary stdio credential.                                        |
-| `MRSCRAPER_API_TOKEN`            | -                                 | Legacy stdio credential alias.                                   |
+| `MRSCRAPER_API_TOKEN`            | -                                 | Alternative stdio credential (also used by the Python SDK).      |
 | `MRSCRAPER_HTTP_AUTH`            | `1`                               | Enables HTTP bearer verification.                                |
 | `MRSCRAPER_OAUTH`                | `1`                               | Accepts OAuth 2.1 access tokens alongside API keys.              |
 | `MRSCRAPER_MCP_PUBLIC_URL`       | `https://mcp.mrscraper.com`       | Public origin; `<origin>/mcp` is the required token audience.    |
@@ -738,8 +466,8 @@ deployment and keep bearer authentication enabled.
 | `MRSCRAPER_OAUTH_JWKS_URL`       | `<issuer>/.well-known/jwks.json`  | Key set used to verify access tokens.                            |
 | `MRSCRAPER_ALLOWED_ORIGINS`      | -                                 | Comma-separated browser origins allowed to call the HTTP server. |
 | `MRSCRAPER_API_BASE_URL`         | MrScraper platform API            | Platform endpoint override for development and testing.          |
-| `MRSCRAPER_FETCH_BASE_URL`       | MrScraper Web Unblocker           | Fetch endpoint override.                                         |
-| `MRSCRAPER_SYNC_BASE_URL`        | MrScraper synchronous scraper API | SERP endpoint override.                                          |
+| `MRSCRAPER_FETCH_BASE_URL`       | MrScraper Web Unblocker           | Scraper API endpoint override.                                   |
+| `MRSCRAPER_SYNC_BASE_URL`        | MrScraper synchronous scraper API | Web search endpoint override.                                    |
 | `MRSCRAPER_LOG_HTTP_PAYLOAD`     | off                               | Enables trusted-environment request-body diagnostics.            |
 | `MRSCRAPER_LOG_HTTP_PAYLOAD_MAX` | `8192`                            | Maximum diagnostic payload length.                               |
 
@@ -757,11 +485,11 @@ deployment and keep bearer authentication enabled.
 - **403 Forbidden Origin:** Add the exact browser origin to
   `MRSCRAPER_ALLOWED_ORIGINS`.
 - **Tool input error:** Compare the call with the tool's parameter table and
-  the selected scrape or rerun mode.
-- **Upstream timeout:** Increase `fetch.timeout` or `serp.client_timeout`
+  the documented SDK-compatible defaults.
+- **Upstream timeout:** Increase `scraperAPI.timeout` (up to 300 seconds) or `webSearch.timeout`
   when the target requires a longer request window.
 - **New tools are missing:** Start a new client session and inspect
-  `tools/list` for all seven names.
+  `tools/list` for exactly `scraperAPI` and `webSearch`.
 
 ## Development
 
@@ -782,8 +510,9 @@ npm run test:mcp -- \
   --token "$MRSCRAPER_API_KEY"
 ```
 
-`npm run test:e2e` exercises all seven tools against the live MrScraper
-service and creates stored scraper results.
+`npm run test:e2e` runs both new tools sequentially against the live MrScraper
+service using the manual runner. Use `-- --url URL --query QUERY` to customize
+the targets, or `-- --target http://127.0.0.1:8000/mcp` to use HTTP.
 
 ## MCP Registry
 

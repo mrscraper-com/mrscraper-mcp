@@ -9,6 +9,8 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 
+import { TOOL_NAMES } from "../src/config.js";
+
 function printJson(label: string, value: unknown): void {
   console.log(`\n== ${label} ==`);
   console.log(JSON.stringify(value, null, 2));
@@ -55,6 +57,14 @@ async function main(): Promise<number> {
     const { tools } = await client.listTools();
     const names = tools.map((tool) => tool.name);
     printJson("tools", names);
+    if (
+      JSON.stringify([...names].sort()) !==
+      JSON.stringify([...TOOL_NAMES].sort())
+    ) {
+      throw new Error(
+        "Expected only scraperAPI and webSearch. Rebuild or restart the server.",
+      );
+    }
 
     if (values["call-tool"]) {
       const name = values["call-tool"];
@@ -64,10 +74,22 @@ async function main(): Promise<number> {
         );
         return 2;
       }
-      const result = await client.callTool({
-        name,
-        arguments: argumentsValue as Record<string, unknown>,
-      });
+      const args = argumentsValue as Record<string, unknown>;
+      const timeout =
+        typeof args.timeout === "number" && args.timeout > 0
+          ? args.timeout
+          : name === "scraperAPI"
+            ? 120
+            : 600;
+      const result = await client.callTool(
+        {
+          name,
+          arguments: args,
+        },
+        {
+          timeout: (timeout + (name === "scraperAPI" ? 30 : 0) + 15) * 1000,
+        },
+      );
       printJson(`tool result: ${name}`, {
         structuredContent: result.structuredContent,
         content: result.content,

@@ -8,6 +8,7 @@ const SENSITIVE_RESPONSE_HEADERS = new Set([
   "set-cookie",
   "set-cookie2",
   "x-api-token",
+  "x-discard-token-secret",
 ]);
 
 const SENSITIVE_DATA_KEYS = new Set([
@@ -24,6 +25,7 @@ const SENSITIVE_DATA_KEYS = new Set([
   "set-cookie",
   "token",
   "x-api-token",
+  "x-discard-token-secret",
 ]);
 
 const API_TOKEN_PATTERN = /\batk_[A-Za-z0-9_-]{12,}\b/g;
@@ -186,7 +188,9 @@ export async function request(
       (error instanceof Error && error.name === "AbortError") ||
       /abort(?:ed)?/i.test(message);
     return {
-      error: aborted ? `Request timed out after ${timeoutSeconds}s` : message,
+      error: aborted
+        ? `Request timed out after ${timeoutSeconds}s`
+        : redactSensitiveString(message),
       status_code: null,
       data: null,
       headers: {},

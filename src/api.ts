@@ -3,31 +3,21 @@ import { getApiEndpoints } from "./config.js";
 import { request, type ApiResponse } from "./http.js";
 import { isOAuthAccessToken } from "./oauth.js";
 
-export type Agent = "general" | "listing" | "map";
-export type ScrapeMode = "Cheap" | "Super";
-export type SerpFormat = "json" | "html";
+export type SearchFormat = "json" | "html";
 
 interface FetchDependency {
   fetchFn?: typeof fetch;
 }
 
-const CLI_FETCH_HEADERS = {
-  "User-Agent": "node",
-  "Accept-Language": "*",
-  "Sec-Fetch-Mode": "cors",
-};
-
 export function getAuthHeaders(token: string): Record<string, string> {
   const apiToken = normalizeBearerToken(token);
   if (!apiToken) throw new Error("API token is required");
-
-  if (isOAuthAccessToken(apiToken)) {
-    return { ...CLI_FETCH_HEADERS, Authorization: `Bearer ${apiToken}` };
-  }
   return {
-    ...CLI_FETCH_HEADERS,
+    "User-Agent": "node",
+    "Accept-Language": "*",
+    "Sec-Fetch-Mode": "cors",
     Authorization: `Bearer ${apiToken}`,
-    "x-api-token": apiToken,
+    ...(!isOAuthAccessToken(apiToken) ? { "x-api-token": apiToken } : {}),
   };
 }
 
@@ -42,395 +32,166 @@ function compact(
   );
 }
 
-export interface FetchContentOptions extends FetchDependency {
+export interface ScraperApiOptions extends FetchDependency {
   token: string;
   url: string;
+  html?: boolean;
+  markdown?: boolean;
   timeout?: number;
-  geoCode?: string | null;
-  browserRendering?: boolean;
-  superMode?: boolean;
+  geoCode?: string;
+  proxyCountry?: string | null;
+  blockResources?: boolean | null;
+  browserRendering?: boolean | null;
+  super?: boolean;
+  useProxy?: boolean;
+  proxy?: string | null;
   waitForSelector?: string | null;
   homePage?: boolean;
-  blockResources?: boolean;
+  screenshot?: boolean;
+  bypassProxy?: boolean;
+  cookieJar?: string | null;
+  headers?: Record<string, string> | string | null;
   maxRetries?: number;
   tokenCap?: number | null;
+  stream?: boolean | null;
+  discardTokenSecret?: string;
 }
 
-export async function fetchContentApi({
+export async function scraperApi({
   token,
   url,
-  timeout = 30,
-  geoCode = null,
-  browserRendering = false,
-  superMode = false,
+  html = true,
+  markdown = false,
+  timeout = 120,
+  geoCode = "US",
+  proxyCountry = null,
+  blockResources = false,
+  browserRendering = null,
+  super: superMode = false,
+  useProxy = true,
+  proxy = null,
   waitForSelector = null,
   homePage = false,
-  blockResources = false,
+  screenshot = false,
+  bypassProxy = false,
+  cookieJar = null,
+  headers = null,
   maxRetries = 3,
   tokenCap = null,
+  stream = null,
+  discardTokenSecret = "",
   fetchFn,
-}: FetchContentOptions): Promise<ApiResponse> {
-  return request("GET", getApiEndpoints().fetchHtmlBaseUrl, {
-    headers: getAuthHeaders(token),
+}: ScraperApiOptions): Promise<ApiResponse> {
+  if (!Number.isInteger(timeout) || timeout < 1 || timeout > 300) {
+    throw new Error("timeout must be between 1 and 300 seconds");
+  }
+  if (!Number.isInteger(maxRetries) || maxRetries < 0) {
+    throw new Error("max_retries must be a nonnegative integer");
+  }
+  if (tokenCap !== null && (!Number.isInteger(tokenCap) || tokenCap < 0)) {
+    throw new Error("token_cap must be a nonnegative integer");
+  }
+  const apiToken = normalizeBearerToken(token);
+  return request("POST", getApiEndpoints().scraperApiUrl, {
+    headers: {
+      ...getAuthHeaders(apiToken),
+      ...(discardTokenSecret
+        ? { "x-discard-token-secret": discardTokenSecret }
+        : {}),
+    },
     params: compact({
-      url,
+      // Match the SDK's API-key query parameter; OAuth JWTs stay in Authorization.
+      token: isOAuthAccessToken(apiToken) ? null : apiToken,
       timeout,
       geoCode,
-      browserRendering,
-      super: superMode,
+      proxyCountry,
+      browserRendering: screenshot ? true : browserRendering,
+      super: superMode ? true : null,
+      useProxy: useProxy ? null : false,
+      proxy,
+      html,
+      markdown,
       waitForSelector,
-      homePage,
-      blockResources,
-      maxRetries,
-      tokenCap,
+      warmStart: homePage ? true : null,
+      screenshot: screenshot ? true : null,
+      blockResources: blockResources ? true : null,
+      bypassProxy: bypassProxy ? true : null,
+      cookieJar,
+      headers:
+        typeof headers === "object" && headers !== null
+          ? JSON.stringify(headers)
+          : headers,
+      stream,
     }),
+    json: compact({ url, maxRetries, tokenCap }),
     timeout: timeout + 30,
     fetchFn,
   });
 }
 
-export interface CreateAiScraperOptions extends FetchDependency {
-  token: string;
-  url: string;
-  message?: string;
-  agent?: Agent;
-  mode?: ScrapeMode;
-  proxyCountry?: string | null;
-  maxDepth?: number;
-  maxPages?: number;
-  limit?: number;
-  includePatterns?: string;
-  excludePatterns?: string;
-}
-
-export async function createAiScraperApi({
-  token,
-  url,
-  message,
-  agent = "general",
-  mode,
-  proxyCountry = null,
-  maxDepth,
-  maxPages,
-  limit,
-  includePatterns,
-  excludePatterns,
-  fetchFn,
-}: CreateAiScraperOptions): Promise<ApiResponse> {
-  if (!(agent === "general" || agent === "listing" || agent === "map")) {
-    throw new Error("agent must be general, listing, or map");
-  }
-  if (mode !== undefined && !(mode === "Cheap" || mode === "Super")) {
-    throw new Error("mode must be Cheap or Super");
-  }
-  if ((agent === "general" || agent === "listing") && !message?.trim()) {
-    throw new Error(
-      "An extraction message is required for general and listing agents",
-    );
-  }
-  if (agent === "map" && proxyCountry !== null && proxyCountry !== undefined) {
-    throw new Error("The map agent does not accept proxyCountry");
-  }
-
-  const payload: Record<string, unknown> = { url, agent };
-  if (mode !== undefined) payload.mode = mode;
-  if (agent === "general" || agent === "listing") {
-    payload.message = message;
-    if (proxyCountry !== null && proxyCountry !== undefined) {
-      payload.proxyCountry = proxyCountry;
-    }
-    if (agent === "listing" && maxPages !== undefined) {
-      payload.maxPages = maxPages;
-    }
-  } else {
-    if (message)
-      throw new Error("The map agent does not accept an extraction prompt");
-    if (maxDepth !== undefined) payload.maxDepth = maxDepth;
-    if (maxPages !== undefined) payload.maxPages = maxPages;
-    if (limit !== undefined) payload.limit = limit;
-    if (includePatterns !== undefined)
-      payload.includePatterns = includePatterns;
-    if (excludePatterns !== undefined)
-      payload.excludePatterns = excludePatterns;
-  }
-  return request("POST", getApiEndpoints().scrapersAi, {
-    headers: { accept: "application/json", ...getAuthHeaders(token) },
-    json: payload,
-    fetchFn,
-  });
-}
-
-export interface RerunAiOptions extends FetchDependency {
-  token: string;
-  scraperId: string;
-  url: string;
-  maxDepth?: number;
-  maxPages?: number;
-  limit?: number;
-  includePatterns?: string;
-  excludePatterns?: string;
-  proxyCountry?: string;
-  maxRetry?: number;
-  timeout?: number;
-}
-
-export async function rerunAiScraperApi({
-  token,
-  scraperId,
-  url,
-  maxDepth,
-  maxPages,
-  limit,
-  includePatterns,
-  excludePatterns,
-  proxyCountry,
-  maxRetry,
-  timeout,
-  fetchFn,
-}: RerunAiOptions): Promise<ApiResponse> {
-  return request("POST", getApiEndpoints().scrapersAiRerun, {
-    headers: { accept: "application/json", ...getAuthHeaders(token) },
-    json: compact({
-      scraperId,
-      url,
-      maxDepth,
-      maxPages,
-      limit,
-      includePatterns,
-      excludePatterns,
-      proxyCountry,
-      maxRetry,
-      timeout,
-    }),
-    fetchFn,
-  });
-}
-
-interface BulkRerunOptions extends FetchDependency {
-  token: string;
-  scraperId: string;
-  urls: string[];
-}
-
-export async function bulkRerunAiScraperApi({
-  token,
-  scraperId,
-  urls,
-  fetchFn,
-}: BulkRerunOptions): Promise<ApiResponse> {
-  return request("POST", getApiEndpoints().scrapersAiRerunBulk, {
-    headers: { accept: "application/json", ...getAuthHeaders(token) },
-    json: { scraperId, urls },
-    fetchFn,
-  });
-}
-
-interface ManualRerunOptions extends FetchDependency {
-  token: string;
-  scraperId: string;
-  url: string;
-}
-
-export async function rerunManualScraperApi({
-  token,
-  scraperId,
-  url,
-  fetchFn,
-}: ManualRerunOptions): Promise<ApiResponse> {
-  return request("POST", getApiEndpoints().scrapersManualRerun, {
-    headers: { accept: "application/json", ...getAuthHeaders(token) },
-    json: { scraperId, url },
-    fetchFn,
-  });
-}
-
-export async function bulkRerunManualScraperApi({
-  token,
-  scraperId,
-  urls,
-  fetchFn,
-}: BulkRerunOptions): Promise<ApiResponse> {
-  return request("POST", getApiEndpoints().scrapersManualRerunBulk, {
-    headers: { accept: "application/json", ...getAuthHeaders(token) },
-    json: { scraperId, urls },
-    fetchFn,
-  });
-}
-
-export interface GetResultsOptions extends FetchDependency {
-  token: string;
-  sortField?: string;
-  sortOrder?: string;
-  pageSize?: number;
-  page?: number;
-  search?: string | null;
-  dateRangeColumn?: string | null;
-  startAt?: string | null;
-  endAt?: string | null;
-  scraperId?: string | null;
-  status?: string | null;
-  type?: string | null;
-  url?: string | null;
-}
-
-export async function getAllResultsApi({
-  token,
-  sortField = "updatedAt",
-  sortOrder = "DESC",
-  pageSize = 10,
-  page = 1,
-  search = null,
-  dateRangeColumn = null,
-  startAt = null,
-  endAt = null,
-  scraperId = null,
-  status = null,
-  type = null,
-  url = null,
-  fetchFn,
-}: GetResultsOptions): Promise<ApiResponse> {
-  const params: Record<string, string | number> = {
-    sortField,
-    sortOrder,
-    pageSize,
-    page,
-  };
-  if (search) params.search = search;
-  if (dateRangeColumn) params.dateRangeColumn = dateRangeColumn;
-  if (startAt) params.startAt = startAt;
-  if (endAt) params.endAt = endAt;
-  if (scraperId) params["filters[scraperId]"] = scraperId;
-  if (status) params["filters[status]"] = status;
-  if (type) params["filters[type]"] = type;
-  if (url) params["filters[url]"] = url;
-  return request("GET", getApiEndpoints().results, {
-    headers: { accept: "application/json", ...getAuthHeaders(token) },
-    params,
-    fetchFn,
-  });
-}
-
-export async function getResultByIdApi(
-  token: string,
-  resultId: string,
-  options: FetchDependency & { includeHtml?: boolean } = {},
-): Promise<ApiResponse> {
-  return request("GET", `${getApiEndpoints().results}/${resultId}`, {
-    headers: { accept: "application/json", ...getAuthHeaders(token) },
-    params: { includeHtml: options.includeHtml ?? true },
-    fetchFn: options.fetchFn,
-  });
-}
-
-export async function getSubscriptionAccountApi(
-  token: string,
-  options: FetchDependency = {},
-): Promise<ApiResponse> {
-  return request("GET", getApiEndpoints().subscriptionAccounts, {
-    headers: { accept: "application/json", ...getAuthHeaders(token) },
-    fetchFn: options.fetchFn,
-  });
-}
-
-export interface AnalyticStatusesOptions extends FetchDependency {
-  token: string;
-  domain: string;
-  startDate: string;
-  endDate: string;
-  action?: string;
-  apiTokenName?: string;
-}
-
-export async function getAnalyticStatusesApi({
-  token,
-  domain,
-  startDate,
-  endDate,
-  action = "",
-  apiTokenName = "",
-  fetchFn,
-}: AnalyticStatusesOptions): Promise<ApiResponse> {
-  return request("GET", getApiEndpoints().analyticStatuses, {
-    headers: { accept: "application/json", ...getAuthHeaders(token) },
-    params: { domain, startDate, endDate, action, apiTokenName },
-    fetchFn,
-  });
-}
-
-export interface NormalizedSerpInput {
+export interface NormalizedSearchInput {
   query: string;
   region: string | null;
   language: string | null;
   page: number | null;
 }
 
-export function normalizeSerpInput(input: string): NormalizedSerpInput {
+export function normalizeSearchInput(input: string): NormalizedSearchInput {
   const value = String(input || "").trim();
   if (!value) throw new Error("A Google search query or URL is required");
-
-  try {
-    const parsed = new URL(value);
-    const query = parsed.searchParams.get("q")?.trim();
-    if (!query) throw new Error("Google search URL must contain a q parameter");
-    const start = Number(parsed.searchParams.get("start") || 0);
-    return {
-      query,
-      region: parsed.searchParams.get("gl"),
-      language: parsed.searchParams.get("hl"),
-      page:
-        Number.isFinite(start) && start > 0 ? Math.floor(start / 10) + 1 : null,
-    };
-  } catch (error) {
-    if (/^https?:\/\//i.test(value)) throw error;
+  if (!/^https?:\/\//i.test(value)) {
     return { query: value, region: null, language: null, page: null };
   }
+  const parsed = new URL(value);
+  const query = parsed.searchParams.get("q")?.trim();
+  if (!query) throw new Error("Google search URL must contain a q parameter");
+  const startValue = parsed.searchParams.get("start") || "0";
+  const start = /^[+-]?\d+$/.test(startValue.trim()) ? Number(startValue) : 0;
+  return {
+    query,
+    region: parsed.searchParams.get("gl") || null,
+    language: parsed.searchParams.get("hl") || null,
+    page:
+      Number.isFinite(start) && start > 0 ? Math.floor(start / 10) + 1 : null,
+  };
 }
 
-export interface GoogleSerpOptions extends FetchDependency {
+export interface WebSearchOptions extends FetchDependency {
   token: string;
-  queryOrUrl: string;
+  url: string;
+  raw?: boolean;
   region?: string | null;
   language?: string | null;
   page?: number | null;
-  format?: SerpFormat;
+  format?: SearchFormat;
   renderJs?: boolean;
-  raw?: boolean;
   timeout?: number;
 }
 
-export async function googleSerpSyncApi({
+export async function webSearchApi({
   token,
-  queryOrUrl,
+  url,
+  raw = true,
   region = null,
   language = null,
   page = null,
   format = "json",
   renderJs = false,
-  raw = false,
-  timeout = 120,
+  timeout = 600,
   fetchFn,
-}: GoogleSerpOptions): Promise<ApiResponse> {
-  const normalized = normalizeSerpInput(queryOrUrl);
-  const resolvedFormat = raw ? "html" : format;
-  const payload = compact({
-    query: normalized.query,
-    region: region || normalized.region,
-    language: language || normalized.language,
-    page: page || normalized.page,
-    format: resolvedFormat,
-    renderJs: Boolean(renderJs),
-  });
-  return request("POST", getApiEndpoints().googleSerpSync, {
-    headers: { accept: "application/json", ...getAuthHeaders(token) },
-    json: payload,
+}: WebSearchOptions): Promise<ApiResponse> {
+  const normalized = normalizeSearchInput(url);
+  return request("POST", getApiEndpoints().webSearchUrl, {
+    headers: getAuthHeaders(token),
+    json: compact({
+      query: normalized.query,
+      region: region || normalized.region,
+      language: language || normalized.language,
+      page: page || normalized.page,
+      format: raw ? "html" : format,
+      renderJs,
+    }),
     timeout,
     fetchFn,
   });
-}
-
-export function parseBulkUrls(raw: string): string[] {
-  return raw
-    .split(/[,\n]/g)
-    .map((part) => part.trim())
-    .filter(Boolean);
 }
