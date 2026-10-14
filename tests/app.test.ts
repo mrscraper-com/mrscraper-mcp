@@ -49,7 +49,7 @@ describe("HTTP application", () => {
       status: "ready",
       service: "mrscraper-mcp",
       version: VERSION,
-      tools: 2,
+      tools: TOOL_NAMES.length,
     });
     expect((await fetch(`${baseUrl}/chatgpt`)).status).toBe(404);
   });

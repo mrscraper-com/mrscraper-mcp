@@ -19,6 +19,12 @@ export const WIDGETS = {
     title: "Google results",
     description: "Google search results with titles, links, and snippets.",
   },
+  status: {
+    bundle: "status",
+    uri: "ui://mrscraper/status/v1.html",
+    title: "Account status",
+    description: "MrScraper subscription plan and token usage.",
+  },
 } satisfies Record<string, WidgetDefinition>;
 
 export type WidgetName = keyof typeof WIDGETS;

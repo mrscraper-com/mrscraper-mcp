@@ -8,6 +8,7 @@ import {
 export const TOOL_SCOPES: Record<ToolName, OAuthScope> = {
   scraperAPI: "scrape:read",
   webSearch: "scrape:read",
+  status: "account:read",
 };
 
 export const ALL_SCOPES: OAuthScope[] = [...OAUTH_SCOPES];

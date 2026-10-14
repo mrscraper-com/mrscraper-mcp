@@ -37,6 +37,9 @@ try {
       values.target,
     );
   }
+  if (!process.exitCode) {
+    process.exitCode = await testTool("status", {}, values.target);
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;

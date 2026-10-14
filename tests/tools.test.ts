@@ -6,6 +6,7 @@ import { createMrscraperServer } from "../src/server.js";
 import {
   scraperAPIInputSchema,
   scraperAPITool,
+  statusTool,
   webSearchInputSchema,
   webSearchTool,
 } from "../src/tools.js";
@@ -155,7 +156,7 @@ describe("SDK-compatible tool inputs", () => {
 });
 
 describe("MCP tool surface", () => {
-  it("exposes exactly two complete tools without API-token arguments", async () => {
+  it("exposes the three tools without API-token arguments", async () => {
     const { client, server } = await connect(
       mockFetch(() => Response.json({ ok: true })),
     );
@@ -163,23 +164,32 @@ describe("MCP tool surface", () => {
       const { tools } = await client.listTools();
       expect(tools.map((tool) => tool.name)).toEqual(TOOL_NAMES);
       for (const tool of tools) {
+        const webTool = tool.name !== "status";
         expect(tool.title).toBeTruthy();
         expect(tool.description).toBeTruthy();
         expect(tool.outputSchema).toBeDefined();
         expect(tool.annotations).toMatchObject({
           title: tool.title,
           readOnlyHint: true,
-          openWorldHint: true,
+          openWorldHint: webTool,
           destructiveHint: false,
         });
-        expect(tool.inputSchema.required).toEqual(["url"]);
+        if (webTool) {
+          expect(tool.inputSchema.required).toEqual(["url"]);
+        } else {
+          expect(tool.inputSchema.properties ?? {}).toEqual({});
+        }
         expect(tool.inputSchema.properties).not.toHaveProperty("token");
         expect(tool.inputSchema.properties).not.toHaveProperty("api_key");
         for (const property of Object.values(
           tool.inputSchema.properties || {},
         )) {
           expect(
-            (property as { description?: string }).description,
+            property &&
+              typeof property === "object" &&
+              "description" in property
+              ? property.description
+              : undefined,
           ).toBeTruthy();
         }
       }
@@ -189,7 +199,7 @@ describe("MCP tool surface", () => {
     }
   });
 
-  it("calls both tools through MCP with the structured response envelope", async () => {
+  it("calls both web tools through MCP with the structured response envelope", async () => {
     const fetchFn = mockFetch((url) =>
       url.pathname.includes("/serp/")
         ? Response.json({
@@ -203,7 +213,7 @@ describe("MCP tool surface", () => {
     );
     const { client, server } = await connect(fetchFn);
     try {
-      for (const name of TOOL_NAMES) {
+      for (const name of ["scraperAPI", "webSearch"]) {
         const result = await client.callTool({
           name,
           arguments:
@@ -230,7 +240,7 @@ describe("MCP tool surface", () => {
     }
   });
 
-  it.each(["fetch", "scrape", "serp", "status", "rerun", "results", "result"])(
+  it.each(["fetch", "scrape", "serp", "rerun", "results", "result"])(
     "removes the old %s tool",
     async (name) => {
       const fetchFn = mockFetch(() => Response.json({ ok: true }));
@@ -286,5 +296,105 @@ describe("MCP tool surface", () => {
       await client.close();
       await server.close();
     }
+  });
+});
+
+describe("status tool", () => {
+  const account = {
+    stripeStatus: "active",
+    stripeSubscriptionId: "sub_secret",
+    stripeCustomerId: "cus_secret",
+    tokenLimit: 1000,
+    tokenUsage: 250,
+    rateLimit: 10,
+    rateTtl: 60,
+    isAutoRenew: true,
+    isEnterprise: false,
+    endsAt: "2026-11-01",
+    user: {
+      name: "Ada",
+      email: "ada@example.test",
+      isVerified: true,
+      latestApiToken: "atk_secret",
+    },
+  };
+
+  it("returns the account summary through MCP without credentials", async () => {
+    const requests: Array<{ url: URL; init: RequestInit }> = [];
+    const fetchFn = mockFetch((url, init) => {
+      requests.push({ url, init });
+      return Response.json({ data: account });
+    });
+    const { client, server } = await connect(fetchFn);
+    try {
+      const result = await client.callTool({ name: "status", arguments: {} });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent).toMatchObject({
+        kind: "mrscraper-cli-status-summary",
+        source_endpoints: ["/subscription-accounts"],
+        status_code: 200,
+        data: {
+          account: {
+            subscription_status: "active",
+            token_usage: 250,
+            token_limit: 1000,
+            token_remaining: 750,
+            usage_percent: 25,
+            rate_limit: 10,
+            auto_renew: true,
+            ends_at: "2026-11-01",
+            user: { name: "Ada", email: "ada@example.test", verified: true },
+          },
+        },
+      });
+      const text = JSON.stringify(result);
+      for (const secret of ["sub_secret", "cus_secret", "atk_secret"]) {
+        expect(text).not.toContain(secret);
+      }
+      expect(requests).toHaveLength(1);
+      expect(requests[0]!.url.pathname).toBe("/api/v1/subscription-accounts");
+      expect(requests[0]!.init.method).toBe("GET");
+      expect(new Headers(requests[0]!.init.headers).get("x-api-token")).toBe(
+        "test-token",
+      );
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("returns an upstream failure unchanged and flags it as an MCP error", async () => {
+    const { client, server } = await connect(
+      mockFetch(() =>
+        Response.json({ message: "Unauthenticated." }, { status: 401 }),
+      ),
+    );
+    try {
+      const result = await client.callTool({ name: "status", arguments: {} });
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        status_code: 401,
+        data: { message: "Unauthenticated." },
+      });
+      expect(result.structuredContent).not.toHaveProperty("kind");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("reports zero usage when the account has no token limit", async () => {
+    const output = await statusTool(
+      "test",
+      {},
+      {
+        fetchFn: mockFetch(() =>
+          Response.json({ data: { tokenUsage: 5, tokenLimit: 0 } }),
+        ),
+      },
+    );
+    expect(output.data).toMatchObject({
+      account: { token_limit: 0, token_remaining: 0, usage_percent: 0 },
+    });
   });
 });

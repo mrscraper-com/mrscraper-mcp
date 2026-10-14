@@ -195,3 +195,13 @@ export async function webSearchApi({
     fetchFn,
   });
 }
+
+export async function getSubscriptionAccountApi(
+  token: string,
+  { fetchFn }: FetchDependency = {},
+): Promise<ApiResponse> {
+  return request("GET", getApiEndpoints().subscriptionAccounts, {
+    headers: { accept: "application/json", ...getAuthHeaders(token) },
+    fetchFn,
+  });
+}
