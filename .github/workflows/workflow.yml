@@ -50,7 +50,7 @@ jobs:
         run: |
           ssh gthost-langgraph-dev << 'EOF'
             export COMMIT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-            export TAG=registry.mrbrowser.com/mrscraper-mcp:$COMMIT_SHA
+            export TAG=registry.mrbrowser.com/mrbrowser-mcp:$COMMIT_SHA
             export COMPOSE="-f compose.yaml"
 
             echo $TAG
@@ -63,13 +63,4 @@ jobs:
             docker compose $COMPOSE build
             docker tag docker-mrscraper-mcp:latest $TAG
             docker push $TAG
-          EOF
-
-          ssh kubernetes << 'EOF'
-            export COMMIT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-            export TAG=registry.mrbrowser.com/mrscraper-mcp:$COMMIT_SHA
-            export COMPOSE="compose.yaml"
-
-            kubectl set image deploy/mrscraper-mcp mrscraper-mcp=$TAG
-            kubectl rollout status deploy/mrscraper-mcp
           EOF
