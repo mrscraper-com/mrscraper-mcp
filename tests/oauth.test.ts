@@ -5,7 +5,7 @@ import { SignJWT, exportJWK, generateKeyPair, type JWK } from "jose";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createHttpApp } from "../src/app.js";
-import type { OAuthConfig } from "../src/config.js";
+import { OAUTH_SCOPES, type OAuthConfig } from "../src/config.js";
 import { isOAuthAccessToken } from "../src/oauth.js";
 import { TOOL_SCOPES, requiredScopesForRequest } from "../src/scopes.js";
 
@@ -50,7 +50,7 @@ function oauthConfig(): OAuthConfig {
     jwksUrl: `${issuer}/.well-known/jwks.json`,
     publicUrl: "https://mcp.mrscraper.test",
     resourceUrl: RESOURCE,
-    scopesSupported: ["scrape:read"],
+    scopesSupported: ["scrape:read", "account:read"],
     documentationUrl:
       "https://docs.mrscraper.com/docs/getting-started/mcp-server",
   };
@@ -131,7 +131,7 @@ describe("token shape detection", () => {
 describe("scope mapping", () => {
   it("covers every registered tool", () => {
     expect(Object.keys(TOOL_SCOPES).sort()).toEqual(
-      ["scraperAPI", "webSearch"].sort(),
+      ["scraperAPI", "webSearch", "status"].sort(),
     );
   });
 
@@ -144,6 +144,12 @@ describe("scope mapping", () => {
         params: { name: "scraperAPI" },
       }),
     ).toEqual(["scrape:read"]);
+    expect(
+      requiredScopesForRequest({
+        method: "tools/call",
+        params: { name: "status" },
+      }),
+    ).toEqual(["account:read"]);
   });
 
   it("unions the scopes a batched payload needs", () => {
@@ -153,6 +159,18 @@ describe("scope mapping", () => {
         { method: "tools/call", params: { name: "scraperAPI" } },
       ]).sort(),
     ).toEqual(["scrape:read"]);
+    expect(
+      requiredScopesForRequest([
+        { method: "tools/call", params: { name: "webSearch" } },
+        { method: "tools/call", params: { name: "status" } },
+      ]).sort(),
+    ).toEqual(["account:read", "scrape:read"]);
+  });
+
+  it("advertises every scope a tool requires", () => {
+    for (const scope of Object.values(TOOL_SCOPES)) {
+      expect(OAUTH_SCOPES).toContain(scope);
+    }
   });
 });
 
@@ -168,7 +186,7 @@ describe("OAuth discovery documents", () => {
       expect(await response.json()).toMatchObject({
         resource: RESOURCE,
         authorization_servers: [issuer],
-        scopes_supported: ["scrape:read"],
+        scopes_supported: ["scrape:read", "account:read"],
       });
     }
   });
@@ -273,6 +291,16 @@ describe("per-tool scope gate", () => {
     const baseUrl = await startApp();
     const token = await mintToken({ scope: "scrape:read" });
     expect((await toolCall(baseUrl, "webSearch", token)).status).toBe(200);
+  });
+
+  it("refuses status without account:read", async () => {
+    const baseUrl = await startApp();
+    const token = await mintToken({ scope: "scrape:read" });
+    const response = await toolCall(baseUrl, "status", token);
+    expect(response.status).toBe(403);
+    const challenge = response.headers.get("www-authenticate") ?? "";
+    expect(challenge).toContain('error="insufficient_scope"');
+    expect(challenge).toContain("This tool requires the account:read scope");
   });
 
   it("never gates the handshake", async () => {

@@ -2,19 +2,20 @@
 
 MrScraper MCP is the official [MrScraper](https://mrscraper.com) server for the
 [Model Context Protocol](https://modelcontextprotocol.io). It connects AI
-assistants to page content and Google search through two SDK-compatible tools.
-Retrieve HTML, Markdown, or screenshots with `scraperAPI`, and discover pages
-with `webSearch`.
+assistants to page content and Google search through two SDK-compatible tools,
+plus an account check. Retrieve HTML, Markdown, or screenshots with
+`scraperAPI`, discover pages with `webSearch`, and check your plan and token
+usage with `status`.
 
 Use the hosted server with OAuth sign-in, or run the open-source server locally
 with the [`@mrscraper/mcp` npm package](https://www.npmjs.com/package/@mrscraper/mcp).
 See the [MrScraper MCP documentation](https://docs.mrscraper.com/docs/getting-started/mcp-server)
 for setup instructions and client configurations.
 
-The server exposes two tools:
+The server exposes three tools:
 
 ```text
-scraperAPI  webSearch
+scraperAPI  webSearch  status
 ```
 
 ## Deployment options
@@ -60,9 +61,10 @@ the address will be refused.
 
 ### What you are approving
 
-| Scope         | Grants                       |
-| ------------- | ---------------------------- |
-| `scrape:read` | `scraperAPI` and `webSearch` |
+| Scope          | Grants                       |
+| -------------- | ---------------------------- |
+| `scrape:read`  | `scraperAPI` and `webSearch` |
+| `account:read` | `status`                     |
 
 A tool called without its scope is refused with `403 insufficient_scope`, and
 your client will offer to grant the missing permission.
@@ -122,7 +124,7 @@ matches how broadly the connection should be available.
 ## Copyable agent setup prompt
 
 ```text
-Connect MrScraper MCP to this agent. Detect the current MCP client and configure a Streamable HTTP server named mrscraper at https://mcp.mrscraper.com/mcp with no credential. The server uses OAuth 2.1, so the client will open a browser to sign in. If the client cannot do OAuth, fall back to a MrScraper API key from https://app.mrscraper.com/api-tokens stored through the client's environment-variable or secret-storage mechanism and sent as Authorization: Bearer <key>. Reload the MCP client when required, then list the tools and confirm that scraperAPI and webSearch are the only available tools.
+Connect MrScraper MCP to this agent. Detect the current MCP client and configure a Streamable HTTP server named mrscraper at https://mcp.mrscraper.com/mcp with no credential. The server uses OAuth 2.1, so the client will open a browser to sign in. If the client cannot do OAuth, fall back to a MrScraper API key from https://app.mrscraper.com/api-tokens stored through the client's environment-variable or secret-storage mechanism and sent as Authorization: Bearer <key>. Reload the MCP client when required, then list the tools and confirm that scraperAPI, webSearch, and status are the only available tools.
 ```
 
 ## Choosing a tool
@@ -131,21 +133,24 @@ Connect MrScraper MCP to this agent. Detect the current MCP client and configure
 | ------------ | ---------------------------------------------------------------------------- |
 | `scraperAPI` | You have a page URL and need HTML, Markdown, a screenshot, or a combination. |
 | `webSearch`  | You have a Google query or Google search URL and need search results.        |
+| `status`     | You need the account's plan, token usage, or remaining tokens.               |
 
-A discovery workflow is `webSearch` → `scraperAPI`. Both tools advertise
-`readOnlyHint: true`, `openWorldHint: true`, and `destructiveHint: false`.
-Authentication comes from the MCP connection; neither tool takes an API token
-argument.
+A discovery workflow is `webSearch` → `scraperAPI`. Both web tools advertise
+`readOnlyHint: true`, `openWorldHint: true`, and `destructiveHint: false`;
+`status` is read-only and not open-world. Authentication comes from the MCP
+connection; no tool takes an API token argument.
 
 ### Migration from the previous tool set
 
-Only `scraperAPI` and `webSearch` are registered. The old tool names are removed.
+Only `scraperAPI`, `webSearch`, and `status` are registered. The other old tool
+names are removed.
 
-| Previous call                                    | Replacement                                                                                              |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `fetch`                                          | `scraperAPI`; uses POST, SDK options, and automatic browser fallback by default.                         |
-| `serp`                                           | `webSearch`; rename `query_or_url` to `url` and `client_timeout` to `timeout`. Set `raw=false` for JSON. |
-| `scrape`, `status`, `rerun`, `results`, `result` | Removed from this MCP server.                                                                            |
+| Previous call                          | Replacement                                                                                              |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `fetch`                                | `scraperAPI`; uses POST, SDK options, and automatic browser fallback by default.                         |
+| `serp`                                 | `webSearch`; rename `query_or_url` to `url` and `client_timeout` to `timeout`. Set `raw=false` for JSON. |
+| `status`                               | `status` for account usage; the `domain`, `from`, `to`, `action`, and `api_token_name` inputs are gone.  |
+| `scrape`, `rerun`, `results`, `result` | Removed from this MCP server.                                                                            |
 
 `super_mode` becomes `super`. `home_page` now maps to `warmStart`, and
 `token_cap=0` is accepted. Restart the server and reconnect the MCP client after
@@ -153,9 +158,9 @@ updating so it refreshes `tools/list`.
 
 ## Tool reference
 
-The options and defaults follow the Python SDK's `scraper_api` and `web_search`
-methods. MCP tool names use camel case; their argument names use the SDK's
-snake case.
+The options and defaults of `scraperAPI` and `webSearch` follow the Python SDK's
+`scraper_api` and `web_search` methods. MCP tool names use camel case; their
+argument names use the SDK's snake case.
 
 ### `scraperAPI`
 
@@ -265,12 +270,54 @@ This derives `query="web scraping"`, `region="us"`, `language="en"`, and
 | `render_js` | `false`              | Body `renderJs`; render dynamic search features.            |
 | `timeout`   | `600`                | Local HTTP deadline in seconds; omitted from the body.      |
 
+### `status`
+
+```text
+GET https://api.app.mrscraper.com/api/v1/subscription-accounts
+```
+
+`status` takes no input. It returns the connected account's identity (name,
+email, and verification state), subscription status, token limit, token usage,
+remaining tokens, usage percentage, rate limit, auto-renewal, and renewal date.
+It copies only those fields, so the API key and Stripe identifiers in the raw
+account record never reach the client.
+
+```json
+{
+  "kind": "mrscraper-cli-status-summary",
+  "source_endpoints": ["/subscription-accounts"],
+  "status_code": 200,
+  "data": {
+    "account": {
+      "subscription_status": "active",
+      "enterprise": false,
+      "token_usage": 61240,
+      "token_limit": 100000,
+      "token_remaining": 38760,
+      "usage_percent": 61.24,
+      "rate_limit": 0,
+      "rate_ttl": 0,
+      "auto_renew": true,
+      "ends_at": "2026-12-01T00:00:00.000Z",
+      "user": {
+        "name": "Ada",
+        "email": "ada@example.com",
+        "verified": true
+      }
+    }
+  }
+}
+```
+
+An OAuth connection needs the `account:read` scope for `status`.
+
 ### Response envelope
 
-Both tools return `status_code`, `data`, and `headers` in `structuredContent`
-and as JSON text. JSON bodies are parsed; other response bodies remain text.
-`data` may contain HTML, Markdown, screenshot data, or parsed search records,
-depending on your options and the upstream response.
+`scraperAPI` and `webSearch` return `status_code`, `data`, and `headers` in
+`structuredContent` and as JSON text. JSON bodies are parsed; other response
+bodies remain text. `data` may contain HTML, Markdown, screenshot data, or
+parsed search records, depending on your options and the upstream response.
+`status` returns the summary shown above.
 
 ```json
 {
@@ -289,7 +336,7 @@ are filtered; network errors redact signed query credentials.
 ## Manual testing: one tool at a time
 
 [`scripts/test-tools.ts`](scripts/test-tools.ts) starts the compiled local MCP
-server over stdio, verifies that exactly the two tools are exposed, calls one
+server over stdio, verifies that exactly the three tools are exposed, calls one
 tool, prints its response, and exits. No separate server terminal is needed.
 The runner loads `.env`, or reads `MRSCRAPER_API_KEY` / `MRSCRAPER_API_TOKEN`
 from your shell. Each tool call uses the live MrScraper service.
@@ -326,9 +373,15 @@ Run these commands individually from the repository directory:
    npm run test:manual -- webSearch --query "MrScraper web scraping"
    ```
 
+6. Test `status`:
+
+   ```sh
+   npm run test:manual -- status
+   ```
+
 The webSearch sample explicitly requests `raw=false`, `format="json"`, US
-results, and English. Both commands print `Tools: scraperAPI, webSearch` and
-`PASS <tool>` on success. Exit codes are 0 for success, 1 for a tool or
+results, and English. Each command prints `Tools: scraperAPI, webSearch, status`
+and `PASS <tool>` on success. Exit codes are 0 for success, 1 for a tool or
 connection failure, and 2 for invalid command arguments.
 
 Pass a complete JSON object to test any supported options:
@@ -431,8 +484,9 @@ checks, since any client must be able to read them before it has credentials.
 ## Interactive widgets
 
 `webSearch` carries a self-contained Google results widget for parsed JSON
-results. HTML responses show a prompt to request parsed results. Hosts without
-MCP Apps support display the normal JSON tool response.
+results. HTML responses show a prompt to request parsed results. `status`
+carries an account widget with the plan, token usage, and a usage meter. Hosts
+without MCP Apps support display the normal JSON tool response.
 
 Each widget is a self-contained document with its script and styles inlined,
 because strict host CSP blocks anything external. Each one declares an empty

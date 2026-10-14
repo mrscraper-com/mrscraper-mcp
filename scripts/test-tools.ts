@@ -80,7 +80,7 @@ export async function testTool(
     assert.deepEqual(
       [...names].sort(),
       [...TOOL_NAMES].sort(),
-      "Server must expose only scraperAPI and webSearch. Rebuild or restart the server.",
+      "Server must expose only scraperAPI, webSearch, and status. Rebuild or restart the server.",
     );
     const upstreamTimeout =
       typeof args.timeout === "number" && args.timeout > 0
@@ -148,7 +148,7 @@ async function main(): Promise<number> {
     },
   });
   if (values.help) {
-    console.log(`Usage: npm run test:manual -- <scraperAPI|webSearch> [options]
+    console.log(`Usage: npm run test:manual -- <scraperAPI|webSearch|status> [options]
 
   --url URL       Page for scraperAPI (default: Scrapethissite countries page)
   --query TEXT    Query for webSearch (default: MrScraper web scraping)
@@ -158,6 +158,7 @@ async function main(): Promise<number> {
 Examples:
   npm run test:manual -- scraperAPI --url https://example.com
   npm run test:manual -- webSearch --query "web scraping"
+  npm run test:manual -- status
   npm run test:manual -- scraperAPI --args '{"url":"https://example.com","markdown":true,"screenshot":true}'
 
 The webSearch sample uses raw=false and format=json. Each invocation calls one tool.
@@ -167,7 +168,7 @@ Set MRSCRAPER_API_KEY or MRSCRAPER_API_TOKEN first; .env is loaded automatically
   const name = positionals[0];
   if (positionals.length !== 1 || !TOOL_NAMES.includes(name as ToolName)) {
     console.error(
-      "Choose exactly one tool: scraperAPI or webSearch. Use --help for examples.",
+      "Choose exactly one tool: scraperAPI, webSearch, or status. Use --help for examples.",
     );
     return 2;
   }
@@ -178,14 +179,16 @@ Set MRSCRAPER_API_KEY or MRSCRAPER_API_TOKEN first; .env is loaded automatically
         ? JSON.parse(values.args)
         : name === "scraperAPI"
           ? { url: values.url }
-          : {
-              url: values.query,
-              raw: false,
-              format: "json",
-              region: "us",
-              language: "en",
-              page: 1,
-            };
+          : name === "status"
+            ? {}
+            : {
+                url: values.query,
+                raw: false,
+                format: "json",
+                region: "us",
+                language: "en",
+                page: 1,
+              };
   } catch {
     console.error("--args must be valid JSON.");
     return 2;

@@ -1,7 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
-import { scraperApi, webSearchApi } from "./api.js";
+import { getSubscriptionAccountApi, scraperApi, webSearchApi } from "./api.js";
+import type { ApiResponse } from "./http.js";
+import { summarizeSubscriptionAccount } from "./status.js";
 import { widgetMeta } from "./widgets/index.js";
 
 export interface ToolDependencies {
@@ -30,6 +32,20 @@ export const webSearchOutputSchema = apiResponseSchema.meta({
   title: "Web search response",
   description: "Parsed Google search results or result-page HTML.",
 });
+export const statusOutputSchema = z
+  .object({
+    kind: z.literal("mrscraper-cli-status-summary").optional(),
+    source_endpoints: z.array(z.string()).optional(),
+    status_code: z.number().int().nullable(),
+    data: z.json(),
+    headers: z.record(z.string(), z.string()).optional(),
+    error: z.string().optional(),
+  })
+  .meta({
+    title: "Status response",
+    description:
+      "Account identity, subscription, token limit, token usage, and remaining tokens.",
+  });
 
 export const scraperAPIInputSchema = z.object({
   url: z
@@ -240,15 +256,48 @@ export async function webSearchTool(
   });
 }
 
-function asStructured(result: Record<string, unknown>) {
-  const isError = Boolean(
+export const statusInputSchema = z.object({});
+
+function isApiFailure(result: Record<string, unknown>): boolean {
+  return Boolean(
     result.error ||
     (typeof result.status_code === "number" && result.status_code >= 400),
   );
+}
+
+export async function statusTool(
+  token: string,
+  _input: z.infer<typeof statusInputSchema> = {},
+  dependencies: ToolDependencies = {},
+): Promise<Record<string, unknown>> {
+  const response: ApiResponse = await getSubscriptionAccountApi(token, {
+    fetchFn: dependencies.fetchFn,
+  });
+  if (isApiFailure(response)) return response;
+  const body = response.data;
+  const account =
+    body && typeof body === "object" && !Array.isArray(body) && "data" in body
+      ? body.data
+      : body;
+  return {
+    kind: "mrscraper-cli-status-summary",
+    source_endpoints: ["/subscription-accounts"],
+    status_code: response.status_code,
+    data: {
+      account: summarizeSubscriptionAccount(
+        account && typeof account === "object" && !Array.isArray(account)
+          ? (account as Record<string, unknown>)
+          : {},
+      ),
+    },
+  };
+}
+
+function asStructured(result: Record<string, unknown>) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
     structuredContent: result,
-    ...(isError ? { isError: true } : {}),
+    ...(isApiFailure(result) ? { isError: true } : {}),
   };
 }
 
@@ -263,6 +312,8 @@ export const TOOL_DESCRIPTIONS = {
     "Retrieves a known page through MrScraper's Scraper API as HTML, Markdown, a screenshot, or a combination. Matches the Python SDK's scraper_api options. Omit browser_rendering for automatic browser fallback; screenshot=true always enables it. super enables real-device routing independently. home_page maps to warmStart. Proxy, cookie, target-header, retry, and timeout options control page loading. Returns status_code, data, and sanitized headers.",
   webSearch:
     "Searches Google from query text or a Google search URL passed as url. Matches the Python SDK's web_search options. Set raw=false and format=json for parsed results; the SDK-compatible default raw=true returns HTML. Google URLs supply q, gl, hl, and start; explicit region, language, and page override URL-derived values. render_js enables dynamic features; timeout controls the local request deadline. Returns status_code, data, and sanitized headers.",
+  status:
+    "Returns the connected MrScraper account's identity (name, email, and verification state), subscription status, token limit, token usage, remaining tokens, and rate limit. Use it to check the account and remaining quota, for example before a large batch of requests. It takes no input and reports account usage, not the progress of a request.",
 } as const;
 
 export function registerTools(
@@ -294,5 +345,27 @@ export function registerTools(
     },
     async (input) =>
       asStructured(await webSearchTool(getToken(), input, dependencies)),
+  );
+  server.registerTool(
+    "status",
+    {
+      title: "Account Status",
+      annotations: {
+        title: "Account Status",
+        readOnlyHint: true,
+        openWorldHint: false,
+        destructiveHint: false,
+      },
+      description: TOOL_DESCRIPTIONS.status,
+      inputSchema: statusInputSchema,
+      outputSchema: statusOutputSchema,
+      _meta: widgetMeta(
+        "status",
+        "Checking your account…",
+        "Account status loaded.",
+      ),
+    },
+    async (input) =>
+      asStructured(await statusTool(getToken(), input, dependencies)),
   );
 }

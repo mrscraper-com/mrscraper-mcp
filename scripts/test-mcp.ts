@@ -62,7 +62,7 @@ async function main(): Promise<number> {
       JSON.stringify([...TOOL_NAMES].sort())
     ) {
       throw new Error(
-        "Expected only scraperAPI and webSearch. Rebuild or restart the server.",
+        "Expected only scraperAPI, webSearch, and status. Rebuild or restart the server.",
       );
     }
 
