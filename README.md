@@ -315,19 +315,34 @@ An OAuth connection needs the `account:read` scope for `status`.
 
 `scraperAPI` and `webSearch` return `status_code`, `data`, and `headers` in
 `structuredContent` and as JSON text. JSON bodies are parsed; other response
-bodies remain text. `data` may contain HTML, Markdown, screenshot data, or
-parsed search records, depending on your options and the upstream response.
-`status` returns the summary shown above.
+bodies remain text. `status` returns the summary shown above.
+
+A `scraperAPI` response carries the requested representations in `data`;
+`screenshot` is a base64-encoded JPEG and `x-status-code` is the target page's
+status:
 
 ```json
 {
   "status_code": 200,
-  "data": "<html>...</html>",
+  "data": {
+    "html": "<!DOCTYPE html>...",
+    "markdown": null,
+    "screenshot": null,
+    "token_usage": 3,
+    "runtime": 18.02,
+    "retry_count": 0,
+    "error": null
+  },
   "headers": {
-    "content-type": "text/html"
+    "content-type": "application/json",
+    "x-status-code": "200",
+    "token_usage": "3"
   }
 }
 ```
+
+A parsed `webSearch` response (`raw=false`) has organic results in
+`data.data.organic`.
 
 Failures include `error` and set MCP `isError=true`. Network failures have
 `status_code=null`. Credential-bearing response headers and JSON metadata
