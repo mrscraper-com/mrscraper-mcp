@@ -1,0 +1,71 @@
+name: Publish to MCP Registry
+
+# Publishes server.json to the official MCP Registry
+# (https://registry.modelcontextprotocol.io) as io.github.mrscraper-com/mrscraper-mcp.
+# GitHub OIDC grants this repository's workflows the io.github.mrscraper-com/*
+# namespace, so no registry token or org-owner login is needed.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-registry-publish
+  cancel-in-progress: false
+
+env:
+  MCP_PUBLISHER_VERSION: "1.8.1"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Check server.json version matches package.json
+        run: |
+          server_version=$(jq -r .version server.json)
+          package_version=$(jq -r .version package.json)
+          echo "server.json: $server_version, package.json: $package_version"
+          if [ "$server_version" != "$package_version" ]; then
+            echo "::error::server.json version ($server_version) must match package.json ($package_version)"
+            exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$server_version" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match server.json version $server_version"
+            exit 1
+          fi
+
+      - name: Install mcp-publisher
+        run: |
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base="https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}"
+          curl -fsSL -o "$archive" "$base/$archive"
+          curl -fsSL -o checksums.txt "$base/registry_${MCP_PUBLISHER_VERSION}_checksums.txt"
+          grep " ${archive}\$" checksums.txt | sha256sum --check -
+          tar -xzf "$archive" mcp-publisher
+          ./mcp-publisher --help > /dev/null
+
+      - name: Validate server.json
+        run: ./mcp-publisher validate
+
+      - name: Authenticate with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server.json
+        run: ./mcp-publisher publish
+
+      - name: Show the published entry
+        run: |
+          name=$(jq -r .name server.json)
+          curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=mrscraper" \
+            | jq --arg name "$name" '.servers[] | select(.server.name == $name) | {name: .server.name, version: .server.version, official: ._meta["io.modelcontextprotocol.registry/official"]}'
