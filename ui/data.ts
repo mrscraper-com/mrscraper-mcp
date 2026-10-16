@@ -31,6 +31,22 @@ export function findRecords(value: unknown): Record<string, unknown>[] | null {
   return null;
 }
 
+/** Google's parsed response lists navigation tabs before `organic`, so look for that key first. */
+export function findSearchResults(
+  value: unknown,
+): Record<string, unknown>[] | null {
+  const queue: unknown[] = [value];
+  let steps = 0;
+
+  while (queue.length && (steps += 1) < 200) {
+    const current = queue.shift();
+    if (!isRecord(current)) continue;
+    if (Array.isArray(current.organic)) return current.organic.filter(isRecord);
+    queue.push(...Object.values(current));
+  }
+  return findRecords(value);
+}
+
 export function columnsOf(
   rows: Record<string, unknown>[],
   limit = 8,
