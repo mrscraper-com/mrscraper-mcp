@@ -7,24 +7,33 @@ const SAMPLES: Record<WidgetName, unknown> = {
   webSearch: {
     status_code: 200,
     data: {
-      organic_results: [
-        {
-          title: "Web Scraping API | MrScraper",
-          link: "https://mrscraper.com/",
-          snippet:
-            "Extract structured data from any website with AI, without writing selectors.",
-        },
-        {
-          title: "MrScraper documentation",
-          link: "https://docs.mrscraper.com/",
-          snippet: "Guides, API reference, and the MCP server setup.",
-        },
-        {
-          title: "MrScraper pricing",
-          link: "https://mrscraper.com/pricing",
-          snippet: "Plans, token limits, and enterprise options.",
-        },
-      ],
+      success: true,
+      message: "Successfully scraped",
+      data: {
+        navigation: [
+          { name: "Images", link: "https://www.google.com/search?tbm=isch" },
+          { name: "News", link: "https://www.google.com/search?tbm=nws" },
+        ],
+        organic: [
+          {
+            title: "Web Scraping API | MrScraper",
+            link: "https://mrscraper.com/",
+            description:
+              "Extract structured data from any website with AI, without writing selectors.",
+          },
+          {
+            title: "MrScraper documentation",
+            link: "https://docs.mrscraper.com/",
+            description: "Guides, API reference, and the MCP server setup.",
+          },
+          {
+            title: "MrScraper pricing",
+            link: "https://mrscraper.com/pricing",
+            description: "Plans, token limits, and enterprise options.",
+          },
+        ],
+      },
+      tokenUsage: 1,
     },
   },
   status: {

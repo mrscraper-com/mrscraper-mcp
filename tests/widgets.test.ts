@@ -18,6 +18,7 @@ import {
   columnsOf,
   errorMessage,
   findRecords,
+  findSearchResults,
   payload,
   scalarEntries,
 } from "../ui/data.js";
@@ -174,6 +175,39 @@ describe("widget shape probing", () => {
   it("returns null when there is nothing table-like", () => {
     expect(findRecords({ ok: true })).toBeNull();
     expect(findRecords([1, 2, 3])).toBeNull();
+  });
+
+  it("shows Google's organic results, not the navigation tabs listed before them", () => {
+    const organic = [
+      {
+        title: "Timeouts",
+        link: "https://requests.readthedocs.io/en/latest/user/advanced/",
+        description: "Set a timeout in seconds.",
+      },
+    ];
+    const response = {
+      success: true,
+      data: {
+        general: { language: "en" },
+        navigation: [
+          { name: "Images", link: "https://www.google.com/search?tbm=isch" },
+        ],
+        organic,
+      },
+      tokenUsage: 1,
+    };
+    expect(findSearchResults(response)).toEqual(organic);
+  });
+
+  it("reports no search results when Google returns none", () => {
+    expect(
+      findSearchResults({
+        data: {
+          navigation: [{ name: "Images", link: "https://www.google.com/" }],
+          organic: [],
+        },
+      }),
+    ).toEqual([]);
   });
 
   it("orders columns by how many rows use them", () => {

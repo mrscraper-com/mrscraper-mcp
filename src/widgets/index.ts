@@ -15,7 +15,7 @@ interface WidgetDefinition {
 export const WIDGETS = {
   webSearch: {
     bundle: "serp",
-    uri: "ui://mrscraper/serp/v1.html",
+    uri: "ui://mrscraper/serp/v2.html",
     title: "Google results",
     description: "Google search results with titles, links, and snippets.",
   },

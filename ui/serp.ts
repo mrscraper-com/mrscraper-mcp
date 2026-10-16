@@ -3,7 +3,8 @@ import {
   asSearchResults,
   columnsOf,
   errorMessage,
-  findRecords,
+  findSearchResults,
+  isRecord,
   payload,
 } from "./data.js";
 import { cell, element, empty, link, mount, table } from "./render.js";
@@ -19,7 +20,8 @@ const render = mount((output) => {
   }
 
   const data = payload(output);
-  if (typeof data === "string") {
+  const body = isRecord(data) && isRecord(data.data) ? data.data : null;
+  if (typeof data === "string" || typeof body?.html === "string") {
     container.append(
       empty(
         "Search returned an HTML page. Use raw=false and format=json to display parsed results.",
@@ -27,7 +29,7 @@ const render = mount((output) => {
     );
     return container;
   }
-  const rows = findRecords(data);
+  const rows = findSearchResults(data);
   if (!rows?.length) {
     container.append(empty("No results were returned for that search."));
     return container;
