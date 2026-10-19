@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MrScraper MCP Server settings",
+  "type": "object",
+  "required": ["api_key"],
+  "properties": {
+    "api_key": {
+      "title": "MrScraper API key",
+      "description": "Your MrScraper API key from https://app.mrscraper.com/api-tokens. Store this in Zed user settings.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -12,6 +12,9 @@ with the [`@mrscraper/mcp` npm package](https://www.npmjs.com/package/@mrscraper
 See the [MrScraper MCP documentation](https://docs.mrscraper.com/docs/getting-started/mcp-server)
 for setup instructions and client configurations.
 
+For Zed, see [MrScraper for Zed](extensions/zed/README.md) for the local MCP
+extension, hosted OAuth setup, and development instructions.
+
 The server exposes three tools:
 
 ```text

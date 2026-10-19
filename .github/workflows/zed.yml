@@ -1,0 +1,42 @@
+name: Check Zed extension
+
+on:
+  push:
+    paths:
+      - "extensions/zed/**"
+      - ".github/workflows/zed.yml"
+  pull_request:
+    paths:
+      - "extensions/zed/**"
+      - ".github/workflows/zed.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/zed
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-wasip2
+          rustup default stable
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Test settings and launch environment
+        run: cargo test --locked
+
+      - name: Lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Build WebAssembly extension
+        run: cargo build --locked --release --target wasm32-wasip2
