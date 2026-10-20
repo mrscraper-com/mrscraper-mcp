@@ -6,7 +6,7 @@ import {
 } from "./config.js";
 
 export const TOOL_SCOPES: Record<ToolName, OAuthScope> = {
-  scraperAPI: "scrape:read",
+  scraperAPI: "scrape:write",
   webSearch: "scrape:read",
   status: "account:read",
 };

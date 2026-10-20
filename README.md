@@ -61,13 +61,18 @@ the address will be refused.
 
 ### What you are approving
 
-| Scope          | Grants                       |
-| -------------- | ---------------------------- |
-| `scrape:read`  | `scraperAPI` and `webSearch` |
-| `account:read` | `status`                     |
+| Scope          | Grants       |
+| -------------- | ------------ |
+| `scrape:read`  | `webSearch`  |
+| `scrape:write` | `scraperAPI` |
+| `account:read` | `status`     |
 
 A tool called without its scope is refused with `403 insufficient_scope`, and
 your client will offer to grant the missing permission.
+
+`scraperAPI` submits a scraping job to the backend with `POST /`, which requires
+`scrape:write`. Connections authorized before this scope was advertised need to
+authorize again and grant it; `scrape:read` alone does not grant write access.
 
 Disconnect it later under Connected applications in your MrScraper account.
 Disconnecting revokes the refresh tokens immediately; an access token already
@@ -548,7 +553,8 @@ deployment and keep bearer authentication enabled.
   sign-in flow again. For an API key, confirm the bearer key for HTTP or the
   environment key for stdio.
 - **403 insufficient_scope:** The token lacks a scope the tool needs. Reconnect
-  and approve the additional permission.
+  and approve the additional permission. For `scraperAPI`, the token must include
+  `scrape:write`; for `webSearch`, it must include `scrape:read`.
 - **Signing in succeeds but tools fail:** Confirm the server URL is exactly
   `https://mcp.mrscraper.com/mcp`; the token audience is bound to it.
 - **403 Forbidden Origin:** Add the exact browser origin to
