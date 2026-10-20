@@ -589,11 +589,19 @@ The hosted server's MCP Registry manifest is defined in
 [`server.json`](server.json). It describes the Streamable HTTP endpoint and
 links to this repository and the setup documentation.
 
+[`.github/workflows/publish-mcp-registry.yml`](.github/workflows/publish-mcp-registry.yml)
+publishes `server.json` as `io.github.mrscraper-com/mrscraper-mcp`. Run it from
+the Actions tab (**Publish to MCP Registry** → **Run workflow**) or push a
+`v*` tag that matches the version in `server.json`. It authenticates with
+GitHub OIDC, which grants this repository the `io.github.mrscraper-com/*`
+namespace; an interactive `mcp-publisher login github` works only for
+organization owners. The workflow fails if `server.json` and `package.json`
+have different versions.
+
 See the [official registry publishing guide](https://modelcontextprotocol.io/registry/github-actions)
-for GitHub Actions authentication and publication. Registry versions are
-immutable, so use a new version in `server.json` when publishing changed
-metadata. Publishing this manifest registers the hosted server; it does not
-publish a new npm package.
+for details. Registry versions are immutable, so use a new version in
+`server.json` when publishing changed metadata. Publishing this manifest
+registers the hosted server; it does not publish a new npm package.
 
 ## License
 
