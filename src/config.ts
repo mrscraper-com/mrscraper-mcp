@@ -1,4 +1,4 @@
-export const VERSION = "0.2.1";
+export const VERSION = "0.2.2";
 
 export const TOOL_NAMES = ["scraperAPI", "webSearch", "status"] as const;
 
@@ -87,7 +87,11 @@ export function httpRuntimeConfig(): {
   return { host, port, allowedOrigins: parseAllowedOrigins() };
 }
 
-export const OAUTH_SCOPES = ["scrape:read", "account:read"] as const;
+export const OAUTH_SCOPES = [
+  "scrape:read",
+  "scrape:write",
+  "account:read",
+] as const;
 
 export type OAuthScope = (typeof OAUTH_SCOPES)[number];
 
