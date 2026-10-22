@@ -144,6 +144,10 @@ describe("HTTP application", () => {
       expect(client.getServerVersion()?.version).toBe(VERSION);
       const { tools } = await client.listTools();
       expect(tools.map((tool) => tool.name)).toEqual(TOOL_NAMES);
+      const instructions = client.getInstructions() ?? "";
+      for (const name of TOOL_NAMES) {
+        expect(instructions).toContain(`\`${name}\``);
+      }
     } finally {
       await client.close();
     }
