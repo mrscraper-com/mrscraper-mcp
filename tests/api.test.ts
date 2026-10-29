@@ -246,7 +246,7 @@ describe("Python SDK request compatibility", () => {
     expect(JSON.stringify(result)).not.toContain("query-secret");
   });
 
-  it("extracts search fields from a Google URL and allows explicit overrides", async () => {
+  it("extracts search fields from a search results URL and allows explicit overrides", async () => {
     expect(
       normalizeSearchInput(
         "https://www.google.com/search?q=running+shoes&gl=us&hl=en&start=20",

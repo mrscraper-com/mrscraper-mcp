@@ -11,7 +11,7 @@ import { cell, element, empty, link, mount, table } from "./render.js";
 
 const render = mount((output) => {
   const container = element("div", "ms-widget");
-  container.append(element("h2", "ms-title", "Google results"));
+  container.append(element("h2", "ms-title", "Search results"));
 
   const failure = errorMessage(output);
   if (failure) {
