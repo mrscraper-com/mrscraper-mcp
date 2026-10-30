@@ -138,13 +138,13 @@ export interface NormalizedSearchInput {
 
 export function normalizeSearchInput(input: string): NormalizedSearchInput {
   const value = String(input || "").trim();
-  if (!value) throw new Error("A Google search query or URL is required");
+  if (!value) throw new Error("A web search query or URL is required");
   if (!/^https?:\/\//i.test(value)) {
     return { query: value, region: null, language: null, page: null };
   }
   const parsed = new URL(value);
   const query = parsed.searchParams.get("q")?.trim();
-  if (!query) throw new Error("Google search URL must contain a q parameter");
+  if (!query) throw new Error("Search results URL must contain a q parameter");
   const startValue = parsed.searchParams.get("start") || "0";
   const start = /^[+-]?\d+$/.test(startValue.trim()) ? Number(startValue) : 0;
   return {

@@ -1,8 +1,8 @@
-# MrScraper MCP Server for Web Scraping and Google Search
+# MrScraper MCP Server for Web Scraping and Web Search
 
 MrScraper MCP is the official [MrScraper](https://mrscraper.com) server for the
 [Model Context Protocol](https://modelcontextprotocol.io). It connects AI
-assistants to page content and Google search through two SDK-compatible tools,
+assistants to page content and web search through two SDK-compatible tools,
 plus an account check. Retrieve HTML, Markdown, or screenshots with
 `scraperAPI`, discover pages with `webSearch`, and check your plan and token
 usage with `status`.
@@ -137,7 +137,7 @@ Connect MrScraper MCP to this agent. Detect the current MCP client and configure
 | Tool         | Choose it when                                                               |
 | ------------ | ---------------------------------------------------------------------------- |
 | `scraperAPI` | You have a page URL and need HTML, Markdown, a screenshot, or a combination. |
-| `webSearch`  | You have a Google query or Google search URL and need search results.        |
+| `webSearch`  | You have a search query or a search results URL.                             |
 | `status`     | You need the account's plan, token usage, or remaining tokens.               |
 
 A discovery workflow is `webSearch` → `scraperAPI`. Both web tools advertise
@@ -236,7 +236,7 @@ headers. OAuth JWTs are sent only through `Authorization`.
 POST https://sync.scraper.mrscraper.com/api/google/serp/v2/sync
 ```
 
-Request parsed Google results:
+Request parsed search results:
 
 ```json
 {
@@ -252,7 +252,7 @@ Request parsed Google results:
 `raw=true` is the Python SDK-compatible default and requests HTML regardless
 of `format`. Set `raw=false` and `format="json"` for parsed results.
 
-A Google search URL supplies the query, locale, and page:
+A search results URL supplies the query, locale, and page:
 
 ```json
 {
@@ -264,16 +264,16 @@ A Google search URL supplies the query, locale, and page:
 This derives `query="web scraping"`, `region="us"`, `language="en"`, and
 `page=3`. Explicit options override URL-derived values.
 
-| Input       | Default              | Request mapping / purpose                                   |
-| ----------- | -------------------- | ----------------------------------------------------------- |
-| `url`       | required             | Search text or Google URL; normalized to body `query`.      |
-| `raw`       | `true`               | Forces body `format="html"`; false allows `format`.         |
-| `format`    | `"json"`             | Body `format`, either `json` or `html`, when raw is false.  |
-| `region`    | URL value or omitted | Body `region`; overrides `gl`.                              |
-| `language`  | URL value or omitted | Body `language`; overrides `hl`.                            |
-| `page`      | URL value or omitted | Body `page`; positive one-based integer, overrides `start`. |
-| `render_js` | `false`              | Body `renderJs`; render dynamic search features.            |
-| `timeout`   | `600`                | Local HTTP deadline in seconds; omitted from the body.      |
+| Input       | Default              | Request mapping / purpose                                      |
+| ----------- | -------------------- | -------------------------------------------------------------- |
+| `url`       | required             | Search text or search results URL; normalized to body `query`. |
+| `raw`       | `true`               | Forces body `format="html"`; false allows `format`.            |
+| `format`    | `"json"`             | Body `format`, either `json` or `html`, when raw is false.     |
+| `region`    | URL value or omitted | Body `region`; overrides `gl`.                                 |
+| `language`  | URL value or omitted | Body `language`; overrides `hl`.                               |
+| `page`      | URL value or omitted | Body `page`; positive one-based integer, overrides `start`.    |
+| `render_js` | `false`              | Body `renderJs`; render dynamic search features.               |
+| `timeout`   | `600`                | Local HTTP deadline in seconds; omitted from the body.         |
 
 ### `status`
 
@@ -503,7 +503,7 @@ checks, since any client must be able to read them before it has credentials.
 
 ## Interactive widgets
 
-`webSearch` carries a self-contained Google results widget for parsed JSON
+`webSearch` carries a self-contained search results widget for parsed JSON
 results. HTML responses show a prompt to request parsed results. `status`
 carries an account widget with the plan, token usage, and a usage meter. Hosts
 without MCP Apps support display the normal JSON tool response.

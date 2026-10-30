@@ -30,7 +30,7 @@ export const scraperAPIOutputSchema = apiResponseSchema.meta({
 });
 export const webSearchOutputSchema = apiResponseSchema.meta({
   title: "Web search response",
-  description: "Parsed Google search results or result-page HTML.",
+  description: "Parsed web search results or result-page HTML.",
 });
 export const statusOutputSchema = z
   .object({
@@ -162,7 +162,7 @@ export const webSearchInputSchema = z.object({
     .string()
     .trim()
     .min(1)
-    .describe("Required search query text or complete Google search URL."),
+    .describe("Required search query text or complete search results URL."),
   raw: z
     .boolean()
     .default(true)
@@ -173,12 +173,12 @@ export const webSearchInputSchema = z.object({
     .string()
     .nullable()
     .optional()
-    .describe("Country code; overrides gl from a Google search URL."),
+    .describe("Country code; overrides gl from a search results URL."),
   language: z
     .string()
     .nullable()
     .optional()
-    .describe("Language code; overrides hl from a Google search URL."),
+    .describe("Language code; overrides hl from a search results URL."),
   page: z
     .number()
     .int()
@@ -186,7 +186,7 @@ export const webSearchInputSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "One-based result page; overrides the page derived from start in a Google URL.",
+      "One-based result page; overrides the page derived from start in a search results URL.",
     ),
   format: z
     .enum(["json", "html"])
@@ -311,7 +311,7 @@ export const TOOL_DESCRIPTIONS = {
   scraperAPI:
     "Retrieves a known page through MrScraper's Scraper API as HTML, Markdown, a screenshot, or a combination. Matches the Python SDK's scraper_api options. Omit browser_rendering for automatic browser fallback; screenshot=true always enables it. super enables real-device routing independently. home_page maps to warmStart. Proxy, cookie, target-header, retry, and timeout options control page loading. Returns status_code, data, and sanitized headers.",
   webSearch:
-    "Searches Google from query text or a Google search URL passed as url. Matches the Python SDK's web_search options. Set raw=false and format=json for parsed results; the SDK-compatible default raw=true returns HTML. Google URLs supply q, gl, hl, and start; explicit region, language, and page override URL-derived values. render_js enables dynamic features; timeout controls the local request deadline. Returns status_code, data, and sanitized headers.",
+    "Searches the web from query text or a search results URL passed as url. Matches the Python SDK's web_search options. Set raw=false and format=json for parsed results; the SDK-compatible default raw=true returns HTML. Search results URLs supply q, gl, hl, and start; explicit region, language, and page override URL-derived values. render_js enables dynamic features; timeout controls the local request deadline. Returns status_code, data, and sanitized headers.",
   status:
     "Returns the connected MrScraper account's identity (name, email, and verification state), subscription status, token limit, token usage, remaining tokens, and rate limit. Use it to check the account and remaining quota, for example before a large batch of requests. It takes no input and reports account usage, not the progress of a request.",
 } as const;
@@ -341,7 +341,7 @@ export function registerTools(
       description: TOOL_DESCRIPTIONS.webSearch,
       inputSchema: webSearchInputSchema,
       outputSchema: webSearchOutputSchema,
-      _meta: widgetMeta("webSearch", "Searching Google…", "Search complete."),
+      _meta: widgetMeta("webSearch", "Searching the web…", "Search complete."),
     },
     async (input) =>
       asStructured(await webSearchTool(getToken(), input, dependencies)),

@@ -16,8 +16,8 @@ export const WIDGETS = {
   webSearch: {
     bundle: "serp",
     uri: "ui://mrscraper/serp/v2.html",
-    title: "Google results",
-    description: "Google search results with titles, links, and snippets.",
+    title: "Search results",
+    description: "Web search results with titles, links, and snippets.",
   },
   status: {
     bundle: "status",
