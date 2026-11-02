@@ -2,7 +2,7 @@
 
 MrScraper MCP is the official [MrScraper](https://mrscraper.com) server for the
 [Model Context Protocol](https://modelcontextprotocol.io). It connects AI
-assistants to page content and web search through two SDK-compatible tools,
+assistants to page content and web search through two tools,
 plus an account check. Retrieve HTML, Markdown, or screenshots with
 `scraperAPI`, discover pages with `webSearch`, and check your plan and token
 usage with `status`.
@@ -137,7 +137,7 @@ Connect MrScraper MCP to this agent. Detect the current MCP client and configure
 | Tool         | Choose it when                                                               |
 | ------------ | ---------------------------------------------------------------------------- |
 | `scraperAPI` | You have a page URL and need HTML, Markdown, a screenshot, or a combination. |
-| `webSearch`  | You have a search query or a search results URL.                             |
+| `webSearch`  | You have a search query and need ranked results with links.                  |
 | `status`     | You need the account's plan, token usage, or remaining tokens.               |
 
 A discovery workflow is `webSearch` → `scraperAPI`. Both web tools advertise
@@ -150,22 +150,30 @@ connection; no tool takes an API token argument.
 Only `scraperAPI`, `webSearch`, and `status` are registered. The other old tool
 names are removed.
 
-| Previous call                          | Replacement                                                                                              |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `fetch`                                | `scraperAPI`; uses POST, SDK options, and automatic browser fallback by default.                         |
-| `serp`                                 | `webSearch`; rename `query_or_url` to `url` and `client_timeout` to `timeout`. Set `raw=false` for JSON. |
-| `status`                               | `status` for account usage; the `domain`, `from`, `to`, `action`, and `api_token_name` inputs are gone.  |
-| `scrape`, `rerun`, `results`, `result` | Removed from this MCP server.                                                                            |
+| Previous call                          | Replacement                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `fetch`                                | `scraperAPI`; uses POST, SDK options, and automatic browser fallback by default.                        |
+| `serp`                                 | `webSearch`; rename `query_or_url` to `url` and `client_timeout` to `timeout`.                          |
+| `status`                               | `status` for account usage; the `domain`, `from`, `to`, `action`, and `api_token_name` inputs are gone. |
+| `scrape`, `rerun`, `results`, `result` | Removed from this MCP server.                                                                           |
 
 `super_mode` becomes `super`. `home_page` now maps to `warmStart`, and
 `token_cap=0` is accepted. Restart the server and reconnect the MCP client after
 updating so it refreshes `tools/list`.
 
+### Changes in 0.3.0
+
+`webSearch` now calls MrScraper's web search action on the Scraper API host
+and returns a ranked list of results. It gained `num_results`, and `region`
+must be a two-letter country code. The 0.2 options `raw`, `format`,
+`language`, `page`, and `render_js` are no longer supported: calls that still
+send them succeed, and the options are ignored. `MRSCRAPER_SYNC_BASE_URL` is
+gone; `MRSCRAPER_FETCH_BASE_URL` now covers both web tools.
+
 ## Tool reference
 
-The options and defaults of `scraperAPI` and `webSearch` follow the Python SDK's
-`scraper_api` and `web_search` methods. MCP tool names use camel case; their
-argument names use the SDK's snake case.
+The options and defaults of `scraperAPI` follow the Python SDK's `scraper_api`
+method. MCP tool names use camel case; their argument names use snake case.
 
 ### `scraperAPI`
 
@@ -233,47 +241,28 @@ headers. OAuth JWTs are sent only through `Authorization`.
 ### `webSearch`
 
 ```text
-POST https://sync.scraper.mrscraper.com/api/google/serp/v2/sync
+POST https://api.mrscraper.com
 ```
 
-Request parsed search results:
+The JSON body carries `action: "websearch"`, the query, and the optional
+country and result count. Ask for 20 results from the United Kingdom:
 
 ```json
 {
-  "url": "MrScraper web scraping",
-  "raw": false,
-  "region": "id",
-  "language": "id",
-  "page": 1,
-  "format": "json"
+  "url": "running shoes",
+  "region": "gb",
+  "num_results": 20
 }
 ```
 
-`raw=true` is the Python SDK-compatible default and requests HTML regardless
-of `format`. Set `raw=false` and `format="json"` for parsed results.
+A search results URL also works; its `q` parameter becomes the query.
 
-A search results URL supplies the query, locale, and page:
-
-```json
-{
-  "url": "https://www.google.com/search?q=web+scraping&gl=us&hl=en&start=20",
-  "raw": false
-}
-```
-
-This derives `query="web scraping"`, `region="us"`, `language="en"`, and
-`page=3`. Explicit options override URL-derived values.
-
-| Input       | Default              | Request mapping / purpose                                      |
-| ----------- | -------------------- | -------------------------------------------------------------- |
-| `url`       | required             | Search text or search results URL; normalized to body `query`. |
-| `raw`       | `true`               | Forces body `format="html"`; false allows `format`.            |
-| `format`    | `"json"`             | Body `format`, either `json` or `html`, when raw is false.     |
-| `region`    | URL value or omitted | Body `region`; overrides `gl`.                                 |
-| `language`  | URL value or omitted | Body `language`; overrides `hl`.                               |
-| `page`      | URL value or omitted | Body `page`; positive one-based integer, overrides `start`.    |
-| `render_js` | `false`              | Body `renderJs`; render dynamic search features.               |
-| `timeout`   | `600`                | Local HTTP deadline in seconds; omitted from the body.         |
+| Input         | Default  | Request mapping / purpose                                                   |
+| ------------- | -------- | --------------------------------------------------------------------------- |
+| `url`         | required | Body `query`; search text, or a search results URL whose `q` value is used. |
+| `region`      | `us`     | Body `country`; two-letter country code.                                    |
+| `num_results` | `10`     | Body `numResults`; 10 to 100. The search may return fewer.                  |
+| `timeout`     | `600`    | Local HTTP deadline in seconds; omitted from the body.                      |
 
 ### `status`
 
@@ -346,8 +335,29 @@ status:
 }
 ```
 
-A parsed `webSearch` response (`raw=false`) has organic results in
-`data.data.organic`.
+A `webSearch` response lists the results in `data.data`, each with `rank`,
+`title`, `url`, `description`, and `source`:
+
+```json
+{
+  "status_code": 200,
+  "data": {
+    "success": true,
+    "message": "Search completed",
+    "data": [
+      {
+        "rank": 1,
+        "title": "Web Scraping API | MrScraper",
+        "url": "https://mrscraper.com/",
+        "description": "Extract structured data from any website with AI.",
+        "source": "MrScraper"
+      }
+    ],
+    "tokenUsage": 1
+  },
+  "headers": { "content-type": "application/json; charset=utf-8" }
+}
+```
 
 Failures include `error` and set MCP `isError=true`. Network failures have
 `status_code=null`. Credential-bearing response headers and JSON metadata
@@ -399,8 +409,8 @@ Run these commands individually from the repository directory:
    npm run test:manual -- status
    ```
 
-The webSearch sample explicitly requests `raw=false`, `format="json"`, US
-results, and English. Each command prints `Tools: scraperAPI, webSearch, status`
+The webSearch sample asks for US results (`region` `us`). Each command prints
+`Tools: scraperAPI, webSearch, status`
 and `PASS <tool>` on success. Exit codes are 0 for success, 1 for a tool or
 connection failure, and 2 for invalid command arguments.
 
@@ -411,7 +421,7 @@ npm run test:manual -- scraperAPI --args '{"url":"https://example.com","markdown
 ```
 
 ```sh
-npm run test:manual -- webSearch --args '{"url":"web scraping","raw":false,"region":"id","language":"id","page":1,"render_js":true}'
+npm run test:manual -- webSearch --args '{"url":"web scraping","region":"id","num_results":20}'
 ```
 
 To test an already running HTTP MCP server, append
@@ -503,8 +513,8 @@ checks, since any client must be able to read them before it has credentials.
 
 ## Interactive widgets
 
-`webSearch` carries a self-contained search results widget for parsed JSON
-results. HTML responses show a prompt to request parsed results. `status`
+`webSearch` carries a self-contained search results widget that lists the
+results with their titles, links, and descriptions. `status`
 carries an account widget with the plan, token usage, and a usage meter. Hosts
 without MCP Apps support display the normal JSON tool response.
 
@@ -526,24 +536,23 @@ deployment and keep bearer authentication enabled.
 
 ## Environment variables
 
-| Variable                         | Default                           | Purpose                                                          |
-| -------------------------------- | --------------------------------- | ---------------------------------------------------------------- |
-| `TRANSPORT`                      | `stdio`                           | Selects `stdio` or `http`.                                       |
-| `HOST`                           | `127.0.0.1`                       | HTTP bind address; the Docker image uses `0.0.0.0`.              |
-| `PORT`                           | `8000`                            | HTTP listen port.                                                |
-| `MRSCRAPER_API_KEY`              | -                                 | Primary stdio credential.                                        |
-| `MRSCRAPER_API_TOKEN`            | -                                 | Alternative stdio credential (also used by the Python SDK).      |
-| `MRSCRAPER_HTTP_AUTH`            | `1`                               | Enables HTTP bearer verification.                                |
-| `MRSCRAPER_OAUTH`                | `1`                               | Accepts OAuth 2.1 access tokens alongside API keys.              |
-| `MRSCRAPER_MCP_PUBLIC_URL`       | `https://mcp.mrscraper.com`       | Public origin; `<origin>/mcp` is the required token audience.    |
-| `MRSCRAPER_OAUTH_ISSUER`         | `https://api.app.mrscraper.com`   | Authorization server issuer.                                     |
-| `MRSCRAPER_OAUTH_JWKS_URL`       | `<issuer>/.well-known/jwks.json`  | Key set used to verify access tokens.                            |
-| `MRSCRAPER_ALLOWED_ORIGINS`      | -                                 | Comma-separated browser origins allowed to call the HTTP server. |
-| `MRSCRAPER_API_BASE_URL`         | MrScraper platform API            | Platform endpoint override for development and testing.          |
-| `MRSCRAPER_FETCH_BASE_URL`       | MrScraper Web Unblocker           | Scraper API endpoint override.                                   |
-| `MRSCRAPER_SYNC_BASE_URL`        | MrScraper synchronous scraper API | Web search endpoint override.                                    |
-| `MRSCRAPER_LOG_HTTP_PAYLOAD`     | off                               | Enables trusted-environment request-body diagnostics.            |
-| `MRSCRAPER_LOG_HTTP_PAYLOAD_MAX` | `8192`                            | Maximum diagnostic payload length.                               |
+| Variable                         | Default                          | Purpose                                                          |
+| -------------------------------- | -------------------------------- | ---------------------------------------------------------------- |
+| `TRANSPORT`                      | `stdio`                          | Selects `stdio` or `http`.                                       |
+| `HOST`                           | `127.0.0.1`                      | HTTP bind address; the Docker image uses `0.0.0.0`.              |
+| `PORT`                           | `8000`                           | HTTP listen port.                                                |
+| `MRSCRAPER_API_KEY`              | -                                | Primary stdio credential.                                        |
+| `MRSCRAPER_API_TOKEN`            | -                                | Alternative stdio credential (also used by the Python SDK).      |
+| `MRSCRAPER_HTTP_AUTH`            | `1`                              | Enables HTTP bearer verification.                                |
+| `MRSCRAPER_OAUTH`                | `1`                              | Accepts OAuth 2.1 access tokens alongside API keys.              |
+| `MRSCRAPER_MCP_PUBLIC_URL`       | `https://mcp.mrscraper.com`      | Public origin; `<origin>/mcp` is the required token audience.    |
+| `MRSCRAPER_OAUTH_ISSUER`         | `https://api.app.mrscraper.com`  | Authorization server issuer.                                     |
+| `MRSCRAPER_OAUTH_JWKS_URL`       | `<issuer>/.well-known/jwks.json` | Key set used to verify access tokens.                            |
+| `MRSCRAPER_ALLOWED_ORIGINS`      | -                                | Comma-separated browser origins allowed to call the HTTP server. |
+| `MRSCRAPER_API_BASE_URL`         | MrScraper platform API           | Platform endpoint override for development and testing.          |
+| `MRSCRAPER_FETCH_BASE_URL`       | MrScraper Web Unblocker          | Scraper API and web search endpoint override.                    |
+| `MRSCRAPER_LOG_HTTP_PAYLOAD`     | off                              | Enables trusted-environment request-body diagnostics.            |
+| `MRSCRAPER_LOG_HTTP_PAYLOAD_MAX` | `8192`                           | Maximum diagnostic payload length.                               |
 
 ## Troubleshooting
 
@@ -560,7 +569,7 @@ deployment and keep bearer authentication enabled.
 - **403 Forbidden Origin:** Add the exact browser origin to
   `MRSCRAPER_ALLOWED_ORIGINS`.
 - **Tool input error:** Compare the call with the tool's parameter table and
-  the documented SDK-compatible defaults.
+  its defaults.
 - **Upstream timeout:** Increase `scraperAPI.timeout` (up to 300 seconds) or `webSearch.timeout`
   when the target requires a longer request window.
 - **New tools are missing:** Start a new client session and inspect

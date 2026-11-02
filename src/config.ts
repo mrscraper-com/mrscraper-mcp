@@ -1,4 +1,4 @@
-export const VERSION = "0.2.3";
+export const VERSION = "0.3.0";
 
 export const TOOL_NAMES = ["scraperAPI", "webSearch", "status"] as const;
 
@@ -9,9 +9,7 @@ export type Transport = "stdio" | "http";
 export interface ApiEndpoints {
   apiBaseUrl: string;
   scraperApiUrl: string;
-  syncScraperBaseUrl: string;
   subscriptionAccounts: string;
-  webSearchUrl: string;
 }
 
 function baseUrl(environmentName: string, fallback: string): string {
@@ -23,21 +21,16 @@ export function getApiEndpoints(): ApiEndpoints {
     "MRSCRAPER_API_BASE_URL",
     "https://api.app.mrscraper.com/api/v1",
   );
+  // scraperAPI and webSearch share this host; webSearch posts action "websearch".
   const scraperApiUrl = baseUrl(
     "MRSCRAPER_FETCH_BASE_URL",
     "https://api.mrscraper.com",
-  );
-  const syncScraperBaseUrl = baseUrl(
-    "MRSCRAPER_SYNC_BASE_URL",
-    "https://sync.scraper.mrscraper.com",
   );
 
   return {
     apiBaseUrl,
     scraperApiUrl,
-    syncScraperBaseUrl,
     subscriptionAccounts: `${apiBaseUrl}/subscription-accounts`,
-    webSearchUrl: `${syncScraperBaseUrl}/api/google/serp/v2/sync`,
   };
 }
 

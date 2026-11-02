@@ -3,8 +3,6 @@ import { getApiEndpoints } from "./config.js";
 import { request, type ApiResponse } from "./http.js";
 import { isOAuthAccessToken } from "./oauth.js";
 
-export type SearchFormat = "json" | "html";
-
 interface FetchDependency {
   fetchFn?: typeof fetch;
 }
@@ -129,67 +127,39 @@ export async function scraperApi({
   });
 }
 
-export interface NormalizedSearchInput {
-  query: string;
-  region: string | null;
-  language: string | null;
-  page: number | null;
-}
-
-export function normalizeSearchInput(input: string): NormalizedSearchInput {
-  const value = String(input || "").trim();
-  if (!value) throw new Error("A web search query or URL is required");
-  if (!/^https?:\/\//i.test(value)) {
-    return { query: value, region: null, language: null, page: null };
-  }
-  const parsed = new URL(value);
-  const query = parsed.searchParams.get("q")?.trim();
-  if (!query) throw new Error("Search results URL must contain a q parameter");
-  const startValue = parsed.searchParams.get("start") || "0";
-  const start = /^[+-]?\d+$/.test(startValue.trim()) ? Number(startValue) : 0;
-  return {
-    query,
-    region: parsed.searchParams.get("gl") || null,
-    language: parsed.searchParams.get("hl") || null,
-    page:
-      Number.isFinite(start) && start > 0 ? Math.floor(start / 10) + 1 : null,
-  };
-}
-
 export interface WebSearchOptions extends FetchDependency {
   token: string;
-  url: string;
-  raw?: boolean;
-  region?: string | null;
-  language?: string | null;
-  page?: number | null;
-  format?: SearchFormat;
-  renderJs?: boolean;
+  query: string;
+  country?: string | null;
+  numResults?: number | null;
   timeout?: number;
+}
+
+/** Returns the query text, or the `q` parameter when given a search results URL. */
+export function searchQuery(input: string): string {
+  const value = String(input || "").trim();
+  if (!value) throw new Error("A web search query is required");
+  if (!/^https?:\/\//i.test(value)) return value;
+  const query = new URL(value).searchParams.get("q")?.trim();
+  if (!query) throw new Error("Search results URL must contain a q parameter");
+  return query;
 }
 
 export async function webSearchApi({
   token,
-  url,
-  raw = true,
-  region = null,
-  language = null,
-  page = null,
-  format = "json",
-  renderJs = false,
+  query,
+  country = null,
+  numResults = null,
   timeout = 600,
   fetchFn,
 }: WebSearchOptions): Promise<ApiResponse> {
-  const normalized = normalizeSearchInput(url);
-  return request("POST", getApiEndpoints().webSearchUrl, {
+  return request("POST", getApiEndpoints().scraperApiUrl, {
     headers: getAuthHeaders(token),
     json: compact({
-      query: normalized.query,
-      region: region || normalized.region,
-      language: language || normalized.language,
-      page: page || normalized.page,
-      format: raw ? "html" : format,
-      renderJs,
+      action: "websearch",
+      query: searchQuery(query),
+      country: country ? country.toLowerCase() : null,
+      numResults,
     }),
     timeout,
     fetchFn,

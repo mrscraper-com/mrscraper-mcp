@@ -122,18 +122,20 @@ describe("SDK-compatible tool inputs", () => {
 
   it.each([
     { url: " " },
-    { url: "query", page: 0 },
+    { url: "query", region: "usa" },
+    { url: "query", num_results: 9 },
+    { url: "query", num_results: 101 },
     { url: "query", timeout: 0 },
-    { url: "query", format: "xml" },
   ])("rejects invalid webSearch controls: %j", (input) => {
     expect(() => webSearchInputSchema.parse(input)).toThrow();
   });
 
-  it("uses SDK defaults and returns parsed JSON only when requested", async () => {
+  it("sends the websearch action with the query, country, and result count", async () => {
     const bodies: unknown[] = [];
-    const fetchFn = mockFetch((_url, init) => {
+    const fetchFn = mockFetch((url, init) => {
+      expect(url.href).toBe("https://api.mrscraper.com/");
       bodies.push(JSON.parse(String(init.body)));
-      return Response.json({ organic_results: [] });
+      return Response.json({ success: true, data: [], tokenUsage: 1 });
     });
     await webSearchTool("test", webSearchInputSchema.parse({ url: "test" }), {
       fetchFn,
@@ -141,16 +143,21 @@ describe("SDK-compatible tool inputs", () => {
     await webSearchTool(
       "test",
       webSearchInputSchema.parse({
-        url: "test",
-        raw: false,
-        render_js: true,
+        url: "running shoes",
+        region: "GB",
+        num_results: 20,
         timeout: 1.5,
       }),
       { fetchFn },
     );
     expect(bodies).toEqual([
-      { query: "test", format: "html", renderJs: false },
-      { query: "test", format: "json", renderJs: true },
+      { action: "websearch", query: "test" },
+      {
+        action: "websearch",
+        query: "running shoes",
+        country: "gb",
+        numResults: 20,
+      },
     ]);
   });
 });
@@ -200,12 +207,12 @@ describe("MCP tool surface", () => {
   });
 
   it("calls both web tools through MCP with the structured response envelope", async () => {
-    const fetchFn = mockFetch((url) =>
-      url.pathname.includes("/serp/")
+    const fetchFn = mockFetch((_url, init) =>
+      JSON.parse(String(init.body)).action === "websearch"
         ? Response.json({
-            organic_results: [
-              { title: "Example", link: "https://example.com" },
-            ],
+            success: true,
+            data: [{ rank: 1, title: "Example", url: "https://example.com" }],
+            tokenUsage: 1,
           })
         : new Response("<p>Hello</p>", {
             headers: { "content-type": "text/html" },
@@ -219,7 +226,7 @@ describe("MCP tool surface", () => {
           arguments:
             name === "scraperAPI"
               ? { url: "https://example.com" }
-              : { url: "example", raw: false },
+              : { url: "example" },
         });
         expect(result.isError).toBeUndefined();
         expect(result.structuredContent).toMatchObject({
@@ -234,6 +241,36 @@ describe("MCP tool surface", () => {
         ]);
       }
       expect(fetchFn).toHaveBeenCalledTimes(2);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("still accepts the search options of version 0.2 and ignores them", async () => {
+    const bodies: unknown[] = [];
+    const fetchFn = mockFetch((_url, init) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return Response.json({ success: true, data: [], tokenUsage: 1 });
+    });
+    const { client, server } = await connect(fetchFn);
+    try {
+      const result = await client.callTool({
+        name: "webSearch",
+        arguments: {
+          url: "https://search.example/results?q=running+shoes",
+          raw: false,
+          region: "ID",
+          language: "id",
+          page: 2,
+          format: "json",
+          render_js: true,
+        },
+      });
+      expect(result.isError).toBeUndefined();
+      expect(bodies).toEqual([
+        { action: "websearch", query: "running shoes", country: "id" },
+      ]);
     } finally {
       await client.close();
       await server.close();

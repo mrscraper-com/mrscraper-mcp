@@ -11,7 +11,7 @@ import { registerWidgets } from "./widgets/index.js";
 
 export const SERVER_INSTRUCTIONS =
   "MrScraper provides three tools. `scraperAPI` retrieves a known page as HTML, Markdown, or a screenshot. " +
-  "`webSearch` searches the web from query text or a search results URL; use raw=false and format=json for parsed results. " +
+  "`webSearch` searches the web for query text and returns ranked results with titles, URLs, and descriptions. " +
   "`status` reports the connected account's plan, token usage, and remaining tokens. " +
   "Tools authenticate through the MCP connection and do not accept API tokens as arguments.";
 

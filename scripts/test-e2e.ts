@@ -26,14 +26,7 @@ try {
   } else {
     process.exitCode = await testTool(
       "webSearch",
-      {
-        url: values.query,
-        raw: false,
-        format: "json",
-        region: "us",
-        language: "en",
-        page: 1,
-      },
+      { url: values.query, region: "us" },
       values.target,
     );
   }

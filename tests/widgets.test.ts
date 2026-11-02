@@ -18,7 +18,6 @@ import {
   columnsOf,
   errorMessage,
   findRecords,
-  findSearchResults,
   payload,
   scalarEntries,
 } from "../ui/data.js";
@@ -177,37 +176,38 @@ describe("widget shape probing", () => {
     expect(findRecords([1, 2, 3])).toBeNull();
   });
 
-  it("shows Google's organic results, not the navigation tabs listed before them", () => {
-    const organic = [
+  it("finds the ranked results in a web search response", () => {
+    const results = [
       {
+        rank: 1,
         title: "Timeouts",
-        link: "https://requests.readthedocs.io/en/latest/user/advanced/",
+        url: "https://requests.readthedocs.io/en/latest/user/advanced/",
         description: "Set a timeout in seconds.",
+        source: "Requests",
       },
     ];
-    const response = {
-      success: true,
-      data: {
-        general: { language: "en" },
-        navigation: [
-          { name: "Images", link: "https://www.google.com/search?tbm=isch" },
-        ],
-        organic,
+    const rows = findRecords(
+      payload({
+        status_code: 200,
+        data: { success: true, message: "Search completed", data: results },
+      }),
+    );
+    expect(rows).toEqual(results);
+    expect(asSearchResults(rows ?? [])).toEqual([
+      {
+        title: "Timeouts",
+        url: "https://requests.readthedocs.io/en/latest/user/advanced/",
+        snippet: "Set a timeout in seconds.",
       },
-      tokenUsage: 1,
-    };
-    expect(findSearchResults(response)).toEqual(organic);
+    ]);
   });
 
-  it("reports no search results when Google returns none", () => {
+  it("reports no search results when the search returns none", () => {
     expect(
-      findSearchResults({
-        data: {
-          navigation: [{ name: "Images", link: "https://www.google.com/" }],
-          organic: [],
-        },
-      }),
-    ).toEqual([]);
+      findRecords(
+        payload({ status_code: 200, data: { success: true, data: [] } }),
+      ),
+    ).toBeNull();
   });
 
   it("orders columns by how many rows use them", () => {

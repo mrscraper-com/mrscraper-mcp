@@ -11,6 +11,9 @@ const SENSITIVE_RESPONSE_HEADERS = new Set([
   "x-discard-token-secret",
 ]);
 
+// Internal routing details that callers don't need (the worker name exposes upstream infrastructure).
+const INTERNAL_RESPONSE_HEADERS = new Set(["x-worker-name"]);
+
 const SENSITIVE_DATA_KEYS = new Set([
   "accesstoken",
   "api_key",
@@ -103,7 +106,9 @@ export function sanitizeResponseData(
 function responseHeaders(response: Response): Record<string, string> {
   return Object.fromEntries(
     [...response.headers.entries()].filter(
-      ([name]) => !SENSITIVE_RESPONSE_HEADERS.has(name.toLowerCase()),
+      ([name]) =>
+        !SENSITIVE_RESPONSE_HEADERS.has(name.toLowerCase()) &&
+        !INTERNAL_RESPONSE_HEADERS.has(name.toLowerCase()),
     ),
   );
 }

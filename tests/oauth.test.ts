@@ -116,10 +116,18 @@ async function startApp(
       apiToken: request.get("x-api-token"),
       body: request.body,
     });
-    if (request.path === "/" && request.method === "POST") {
+    if (
+      request.path === "/" &&
+      request.method === "POST" &&
+      request.body?.action === "websearch"
+    ) {
+      response.json({
+        success: true,
+        data: [{ rank: 1, title: "MrScraper", url: "https://mrscraper.com/" }],
+        tokenUsage: 1,
+      });
+    } else if (request.path === "/" && request.method === "POST") {
       response.json({ html: "<h1>Example Domain</h1>", error: null });
-    } else if (request.path === "/api/google/serp/v2/sync") {
-      response.json({ data: { organic: [{ title: "MrScraper" }] } });
     } else if (request.path === "/subscription-accounts") {
       response.json({
         stripeStatus: "active",
@@ -144,7 +152,6 @@ async function startApp(
   );
   const upstreamUrl = `http://127.0.0.1:${(upstreamServer.address() as AddressInfo).port}`;
   vi.stubEnv("MRSCRAPER_FETCH_BASE_URL", upstreamUrl);
-  vi.stubEnv("MRSCRAPER_SYNC_BASE_URL", upstreamUrl);
   vi.stubEnv("MRSCRAPER_API_BASE_URL", upstreamUrl);
 
   const { app, handler } = createHttpApp({
@@ -183,7 +190,7 @@ function toolCall(baseUrl: string, name: string, token?: string) {
           name === "scraperAPI"
             ? { url: "https://example.com" }
             : name === "webSearch"
-              ? { url: "MrScraper", raw: false }
+              ? { url: "MrScraper" }
               : {},
       },
     }),
@@ -379,9 +386,14 @@ describe("per-tool scope gate", () => {
     for (const name of ["scraperAPI", "webSearch"]) {
       await expectToolSuccess(await toolCall(baseUrl, name, token));
     }
-    expect(requests.map((request) => request.url.pathname)).toEqual([
-      "/",
-      "/api/google/serp/v2/sync",
+    expect(
+      requests.map((request) => [
+        request.url.pathname,
+        (request.body as { action?: string } | undefined)?.action ?? null,
+      ]),
+    ).toEqual([
+      ["/", null],
+      ["/", "websearch"],
     ]);
     expect(
       requests.every((request) => request.authorization === `Bearer ${token}`),
@@ -413,7 +425,11 @@ describe("per-tool scope gate", () => {
     const data = await expectToolSuccess(
       await toolCall(baseUrl, "webSearch", token),
     );
-    expect(data.data).toEqual({ data: { organic: [{ title: "MrScraper" }] } });
+    expect(data.data).toEqual({
+      success: true,
+      data: [{ rank: 1, title: "MrScraper", url: "https://mrscraper.com/" }],
+      tokenUsage: 1,
+    });
   });
 
   it("refuses status without account:read", async () => {
