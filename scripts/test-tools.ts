@@ -43,11 +43,9 @@ export async function testTool(
     }
   }
   const endpointOverrides = Object.fromEntries(
-    [
-      "MRSCRAPER_API_BASE_URL",
-      "MRSCRAPER_FETCH_BASE_URL",
-      "MRSCRAPER_SYNC_BASE_URL",
-    ].flatMap((key) => (process.env[key] ? [[key, process.env[key]!]] : [])),
+    ["MRSCRAPER_API_BASE_URL", "MRSCRAPER_FETCH_BASE_URL"].flatMap((key) =>
+      process.env[key] ? [[key, process.env[key]!]] : [],
+    ),
   );
   const transport = target
     ? new StreamableHTTPClientTransport(new URL(target), {
@@ -161,7 +159,7 @@ Examples:
   npm run test:manual -- status
   npm run test:manual -- scraperAPI --args '{"url":"https://example.com","markdown":true,"screenshot":true}'
 
-The webSearch sample uses raw=false and format=json. Each invocation calls one tool.
+The webSearch sample asks for results from the United States (region us). Each invocation calls one tool.
 Set MRSCRAPER_API_KEY or MRSCRAPER_API_TOKEN first; .env is loaded automatically.`);
     return 0;
   }
@@ -181,14 +179,7 @@ Set MRSCRAPER_API_KEY or MRSCRAPER_API_TOKEN first; .env is loaded automatically
           ? { url: values.url }
           : name === "status"
             ? {}
-            : {
-                url: values.query,
-                raw: false,
-                format: "json",
-                region: "us",
-                language: "en",
-                page: 1,
-              };
+            : { url: values.query, region: "us" };
   } catch {
     console.error("--args must be valid JSON.");
     return 2;

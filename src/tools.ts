@@ -30,7 +30,8 @@ export const scraperAPIOutputSchema = apiResponseSchema.meta({
 });
 export const webSearchOutputSchema = apiResponseSchema.meta({
   title: "Web search response",
-  description: "Parsed web search results or result-page HTML.",
+  description:
+    "Ranked web search results, each with rank, title, url, description, and source.",
 });
 export const statusOutputSchema = z
   .object({
@@ -162,47 +163,33 @@ export const webSearchInputSchema = z.object({
     .string()
     .trim()
     .min(1)
-    .describe("Required search query text or complete search results URL."),
-  raw: z
-    .boolean()
-    .default(true)
     .describe(
-      "SDK compatibility default: true requests HTML and overrides format. Set false for parsed JSON results.",
+      "Required search query text. A search results URL also works; its q parameter becomes the query.",
     ),
   region: z
     .string()
-    .nullable()
-    .optional()
-    .describe("Country code; overrides gl from a search results URL."),
-  language: z
-    .string()
-    .nullable()
-    .optional()
-    .describe("Language code; overrides hl from a search results URL."),
-  page: z
-    .number()
-    .int()
-    .positive()
+    .trim()
+    .regex(/^[A-Za-z]{2}$/, "region must be a two-letter country code")
     .nullable()
     .optional()
     .describe(
-      "One-based result page; overrides the page derived from start in a search results URL.",
+      "Two-letter country code for the results, for example us or gb. Defaults to us.",
     ),
-  format: z
-    .enum(["json", "html"])
-    .default("json")
-    .describe("Response representation when raw=false."),
-  render_js: z
-    .boolean()
-    .default(false)
-    .describe("Render JavaScript-dependent search features."),
+  num_results: z
+    .number()
+    .int()
+    .min(10)
+    .max(100)
+    .nullable()
+    .optional()
+    .describe(
+      "Number of results to return, from 10 to 100. Defaults to 10; fewer may come back.",
+    ),
   timeout: z
     .number()
     .positive()
     .default(600)
-    .describe(
-      "Local upstream HTTP deadline in seconds; omitted from the JSON body.",
-    ),
+    .describe("Local upstream HTTP deadline in seconds; not sent to the API."),
 });
 
 export async function scraperAPITool(
@@ -244,13 +231,9 @@ export async function webSearchTool(
 ): Promise<Record<string, unknown>> {
   return webSearchApi({
     token,
-    url: input.url,
-    raw: input.raw,
-    region: input.region,
-    language: input.language,
-    page: input.page,
-    format: input.format,
-    renderJs: input.render_js,
+    query: input.url,
+    country: input.region,
+    numResults: input.num_results,
     timeout: input.timeout,
     fetchFn: dependencies.fetchFn,
   });
@@ -311,7 +294,7 @@ export const TOOL_DESCRIPTIONS = {
   scraperAPI:
     "Retrieves a known page through MrScraper's Scraper API as HTML, Markdown, a screenshot, or a combination. Matches the Python SDK's scraper_api options. Omit browser_rendering for automatic browser fallback; screenshot=true always enables it. super enables real-device routing independently. home_page maps to warmStart. Proxy, cookie, target-header, retry, and timeout options control page loading. Returns status_code, data, and sanitized headers.",
   webSearch:
-    "Searches the web from query text or a search results URL passed as url. Matches the Python SDK's web_search options. Set raw=false and format=json for parsed results; the SDK-compatible default raw=true returns HTML. Search results URLs supply q, gl, hl, and start; explicit region, language, and page override URL-derived values. render_js enables dynamic features; timeout controls the local request deadline. Returns status_code, data, and sanitized headers.",
+    "Searches the web for query text passed as url and returns ranked results, each with rank, title, url, description, and source. region sets the results' country as a two-letter code (default us). num_results sets how many results to return, from 10 to 100 (default 10). A search results URL also works: its q parameter becomes the query. timeout controls the local request deadline. Returns status_code, data, and sanitized headers.",
   status:
     "Returns the connected MrScraper account's identity (name, email, and verification state), subscription status, token limit, token usage, remaining tokens, and rate limit. Use it to check the account and remaining quota, for example before a large batch of requests. It takes no input and reports account usage, not the progress of a request.",
 } as const;

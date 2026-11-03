@@ -8,31 +8,31 @@ const SAMPLES: Record<WidgetName, unknown> = {
     status_code: 200,
     data: {
       success: true,
-      message: "Successfully scraped",
-      data: {
-        navigation: [
-          { name: "Images", link: "https://www.google.com/search?tbm=isch" },
-          { name: "News", link: "https://www.google.com/search?tbm=nws" },
-        ],
-        organic: [
-          {
-            title: "Web Scraping API | MrScraper",
-            link: "https://mrscraper.com/",
-            description:
-              "Extract structured data from any website with AI, without writing selectors.",
-          },
-          {
-            title: "MrScraper documentation",
-            link: "https://docs.mrscraper.com/",
-            description: "Guides, API reference, and the MCP server setup.",
-          },
-          {
-            title: "MrScraper pricing",
-            link: "https://mrscraper.com/pricing",
-            description: "Plans, token limits, and enterprise options.",
-          },
-        ],
-      },
+      message: "Search completed",
+      data: [
+        {
+          rank: 1,
+          title: "Web Scraping API | MrScraper",
+          url: "https://mrscraper.com/",
+          description:
+            "Extract structured data from any website with AI, without writing selectors.",
+          source: "MrScraper",
+        },
+        {
+          rank: 2,
+          title: "MrScraper documentation",
+          url: "https://docs.mrscraper.com/",
+          description: "Guides, API reference, and the MCP server setup.",
+          source: "MrScraper",
+        },
+        {
+          rank: 3,
+          title: "MrScraper pricing",
+          url: "https://mrscraper.com/pricing",
+          description: "Plans, token limits, and enterprise options.",
+          source: "MrScraper",
+        },
+      ],
       tokenUsage: 1,
     },
   },

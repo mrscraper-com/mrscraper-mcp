@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { scraperApi, webSearchApi, normalizeSearchInput } from "../src/api.js";
+import { scraperApi, searchQuery, webSearchApi } from "../src/api.js";
 import { request, sanitizeResponseData } from "../src/http.js";
 
 function mockFetch(
@@ -25,6 +25,7 @@ describe("HTTP helpers", () => {
             "set-cookie": "secret-cookie",
             "x-api-token": "secret-token",
             "x-request-id": "request-1",
+            "x-worker-name": "search-worker-1",
           },
         },
       ),
@@ -34,6 +35,7 @@ describe("HTTP helpers", () => {
     });
     expect(result.headers).not.toHaveProperty("set-cookie");
     expect(result.headers).not.toHaveProperty("x-api-token");
+    expect(result.headers).not.toHaveProperty("x-worker-name");
     expect(result.headers["x-request-id"]).toBe("request-1");
     expect(result.data).toMatchObject({
       latestApiToken: "[REDACTED]",
@@ -228,7 +230,7 @@ describe("Python SDK request compatibility", () => {
     });
     await webSearchApi({
       token: "header.payload.signature",
-      url: "example",
+      query: "example",
       fetchFn,
     });
   });
@@ -246,98 +248,39 @@ describe("Python SDK request compatibility", () => {
     expect(JSON.stringify(result)).not.toContain("query-secret");
   });
 
-  it("extracts search fields from a search results URL and allows explicit overrides", async () => {
-    expect(
-      normalizeSearchInput(
-        "https://www.google.com/search?q=running+shoes&gl=us&hl=en&start=20",
-      ),
-    ).toEqual({
-      query: "running shoes",
-      region: "us",
-      language: "en",
-      page: 3,
-    });
-    const bodies: unknown[] = [];
+  it("posts the websearch action to the Scraper API host", async () => {
     const fetchFn = mockFetch((url, init) => {
       expect(init.method).toBe("POST");
-      expect(url.href).toBe(
-        "https://sync.scraper.mrscraper.com/api/google/serp/v2/sync",
-      );
-      bodies.push(JSON.parse(String(init.body)));
-      return Response.json({ organic_results: [] });
-    });
-    const url =
-      "https://www.google.com/search?q=running+shoes&gl=us&hl=en&start=20";
-    await webSearchApi({
-      token: "test",
-      url,
-      raw: false,
-      renderJs: true,
-      fetchFn,
-    });
-    await webSearchApi({
-      token: "test",
-      url,
-      raw: false,
-      region: "id",
-      language: "id",
-      page: 2,
-      timeout: 2.5,
-      fetchFn,
-    });
-    expect(bodies).toEqual([
-      {
-        query: "running shoes",
-        region: "us",
-        language: "en",
-        page: 3,
-        format: "json",
-        renderJs: true,
-      },
-      {
-        query: "running shoes",
-        region: "id",
-        language: "id",
-        page: 2,
-        format: "json",
-        renderJs: false,
-      },
-    ]);
-  });
-
-  it("defaults to raw HTML like web_search and lets raw override format", async () => {
-    const fetchFn = mockFetch((_url, init) => {
+      expect(url.href).toBe("https://api.mrscraper.com/");
+      const headers = new Headers(init.headers);
+      expect(headers.get("x-api-token")).toBe("atk_testtesttesttest");
+      expect(headers.get("authorization")).toBe("Bearer atk_testtesttesttest");
       expect(JSON.parse(String(init.body))).toEqual({
-        query: "iphone 17",
-        format: "html",
-        renderJs: false,
+        action: "websearch",
+        query: "running shoes",
+        country: "id",
+        numResults: 30,
       });
-      return new Response("<html>Search</html>");
+      return Response.json({ success: true, data: [], tokenUsage: 1 });
     });
-    await webSearchApi({ token: "test", url: "iphone 17", fetchFn });
-    await webSearchApi({
-      token: "test",
-      url: "iphone 17",
-      raw: true,
-      format: "json",
+    const result = await webSearchApi({
+      token: "atk_testtesttesttest",
+      query: "running shoes",
+      country: "ID",
+      numResults: 30,
       fetchFn,
     });
+    expect(result.status_code).toBe(200);
   });
 
-  it("ignores invalid start values and requires a query in search URLs", () => {
+  it("takes the query from text or from the q parameter of a search results URL", () => {
+    expect(searchQuery(" site:example.com ")).toBe("site:example.com");
     expect(
-      normalizeSearchInput("https://www.google.com/search?q=test&start=abc")
-        .page,
-    ).toBeNull();
-    expect(
-      normalizeSearchInput("https://www.google.com/search?q=test&start=20.5")
-        .page,
-    ).toBeNull();
-    expect(normalizeSearchInput("site:example.com").query).toBe(
-      "site:example.com",
-    );
-    expect(() => normalizeSearchInput("https://www.google.com/search")).toThrow(
+      searchQuery("https://search.example/results?q=running+shoes&page=2"),
+    ).toBe("running shoes");
+    expect(() => searchQuery("https://search.example/results")).toThrow(
       "q parameter",
     );
+    expect(() => searchQuery("  ")).toThrow("query is required");
   });
 });

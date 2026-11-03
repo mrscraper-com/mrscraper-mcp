@@ -116,7 +116,7 @@ Connect MrScraper MCP to this agent. Detect the current MCP client and configure
 | Tool         | What it does                                                                                                                                                                |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `scraperAPI` | Retrieves a known URL as HTML, Markdown, a screenshot, or a combination. Options include browser rendering, waiting for a CSS selector, country, timeout, and retry limits. |
-| `webSearch`  | Runs a web search from query text or a complete search results URL and returns parsed JSON or the result page HTML. Options include region, language, and page.             |
+| `webSearch`  | Searches the web and returns ranked results, each with a title, link, description, and source. Options include the results' country and the number of results (10 to 100).  |
 | `status`     | Returns the account's plan, token limit, token usage, remaining tokens, and rate limit.                                                                                     |
 
 The web tools are read-only. Hosts that support MCP Apps also show a search results widget and an account usage meter.
