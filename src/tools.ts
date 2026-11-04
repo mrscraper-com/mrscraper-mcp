@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 import { getSubscriptionAccountApi, scraperApi, webSearchApi } from "./api.js";
+import type { ToolSurface } from "./config.js";
 import type { ApiResponse } from "./http.js";
 import { summarizeSubscriptionAccount } from "./status.js";
 import { widgetMeta } from "./widgets/index.js";
@@ -192,6 +193,29 @@ export const webSearchInputSchema = z.object({
     .describe("Local upstream HTTP deadline in seconds; not sent to the API."),
 });
 
+// The ChatGPT and Codex listing loads public pages without proxy, cookie,
+// header, or retry controls; the omitted options keep their defaults.
+export const chatgptScraperAPIInputSchema = scraperAPIInputSchema
+  .pick({
+    url: true,
+    html: true,
+    markdown: true,
+    screenshot: true,
+    browser_rendering: true,
+    wait_for_selector: true,
+    timeout: true,
+  })
+  .extend({
+    geo_code: z
+      .string()
+      .default("US")
+      .describe("Country to load the page from, such as US, ID, or SG."),
+  });
+
+export const chatgptWebSearchInputSchema = webSearchInputSchema.extend({
+  url: z.string().trim().min(1).describe("Required search query text."),
+});
+
 export async function scraperAPITool(
   token: string,
   input: z.infer<typeof scraperAPIInputSchema>,
@@ -299,30 +323,59 @@ export const TOOL_DESCRIPTIONS = {
     "Returns the connected MrScraper account's identity (name, email, and verification state), subscription status, token limit, token usage, remaining tokens, and rate limit. Use it to check the account and remaining quota, for example before a large batch of requests. It takes no input and reports account usage, not the progress of a request.",
 } as const;
 
+export const CHATGPT_TOOL_DESCRIPTIONS = {
+  scraperAPI:
+    "Retrieves a public web page as HTML, Markdown, a screenshot, or a combination. Browser rendering starts automatically when a page needs it; browser_rendering forces or disables it, and screenshot=true always enables it. wait_for_selector waits for an element before returning, and geo_code loads the page from a specific country. Returns status_code, data, and sanitized headers.",
+  webSearch:
+    "Searches the web for query text passed as url and returns ranked results, each with rank, title, url, description, and source. region sets the results' country as a two-letter code (default us). num_results sets how many results to return, from 10 to 100 (default 10). timeout controls the local request deadline. Returns status_code, data, and sanitized headers.",
+  status: TOOL_DESCRIPTIONS.status,
+} as const;
+
 export function registerTools(
   server: McpServer,
   getToken: () => string,
   dependencies: ToolDependencies = {},
+  surface: ToolSurface = "default",
 ): void {
-  server.registerTool(
-    "scraperAPI",
-    {
-      title: "Scraper API",
-      annotations: { title: "Scraper API", ...annotations },
-      description: TOOL_DESCRIPTIONS.scraperAPI,
-      inputSchema: scraperAPIInputSchema,
-      outputSchema: scraperAPIOutputSchema,
-    },
-    async (input) =>
-      asStructured(await scraperAPITool(getToken(), input, dependencies)),
-  );
+  const chatgpt = surface === "chatgpt";
+  const descriptions = chatgpt ? CHATGPT_TOOL_DESCRIPTIONS : TOOL_DESCRIPTIONS;
+  const scraperAPIConfig = {
+    title: "Scraper API",
+    annotations: { title: "Scraper API", ...annotations },
+    description: descriptions.scraperAPI,
+    outputSchema: scraperAPIOutputSchema,
+  };
+  if (chatgpt) {
+    server.registerTool(
+      "scraperAPI",
+      { ...scraperAPIConfig, inputSchema: chatgptScraperAPIInputSchema },
+      async (input) =>
+        asStructured(
+          await scraperAPITool(
+            getToken(),
+            scraperAPIInputSchema.parse(input),
+            dependencies,
+          ),
+        ),
+    );
+  } else {
+    server.registerTool(
+      "scraperAPI",
+      { ...scraperAPIConfig, inputSchema: scraperAPIInputSchema },
+      async (input) =>
+        asStructured(await scraperAPITool(getToken(), input, dependencies)),
+    );
+  }
+  const webSearchSchema: typeof webSearchInputSchema = chatgpt
+    ? chatgptWebSearchInputSchema
+    : webSearchInputSchema;
   server.registerTool(
     "webSearch",
     {
       title: "Web Search",
       annotations: { title: "Web Search", ...annotations },
-      description: TOOL_DESCRIPTIONS.webSearch,
-      inputSchema: webSearchInputSchema,
+      description: descriptions.webSearch,
+      inputSchema: webSearchSchema,
       outputSchema: webSearchOutputSchema,
       _meta: widgetMeta("webSearch", "Searching the web…", "Search complete."),
     },

@@ -3,7 +3,11 @@ import type { Server as HttpServer } from "node:http";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 
 import { createHttpApp } from "./app.js";
-import { httpRuntimeConfig, resolveTransport } from "./config.js";
+import {
+  CHATGPT_MCP_PATH,
+  httpRuntimeConfig,
+  resolveTransport,
+} from "./config.js";
 import { createServerFactory } from "./server.js";
 
 export interface RunningHttpServer {
@@ -24,7 +28,7 @@ export async function startHttpServer(): Promise<RunningHttpServer> {
     listener.once("error", reject);
   });
   console.error(
-    `MrScraper MCP ${config.host}:${config.port}/mcp (health: /health, ready: /ready)`,
+    `MrScraper MCP ${config.host}:${config.port}/mcp and ${CHATGPT_MCP_PATH} (health: /health, ready: /ready)`,
   );
   return {
     server,

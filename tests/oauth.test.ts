@@ -13,7 +13,12 @@ import {
 } from "vitest";
 
 import { createHttpApp } from "../src/app.js";
-import { OAUTH_SCOPES, TOOL_NAMES, type OAuthConfig } from "../src/config.js";
+import {
+  CHATGPT_MCP_PATH,
+  OAUTH_SCOPES,
+  TOOL_NAMES,
+  type OAuthConfig,
+} from "../src/config.js";
 import { isOAuthAccessToken } from "../src/oauth.js";
 import { TOOL_SCOPES, requiredScopesForRequest } from "../src/scopes.js";
 
@@ -172,8 +177,13 @@ async function startApp(
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
-function toolCall(baseUrl: string, name: string, token?: string) {
-  return fetch(`${baseUrl}/mcp`, {
+function toolCall(
+  baseUrl: string,
+  name: string,
+  token?: string,
+  options: { path?: string; arguments?: Record<string, unknown> } = {},
+) {
+  return fetch(`${baseUrl}${options.path ?? "/mcp"}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -187,11 +197,12 @@ function toolCall(baseUrl: string, name: string, token?: string) {
       params: {
         name,
         arguments:
-          name === "scraperAPI"
+          options.arguments ??
+          (name === "scraperAPI"
             ? { url: "https://example.com" }
             : name === "webSearch"
               ? { url: "MrScraper" }
-              : {},
+              : {}),
       },
     }),
   });
@@ -490,5 +501,48 @@ describe("API key compatibility", () => {
   it("still rejects an unknown API key", async () => {
     const baseUrl = await startApp();
     expect((await toolCall(baseUrl, "scraperAPI", "nope")).status).toBe(401);
+  });
+});
+
+describe("ChatGPT endpoint", () => {
+  it("sends ChatGPT to the /mcp resource metadata, so one sign-in covers both endpoints", async () => {
+    const baseUrl = await startApp();
+    const response = await toolCall(baseUrl, "scraperAPI", undefined, {
+      path: CHATGPT_MCP_PATH,
+    });
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toContain(
+      'resource_metadata="https://mcp.mrscraper.test/.well-known/oauth-protected-resource/mcp"',
+    );
+  });
+
+  it("accepts an /mcp access token and sends the default page request without the caller's proxy, cookie, or header options", async () => {
+    const requests: UpstreamRequest[] = [];
+    const baseUrl = await startApp(oauthConfig(), requests);
+    const token = await mintToken();
+    await expectToolSuccess(await toolCall(baseUrl, "scraperAPI", token));
+    await expectToolSuccess(
+      await toolCall(baseUrl, "scraperAPI", token, {
+        path: CHATGPT_MCP_PATH,
+        arguments: {
+          url: "https://example.com",
+          proxy: "user:secret@proxy.example:8080",
+          use_proxy: false,
+          super: true,
+          bypass_proxy: true,
+          home_page: true,
+          cookie_jar: "domain=example.com",
+          headers: { "x-forwarded-for": "203.0.113.1" },
+          max_retries: 0,
+        },
+      }),
+    );
+    expect(requests).toHaveLength(2);
+    const [direct, chatgpt] = requests.map(({ method, url, body }) => ({
+      method,
+      url: url.href,
+      body,
+    }));
+    expect(chatgpt).toEqual(direct);
   });
 });

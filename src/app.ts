@@ -10,17 +10,20 @@ import {
   getOAuthProtectedResourceMetadataUrl,
   type AuthMetadataOptions,
   type McpHttpHandler,
+  type McpRequestContext,
   type OAuthMetadata,
 } from "@modelcontextprotocol/server";
 import type { Express, NextFunction, Request, Response } from "express";
 
 import {
+  CHATGPT_MCP_PATH,
   TOOL_NAMES,
   VERSION,
   getOAuthConfig,
   httpAuthEnabled,
   httpRuntimeConfig,
   type OAuthConfig,
+  type ToolSurface,
 } from "./config.js";
 import {
   buildAuthorizationServerMetadata,
@@ -170,6 +173,15 @@ function servePrmAlias(metadata: unknown) {
   };
 }
 
+function surfaceForRequest(context: McpRequestContext): ToolSurface {
+  const path = context.requestInfo
+    ? new URL(context.requestInfo.url).pathname
+        .replace(/\/+$/, "")
+        .toLowerCase()
+    : "";
+  return path === CHATGPT_MCP_PATH ? "chatgpt" : "default";
+}
+
 export function createHttpApp(options: HttpAppOptions = {}): HttpApp {
   const runtime = httpRuntimeConfig();
   const host = options.host || runtime.host;
@@ -186,9 +198,14 @@ export function createHttpApp(options: HttpAppOptions = {}): HttpApp {
     host,
     allowedOrigins: allowedOrigins.hostnames,
   });
-  const handler = createMcpHandler(createServerFactory(options), {
-    onerror: (error) => console.error("MCP request error:", error),
-  });
+  const factories = {
+    default: createServerFactory(options),
+    chatgpt: createServerFactory({ ...options, surface: "chatgpt" }),
+  };
+  const handler = createMcpHandler(
+    (context) => factories[surfaceForRequest(context)](context),
+    { onerror: (error) => console.error("MCP request error:", error) },
+  );
   const nodeHandler = toNodeHandler(handler);
   const logPayloads =
     options.logPayloads ??
@@ -247,13 +264,17 @@ export function createHttpApp(options: HttpAppOptions = {}): HttpApp {
           : []),
       ]
     : [];
-  app.all("/mcp", ...auth, async (request, response, next) => {
-    try {
-      await nodeHandler(request, response, request.body);
-    } catch (error) {
-      next(error);
-    }
-  });
+  app.all(
+    ["/mcp", CHATGPT_MCP_PATH],
+    ...auth,
+    async (request, response, next) => {
+      try {
+        await nodeHandler(request, response, request.body);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
   app.use(
     (
       error: unknown,

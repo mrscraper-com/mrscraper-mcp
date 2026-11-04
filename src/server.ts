@@ -5,7 +5,7 @@ import {
 } from "@modelcontextprotocol/server";
 
 import { resolveApiToken } from "./auth.js";
-import { VERSION } from "./config.js";
+import { VERSION, type ToolSurface } from "./config.js";
 import { registerTools, type ToolDependencies } from "./tools.js";
 import { registerWidgets } from "./widgets/index.js";
 
@@ -17,6 +17,7 @@ export const SERVER_INSTRUCTIONS =
 
 export interface ServerFactoryOptions extends ToolDependencies {
   resolveToken?: (context: McpRequestContext) => string;
+  surface?: ToolSurface;
 }
 
 export function createMrscraperServer(
@@ -31,6 +32,7 @@ export function createMrscraperServer(
     server,
     () => (options.resolveToken || resolveApiToken)(context),
     options,
+    options.surface,
   );
   registerWidgets(server);
   return server;

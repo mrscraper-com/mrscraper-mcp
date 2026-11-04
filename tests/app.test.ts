@@ -7,7 +7,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpApp } from "../src/app.js";
-import { TOOL_NAMES, VERSION } from "../src/config.js";
+import { CHATGPT_MCP_PATH, TOOL_NAMES, VERSION } from "../src/config.js";
 
 const closers: Array<() => Promise<void>> = [];
 
@@ -152,6 +152,45 @@ describe("HTTP application", () => {
       await client.close();
     }
   });
+
+  it.each([CHATGPT_MCP_PATH, `${CHATGPT_MCP_PATH}/`, "/MCP/ChatGPT"])(
+    "offers only page-loading options on the ChatGPT endpoint %s and the full set on /mcp",
+    async (path) => {
+      const { baseUrl } = await startApp({
+        authEnabled: true,
+        validateToken: async (token) => token === "valid-key",
+      });
+      const pageOptions = async (endpoint: string) => {
+        const client = new Client({ name: "surface-test", version: "1" });
+        await client.connect(
+          new StreamableHTTPClientTransport(new URL(`${baseUrl}${endpoint}`), {
+            authProvider: { token: async () => "valid-key" },
+          }),
+        );
+        try {
+          const { tools } = await client.listTools();
+          expect(tools.map((tool) => tool.name)).toEqual(TOOL_NAMES);
+          const scraper = tools.find((tool) => tool.name === "scraperAPI")!;
+          return Object.keys(scraper.inputSchema.properties ?? {}).sort();
+        } finally {
+          await client.close();
+        }
+      };
+      expect(await pageOptions(path)).toEqual([
+        "browser_rendering",
+        "geo_code",
+        "html",
+        "markdown",
+        "screenshot",
+        "timeout",
+        "url",
+        "wait_for_selector",
+      ]);
+      expect(await pageOptions("/mcp")).toEqual(
+        expect.arrayContaining(["proxy", "cookie_jar", "headers", "super"]),
+      );
+    },
+  );
 
   it("supports the current MCP protocol negotiation", async () => {
     const { baseUrl } = await startApp({

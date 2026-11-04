@@ -1,8 +1,12 @@
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 
 export const TOOL_NAMES = ["scraperAPI", "webSearch", "status"] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
+
+export type ToolSurface = "default" | "chatgpt";
+
+export const CHATGPT_MCP_PATH = "/mcp/chatgpt";
 
 export type Transport = "stdio" | "http";
 
