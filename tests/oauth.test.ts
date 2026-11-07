@@ -76,11 +76,14 @@ async function mintToken(
     issuer?: string;
     expiresIn?: string;
     subject?: string;
+    clientId?: string;
   } = {},
 ) {
   return new SignJWT({
     scope: overrides.scope ?? "scrape:write",
-    client_id: "https://claude.ai/oauth/claude-code-client-metadata",
+    client_id:
+      overrides.clientId ??
+      "https://claude.ai/oauth/claude-code-client-metadata",
   })
     .setProtectedHeader({ alg: "RS256", kid: "test" })
     .setIssuer(overrides.issuer ?? issuer)
@@ -504,6 +507,26 @@ describe("API key compatibility", () => {
   });
 });
 
+async function scraperOptions(baseUrl: string, token: string) {
+  const response = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+  });
+  expect(response.status).toBe(200);
+  const text = await response.text();
+  const event = text.split("\n").find((line) => line.startsWith("data: "));
+  const { result } = JSON.parse(event ? event.slice(6) : text);
+  const scraper = result.tools.find(
+    (tool: { name: string }) => tool.name === "scraperAPI",
+  );
+  return Object.keys(scraper.inputSchema.properties).sort();
+}
+
 describe("ChatGPT endpoint", () => {
   it("sends ChatGPT to the /mcp resource metadata, so one sign-in covers both endpoints", async () => {
     const baseUrl = await startApp();
@@ -544,5 +567,36 @@ describe("ChatGPT endpoint", () => {
       body,
     }));
     expect(chatgpt).toEqual(direct);
+  });
+
+  it.each([
+    "https://chatgpt.com/oauth/client.json",
+    "https://chatgpt.com/oauth/codex/client.json",
+  ])(
+    "serves the ChatGPT page options on /mcp to the OpenAI OAuth client %s",
+    async (clientId) => {
+      const baseUrl = await startApp();
+      expect(
+        await scraperOptions(baseUrl, await mintToken({ clientId })),
+      ).toEqual([
+        "browser_rendering",
+        "geo_code",
+        "html",
+        "markdown",
+        "screenshot",
+        "timeout",
+        "url",
+        "wait_for_selector",
+      ]);
+    },
+  );
+
+  it("keeps the full page options on /mcp for other OAuth clients and API keys", async () => {
+    const baseUrl = await startApp();
+    for (const credential of [await mintToken(), "valid-key"]) {
+      expect(await scraperOptions(baseUrl, credential)).toEqual(
+        expect.arrayContaining(["proxy", "cookie_jar", "headers", "super"]),
+      );
+    }
   });
 });
