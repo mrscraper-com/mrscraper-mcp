@@ -31,8 +31,8 @@ is no key to copy. Self-hosted and stdio setups use a MrScraper API key from
 [app.mrscraper.com/api-tokens](https://app.mrscraper.com/api-tokens), which the
 hosted server also still accepts.
 
-ChatGPT and Codex connect to `https://mcp.mrscraper.com/mcp/chatgpt`, which
-uses the same sign-in and tools with fewer `scraperAPI` options (see
+ChatGPT and Codex get a `scraperAPI` with fewer options, on `/mcp` and on
+`https://mcp.mrscraper.com/mcp/chatgpt` (see
 [ChatGPT and Codex endpoint](#chatgpt-and-codex-endpoint)).
 
 ## Connect to the hosted server
@@ -164,6 +164,13 @@ names are removed.
 `super_mode` becomes `super`. `home_page` now maps to `warmStart`, and
 `token_cap=0` is accepted. Restart the server and reconnect the MCP client after
 updating so it refreshes `tools/list`.
+
+### Changes in 0.4.1
+
+On `/mcp`, ChatGPT and Codex sign-ins now get the same `scraperAPI` as
+`/mcp/chatgpt`. OpenAI's plugin directory doesn't allow an existing plugin to
+move to another MCP URL, so the MrScraper plugin keeps using `/mcp`. Other
+clients and API keys still get the full set of options.
 
 ### Changes in 0.4.0
 
@@ -523,15 +530,24 @@ checks, since any client must be able to read them before it has credentials.
 
 ### ChatGPT and Codex endpoint
 
-`/mcp/chatgpt` serves the same three tools for the MrScraper plugin in ChatGPT
-and Codex. It uses the same sign-in as `/mcp`: unauthenticated requests point
-to the `/mcp` protected resource metadata, and an access token issued for
-`https://mcp.mrscraper.com/mcp` works on both endpoints. Its `scraperAPI`
-accepts only `url`, `html`, `markdown`, `screenshot`, `browser_rendering`,
-`wait_for_selector`, `timeout`, and `geo_code`. Proxy, cookie, header, retry,
-real-device, and warm-start options aren't offered there; arguments that aren't
-in its schema are dropped, and the omitted options keep their defaults.
-`webSearch` and `status` match `/mcp`.
+ChatGPT and Codex get a `scraperAPI` that accepts only `url`, `html`,
+`markdown`, `screenshot`, `browser_rendering`, `wait_for_selector`, `timeout`,
+and `geo_code`. Proxy, cookie, header, retry, real-device, and warm-start
+options aren't offered; arguments that aren't in its schema are dropped, and
+the omitted options keep their defaults. `webSearch` and `status` are the same
+as for other clients.
+
+The server picks this tool set in two cases:
+
+- On `/mcp`, when the access token's `client_id` starts with
+  `https://chatgpt.com/oauth/`. ChatGPT and Codex sign in with Client ID
+  Metadata Documents at that address, so the MrScraper plugin in ChatGPT and
+  Codex, and OpenAI's tool scan, use this tool set. Other OAuth clients and API
+  keys keep the full set.
+- On `/mcp/chatgpt`, for every caller. It uses the same sign-in as `/mcp`:
+  unauthenticated requests point to the `/mcp` protected resource metadata, and
+  an access token issued for `https://mcp.mrscraper.com/mcp` works on both
+  endpoints.
 
 ## Interactive widgets
 

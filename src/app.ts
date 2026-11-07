@@ -17,6 +17,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 
 import {
   CHATGPT_MCP_PATH,
+  OPENAI_OAUTH_CLIENT_PREFIX,
   TOOL_NAMES,
   VERSION,
   getOAuthConfig,
@@ -179,7 +180,10 @@ function surfaceForRequest(context: McpRequestContext): ToolSurface {
         .replace(/\/+$/, "")
         .toLowerCase()
     : "";
-  return path === CHATGPT_MCP_PATH ? "chatgpt" : "default";
+  const openAIClient = context.authInfo?.clientId?.startsWith(
+    OPENAI_OAUTH_CLIENT_PREFIX,
+  );
+  return path === CHATGPT_MCP_PATH || openAIClient ? "chatgpt" : "default";
 }
 
 export function createHttpApp(options: HttpAppOptions = {}): HttpApp {

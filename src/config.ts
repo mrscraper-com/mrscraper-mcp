@@ -1,4 +1,4 @@
-export const VERSION = "0.4.0";
+export const VERSION = "0.4.1";
 
 export const TOOL_NAMES = ["scraperAPI", "webSearch", "status"] as const;
 
@@ -7,6 +7,9 @@ export type ToolName = (typeof TOOL_NAMES)[number];
 export type ToolSurface = "default" | "chatgpt";
 
 export const CHATGPT_MCP_PATH = "/mcp/chatgpt";
+
+// ChatGPT and Codex sign in with Client ID Metadata Documents hosted here.
+export const OPENAI_OAUTH_CLIENT_PREFIX = "https://chatgpt.com/oauth/";
 
 export type Transport = "stdio" | "http";
 
