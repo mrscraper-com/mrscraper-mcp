@@ -210,6 +210,38 @@ describe("Python SDK request compatibility", () => {
     });
   });
 
+  it("drops HTML the caller did not ask for", async () => {
+    const fetchFn = mockFetch(() =>
+      Response.json({
+        html: "<html>large page</html>",
+        markdown: "# Page",
+        token_usage: 2,
+      }),
+    );
+    const markdownOnly = await scraperApi({
+      token: "test",
+      url: "https://example.com",
+      html: false,
+      markdown: true,
+      fetchFn,
+    });
+    expect(markdownOnly.data).toEqual({
+      html: null,
+      markdown: "# Page",
+      token_usage: 2,
+    });
+    const both = await scraperApi({
+      token: "test",
+      url: "https://example.com",
+      markdown: true,
+      fetchFn,
+    });
+    expect(both.data).toMatchObject({
+      html: "<html>large page</html>",
+      markdown: "# Page",
+    });
+  });
+
   it("keeps OAuth credentials only in Authorization", async () => {
     const fetchFn = mockFetch((url, init) => {
       expect(url.searchParams.has("token")).toBe(false);

@@ -93,7 +93,7 @@ export async function scraperApi({
   // GET with every option in the query, as the Python SDK's scraper_api sends it. The API replays a
   // request body to the target page, so a POST carrying {url, maxRetries} reached sites as a POST
   // with that JSON body and failed with 404/405/422 on most of them.
-  return request("GET", getApiEndpoints().scraperApiUrl, {
+  const response = await request("GET", getApiEndpoints().scraperApiUrl, {
     headers: {
       ...getAuthHeaders(apiToken),
       ...(discardTokenSecret
@@ -130,6 +130,19 @@ export async function scraperApi({
     timeout: timeout + 30,
     fetchFn,
   });
+  // On GET the API returns the page's HTML alongside Markdown even with html=false (the POST path
+  // left it out). Drop it here so a Markdown request does not hand the model megabytes of HTML.
+  const { data } = response;
+  if (
+    !html &&
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    typeof data.html === "string"
+  ) {
+    return { ...response, data: { ...data, html: null } };
+  }
+  return response;
 }
 
 export interface WebSearchOptions extends FetchDependency {

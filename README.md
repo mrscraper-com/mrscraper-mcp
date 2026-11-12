@@ -236,7 +236,7 @@ only through `Authorization`.
 | Input                  | Default  | API mapping / purpose                                                                   |
 | ---------------------- | -------- | --------------------------------------------------------------------------------------- |
 | `url`                  | required | Query `url`; absolute HTTP(S) page URL.                                                 |
-| `html`                 | `true`   | Query `html`; request HTML.                                                             |
+| `html`                 | `true`   | Query `html`; request HTML. With `false`, HTML the API still returns is dropped.        |
 | `markdown`             | `false`  | Query `markdown`; request Markdown.                                                     |
 | `timeout`              | `120`    | Query `timeout`; integer from 1 to 300 seconds. Transport allows 30 additional seconds. |
 | `geo_code`             | `"US"`   | Query `geoCode`; proxy country code.                                                    |
