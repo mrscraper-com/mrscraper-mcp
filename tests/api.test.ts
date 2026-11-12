@@ -97,9 +97,9 @@ describe("HTTP helpers", () => {
 });
 
 describe("Python SDK request compatibility", () => {
-  it("POSTs page options in the query and the URL and retry controls in JSON", async () => {
+  it("GETs the URL, page options and retry controls in the query, with no body", async () => {
     const fetchFn = mockFetch((url, init) => {
-      expect(init.method).toBe("POST");
+      expect(init.method).toBe("GET");
       expect(url.origin).toBe("https://api.mrscraper.com");
       expect(Object.fromEntries(url.searchParams)).toEqual({
         token: "test-token",
@@ -120,17 +120,16 @@ describe("Python SDK request compatibility", () => {
         cookieJar: "domain=example.com&country=sg",
         headers: '{"accept-language":"en-US"}',
         stream: "true",
-      });
-      expect(JSON.parse(String(init.body))).toEqual({
         url: "https://example.com/page",
-        maxRetries: 4,
-        tokenCap: 100,
+        maxRetries: "4",
+        tokenCap: "100",
       });
+      expect(init.body).toBeUndefined();
       const headers = new Headers(init.headers);
       expect(headers.get("authorization")).toBe("Bearer test-token");
       expect(headers.get("x-api-token")).toBe("test-token");
       expect(headers.get("x-discard-token-secret")).toBe("discard-secret");
-      expect(headers.get("content-type")).toBe("application/json");
+      expect(headers.get("content-type")).toBeNull();
       return Response.json({
         html: "<p>Hello</p>",
         markdown: "Hello",
@@ -176,11 +175,10 @@ describe("Python SDK request compatibility", () => {
         geoCode: "US",
         html: "true",
         markdown: "false",
-      });
-      expect(JSON.parse(String(init.body))).toEqual({
         url: "https://example.com",
-        maxRetries: 3,
+        maxRetries: "3",
       });
+      expect(init.body).toBeUndefined();
       return new Response("<p>Hello</p>");
     });
     await scraperApi({
@@ -195,11 +193,9 @@ describe("Python SDK request compatibility", () => {
       expect(url.searchParams.get("browserRendering")).toBe("false");
       expect(url.searchParams.get("stream")).toBe("false");
       expect(url.searchParams.get("html")).toBe("false");
-      expect(JSON.parse(String(init.body))).toEqual({
-        url: "https://example.com",
-        maxRetries: 0,
-        tokenCap: 0,
-      });
+      expect(url.searchParams.get("maxRetries")).toBe("0");
+      expect(url.searchParams.get("tokenCap")).toBe("0");
+      expect(init.body).toBeUndefined();
       return new Response("Hello");
     });
     await scraperApi({

@@ -90,7 +90,10 @@ export async function scraperApi({
     throw new Error("token_cap must be a nonnegative integer");
   }
   const apiToken = normalizeBearerToken(token);
-  return request("POST", getApiEndpoints().scraperApiUrl, {
+  // GET with every option in the query, as the Python SDK's scraper_api sends it. The API replays a
+  // request body to the target page, so a POST carrying {url, maxRetries} reached sites as a POST
+  // with that JSON body and failed with 404/405/422 on most of them.
+  return request("GET", getApiEndpoints().scraperApiUrl, {
     headers: {
       ...getAuthHeaders(apiToken),
       ...(discardTokenSecret
@@ -120,8 +123,10 @@ export async function scraperApi({
           ? JSON.stringify(headers)
           : headers,
       stream,
+      url,
+      maxRetries,
+      tokenCap,
     }),
-    json: compact({ url, maxRetries, tokenCap }),
     timeout: timeout + 30,
     fetchFn,
   });

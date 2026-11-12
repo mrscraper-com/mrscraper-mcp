@@ -74,7 +74,7 @@ the address will be refused.
 A tool called without its scope is refused with `403 insufficient_scope`, and
 your client will offer to grant the missing permission.
 
-`scraperAPI` submits a scraping job to the backend with `POST /`, which requires
+`scraperAPI` submits a scraping job to the backend with `GET /`, which requires
 `scrape:write`. Connections authorized before this scope was advertised need to
 authorize again and grant it; `scrape:read` alone does not grant write access.
 
@@ -156,7 +156,7 @@ names are removed.
 
 | Previous call                          | Replacement                                                                                             |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `fetch`                                | `scraperAPI`; uses POST, SDK options, and automatic browser fallback by default.                        |
+| `fetch`                                | `scraperAPI`; uses GET, SDK options, and automatic browser fallback by default.                         |
 | `serp`                                 | `webSearch`; rename `query_or_url` to `url` and `client_timeout` to `timeout`.                          |
 | `status`                               | `status` for account usage; the `domain`, `from`, `to`, `action`, and `api_token_name` inputs are gone. |
 | `scrape`, `rerun`, `results`, `result` | Removed from this MCP server.                                                                           |
@@ -195,7 +195,7 @@ method. MCP tool names use camel case; their argument names use snake case.
 ### `scraperAPI`
 
 ```text
-POST https://api.mrscraper.com/
+GET https://api.mrscraper.com/
 ```
 
 Start with a known URL:
@@ -226,14 +226,16 @@ and fall back to browser loading. `true` forces browser loading and `false`
 disables it. A screenshot always forces browser loading, even when
 `browser_rendering=false`. `super` selects real-device routing independently.
 
-The JSON body contains `url`, `maxRetries`, and optional `tokenCap`. Page
-options are query parameters. For API keys, the request also includes the
-SDK-compatible `token` query parameter and `Authorization`/`x-api-token`
-headers. OAuth JWTs are sent only through `Authorization`.
+Every option, including `url`, `maxRetries`, and `tokenCap`, is a query
+parameter, and the request has no body, as in the Python SDK's `scraper_api`.
+The API replays a request body to the target page, so the request must not
+carry one. For API keys, the request also includes the SDK-compatible `token`
+query parameter and `Authorization`/`x-api-token` headers. OAuth JWTs are sent
+only through `Authorization`.
 
 | Input                  | Default  | API mapping / purpose                                                                   |
 | ---------------------- | -------- | --------------------------------------------------------------------------------------- |
-| `url`                  | required | Body `url`; absolute HTTP(S) page URL.                                                  |
+| `url`                  | required | Query `url`; absolute HTTP(S) page URL.                                                 |
 | `html`                 | `true`   | Query `html`; request HTML.                                                             |
 | `markdown`             | `false`  | Query `markdown`; request Markdown.                                                     |
 | `timeout`              | `120`    | Query `timeout`; integer from 1 to 300 seconds. Transport allows 30 additional seconds. |
@@ -250,8 +252,8 @@ headers. OAuth JWTs are sent only through `Authorization`.
 | `bypass_proxy`         | `false`  | Query `bypassProxy=true`; proxy-bypass/resource-blocking option.                        |
 | `cookie_jar`           | omitted  | Query `cookieJar`; cookie configuration string.                                         |
 | `headers`              | omitted  | Query `headers`; target request headers as an object or JSON string.                    |
-| `max_retries`          | `3`      | Body `maxRetries`; nonnegative integer, 0 disables retries.                             |
-| `token_cap`            | omitted  | Body `tokenCap`; nonnegative integer retry-token budget.                                |
+| `max_retries`          | `3`      | Query `maxRetries`; nonnegative integer, 0 disables retries.                            |
+| `token_cap`            | omitted  | Query `tokenCap`; nonnegative integer retry-token budget.                               |
 | `stream`               | omitted  | Query `stream`; response is buffered into the normal MCP envelope.                      |
 | `discard_token_secret` | `""`     | Optional `x-discard-token-secret` header.                                               |
 

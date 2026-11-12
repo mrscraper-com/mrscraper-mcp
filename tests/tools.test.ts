@@ -208,6 +208,7 @@ describe("MCP tool surface", () => {
 
   it("calls both web tools through MCP with the structured response envelope", async () => {
     const fetchFn = mockFetch((_url, init) =>
+      init.method === "POST" &&
       JSON.parse(String(init.body)).action === "websearch"
         ? Response.json({
             success: true,
