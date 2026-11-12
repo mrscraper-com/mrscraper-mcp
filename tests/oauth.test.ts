@@ -134,7 +134,7 @@ async function startApp(
         data: [{ rank: 1, title: "MrScraper", url: "https://mrscraper.com/" }],
         tokenUsage: 1,
       });
-    } else if (request.path === "/" && request.method === "POST") {
+    } else if (request.path === "/" && request.method === "GET") {
       response.json({ html: "<h1>Example Domain</h1>", error: null });
     } else if (request.path === "/subscription-accounts") {
       response.json({
@@ -355,11 +355,14 @@ describe("bearer challenges", () => {
     expect(data.data).toEqual({ html: "<h1>Example Domain</h1>", error: null });
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
-      method: "POST",
+      method: "GET",
       authorization: `Bearer ${token}`,
       apiToken: undefined,
-      body: { url: "https://example.com", maxRetries: 3 },
     });
+    expect(requests[0]!.url.searchParams.get("url")).toBe(
+      "https://example.com",
+    );
+    expect(requests[0]!.url.searchParams.get("maxRetries")).toBe("3");
     expect(requests[0]!.url.searchParams.has("token")).toBe(false);
   });
 
