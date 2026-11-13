@@ -85,20 +85,9 @@ describe("SDK-compatible tool inputs", () => {
   });
 
   it("maps snake-case loading options to SDK query fields", async () => {
+    const requests: { url: URL; init: RequestInit }[] = [];
     const fetchFn = mockFetch((url, init) => {
-      expect(url.searchParams.get("geoCode")).toBe("ID");
-      expect(url.searchParams.get("proxyCountry")).toBe("SG");
-      expect(url.searchParams.get("super")).toBe("true");
-      expect(url.searchParams.get("useProxy")).toBe("false");
-      expect(url.searchParams.get("warmStart")).toBe("true");
-      expect(url.searchParams.get("blockResources")).toBe("true");
-      expect(url.searchParams.get("bypassProxy")).toBe("true");
-      expect(url.searchParams.get("cookieJar")).toBe("domain=example.com");
-      expect(JSON.parse(String(init.body))).toEqual({
-        url: "https://example.com",
-        maxRetries: 0,
-        tokenCap: 0,
-      });
+      requests.push({ url, init });
       return Response.json({ markdown: "Hello" });
     });
     await scraperAPITool(
@@ -118,6 +107,43 @@ describe("SDK-compatible tool inputs", () => {
       }),
       { fetchFn },
     );
+    // Checked here, not inside the mock: `request` turns anything thrown in fetch into a result.
+    expect(requests).toHaveLength(1);
+    const { url, init } = requests[0]!;
+    expect(url.searchParams.get("geoCode")).toBe("ID");
+    expect(url.searchParams.get("proxyCountry")).toBe("SG");
+    expect(url.searchParams.get("super")).toBe("true");
+    expect(url.searchParams.get("useProxy")).toBe("false");
+    expect(url.searchParams.get("warmStart")).toBe("true");
+    expect(url.searchParams.get("blockResources")).toBe("true");
+    expect(url.searchParams.get("bypassProxy")).toBe("true");
+    expect(url.searchParams.get("cookieJar")).toBe("domain=example.com");
+    expect(url.searchParams.get("maxRetries")).toBe("0");
+    expect(url.searchParams.get("tokenCap")).toBe("0");
+    expect(init.body).toBeUndefined();
+  });
+
+  it("sends a country only when the caller sets one", async () => {
+    const requests: URL[] = [];
+    const fetchFn = mockFetch((url) => {
+      requests.push(url);
+      return new Response("<p>Hello</p>");
+    });
+    await scraperAPITool(
+      "test",
+      scraperAPIInputSchema.parse({ url: "https://example.ro" }),
+      { fetchFn },
+    );
+    await scraperAPITool(
+      "test",
+      scraperAPIInputSchema.parse({
+        url: "https://example.ro",
+        geo_code: "RO",
+      }),
+      { fetchFn },
+    );
+    expect(requests[0]!.searchParams.has("geoCode")).toBe(false);
+    expect(requests[1]!.searchParams.get("geoCode")).toBe("RO");
   });
 
   it.each([

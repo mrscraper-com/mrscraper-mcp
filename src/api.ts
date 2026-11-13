@@ -36,7 +36,7 @@ export interface ScraperApiOptions extends FetchDependency {
   html?: boolean;
   markdown?: boolean;
   timeout?: number;
-  geoCode?: string;
+  geoCode?: string | null;
   proxyCountry?: string | null;
   blockResources?: boolean | null;
   browserRendering?: boolean | null;
@@ -61,7 +61,7 @@ export async function scraperApi({
   html = true,
   markdown = false,
   timeout = 120,
-  geoCode = "US",
+  geoCode = null,
   proxyCountry = null,
   blockResources = false,
   browserRendering = null,
