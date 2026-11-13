@@ -239,7 +239,7 @@ only through `Authorization`.
 | `html`                 | `true`   | Query `html`; request HTML. With `false`, HTML the API still returns is dropped.        |
 | `markdown`             | `false`  | Query `markdown`; request Markdown.                                                     |
 | `timeout`              | `120`    | Query `timeout`; integer from 1 to 300 seconds. Transport allows 30 additional seconds. |
-| `geo_code`             | `"US"`   | Query `geoCode`; proxy country code.                                                    |
+| `geo_code`             | omitted  | Query `geoCode`; proxy country code. Omitted, the API chooses the country (US).         |
 | `proxy_country`        | omitted  | Query `proxyCountry`; compatibility country field.                                      |
 | `browser_rendering`    | omitted  | Query `browserRendering`; true/false, or omit/null for automatic fallback.              |
 | `super`                | `false`  | Query `super=true` when enabled.                                                        |

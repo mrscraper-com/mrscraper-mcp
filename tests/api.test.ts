@@ -167,18 +167,10 @@ describe("Python SDK request compatibility", () => {
     });
   });
 
-  it("keeps automatic browser fallback by omitting unset options", async () => {
+  it("keeps automatic browser fallback and the API's own country by omitting unset options", async () => {
+    const requests: { url: URL; init: RequestInit }[] = [];
     const fetchFn = mockFetch((url, init) => {
-      expect(Object.fromEntries(url.searchParams)).toEqual({
-        token: "test-token",
-        timeout: "120",
-        geoCode: "US",
-        html: "true",
-        markdown: "false",
-        url: "https://example.com",
-        maxRetries: "3",
-      });
-      expect(init.body).toBeUndefined();
+      requests.push({ url, init });
       return new Response("<p>Hello</p>");
     });
     await scraperApi({
@@ -186,6 +178,17 @@ describe("Python SDK request compatibility", () => {
       url: "https://example.com",
       fetchFn,
     });
+    // Checked here, not inside the mock: `request` turns anything thrown in fetch into a result.
+    expect(requests).toHaveLength(1);
+    expect(Object.fromEntries(requests[0]!.url.searchParams)).toEqual({
+      token: "test-token",
+      timeout: "120",
+      html: "true",
+      markdown: "false",
+      url: "https://example.com",
+      maxRetries: "3",
+    });
+    expect(requests[0]!.init.body).toBeUndefined();
   });
 
   it("preserves explicit false browser/stream/output controls and zero retry budgets", async () => {

@@ -69,8 +69,11 @@ export const scraperAPIInputSchema = z.object({
     ),
   geo_code: z
     .string()
-    .default("US")
-    .describe("Proxy geolocation country code, such as US, ID, or SG."),
+    .nullable()
+    .optional()
+    .describe(
+      "Proxy geolocation country code, such as US, ID, or SG. When omitted, the Scraper API chooses the country (US by default).",
+    ),
   proxy_country: z
     .string()
     .nullable()
@@ -208,8 +211,11 @@ export const chatgptScraperAPIInputSchema = scraperAPIInputSchema
   .extend({
     geo_code: z
       .string()
-      .default("US")
-      .describe("Country to load the page from, such as US, ID, or SG."),
+      .nullable()
+      .optional()
+      .describe(
+        "Country to load the page from, such as US, ID, or SG. When omitted, the Scraper API chooses the country (US by default).",
+      ),
   });
 
 export const chatgptWebSearchInputSchema = webSearchInputSchema.extend({
