@@ -1,4 +1,4 @@
-export const VERSION = "0.4.1";
+export const VERSION = "0.4.2";
 
 export const TOOL_NAMES = ["scraperAPI", "webSearch", "status"] as const;
 
