@@ -165,6 +165,15 @@ names are removed.
 `token_cap=0` is accepted. Restart the server and reconnect the MCP client after
 updating so it refreshes `tools/list`.
 
+### Changes in 0.4.2
+
+`scraperAPI` now loads pages with `GET`: `url`, `maxRetries`, and `tokenCap`
+moved from the JSON body to the query string, and the request has no body. The
+API replays a request body to the target page, so sites used to receive a POST
+carrying that body, and many refused it. With `html: false`, HTML that the API
+still returns is dropped. `geo_code` no longer defaults to `"US"`: when it is
+omitted, the Scraper API chooses the country.
+
 ### Changes in 0.4.1
 
 On `/mcp`, ChatGPT and Codex sign-ins now get the same `scraperAPI` as
