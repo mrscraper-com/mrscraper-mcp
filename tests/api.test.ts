@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { scraperApi, searchQuery, webSearchApi } from "../src/api.js";
+import {
+  scrapeHtml,
+  scrapeMarkdown,
+  getScreenshot,
+  scrapeBrand,
+  scrapeJson,
+  webSearch,
+} from "../src/api.js";
 import { request, sanitizeResponseData } from "../src/http.js";
 
 function mockFetch(
@@ -96,222 +103,173 @@ describe("HTTP helpers", () => {
   });
 });
 
-describe("Python SDK request compatibility", () => {
-  it("GETs the URL, page options and retry controls in the query, with no body", async () => {
+describe("CLI service contract", () => {
+  it.each([
+    [
+      "HTML",
+      scrapeHtml,
+      {
+        html: "true",
+        markdown: "false",
+        screenshot: "false",
+        browserRendering: "false",
+      },
+    ],
+    [
+      "Markdown",
+      scrapeMarkdown,
+      {
+        html: "false",
+        markdown: "true",
+        screenshot: "false",
+        browserRendering: "false",
+      },
+    ],
+    [
+      "Screenshot",
+      getScreenshot,
+      {
+        html: "true",
+        markdown: "false",
+        screenshot: "full",
+        browserRendering: "true",
+      },
+    ],
+  ] as const)("GETs %s with CLI defaults", async (_name, fn, flags) => {
     const fetchFn = mockFetch((url, init) => {
       expect(init.method).toBe("GET");
+      expect(init.body).toBeUndefined();
       expect(url.origin).toBe("https://api.mrscraper.com");
       expect(Object.fromEntries(url.searchParams)).toEqual({
-        token: "test-token",
-        timeout: "45",
-        geoCode: "ID",
-        proxyCountry: "SG",
-        browserRendering: "true",
-        super: "true",
-        useProxy: "false",
-        proxy: "user:pass@proxy.example:8000",
-        html: "true",
-        markdown: "true",
-        waitForSelector: ".ready",
-        warmStart: "true",
-        screenshot: "true",
-        blockResources: "true",
-        bypassProxy: "true",
-        cookieJar: "domain=example.com&country=sg",
-        headers: '{"accept-language":"en-US"}',
-        stream: "true",
-        url: "https://example.com/page",
-        maxRetries: "4",
-        tokenCap: "100",
+        url: "https://example.com",
+        timeout: "300",
+        geoCode: "us",
+        proxyCountry: "us",
+        super: "false",
+        waitUntil: "domcontentloaded",
+        saveResult: "false",
+        blockResources: "false",
+        returnCookie: "false",
+        ...flags,
       });
-      expect(init.body).toBeUndefined();
-      const headers = new Headers(init.headers);
-      expect(headers.get("authorization")).toBe("Bearer test-token");
-      expect(headers.get("x-api-token")).toBe("test-token");
-      expect(headers.get("x-discard-token-secret")).toBe("discard-secret");
-      expect(headers.get("content-type")).toBeNull();
-      return Response.json({
-        html: "<p>Hello</p>",
-        markdown: "Hello",
-        screenshot: "image-data",
+      expect(init.headers).toMatchObject({
+        Authorization: "Bearer test",
+        "x-api-token": "test",
       });
-    });
-    const result = await scraperApi({
-      token: "test-token",
-      url: "https://example.com/page",
-      timeout: 45,
-      geoCode: "ID",
-      proxyCountry: "SG",
-      browserRendering: false,
-      super: true,
-      useProxy: false,
-      proxy: "user:pass@proxy.example:8000",
-      markdown: true,
-      waitForSelector: ".ready",
-      homePage: true,
-      screenshot: true,
-      blockResources: true,
-      bypassProxy: true,
-      cookieJar: "domain=example.com&country=sg",
-      headers: { "accept-language": "en-US" },
-      maxRetries: 4,
-      tokenCap: 100,
-      stream: true,
-      discardTokenSecret: "discard-secret",
-      fetchFn,
-    });
-    expect(fetchFn).toHaveBeenCalledTimes(1);
-    expect(result.data).toMatchObject({
-      markdown: "Hello",
-      screenshot: "image-data",
-    });
-  });
-
-  it("keeps automatic browser fallback and the API's own country by omitting unset options", async () => {
-    const requests: { url: URL; init: RequestInit }[] = [];
-    const fetchFn = mockFetch((url, init) => {
-      requests.push({ url, init });
-      return new Response("<p>Hello</p>");
-    });
-    await scraperApi({
-      token: "test-token",
-      url: "https://example.com",
-      fetchFn,
-    });
-    // Checked here, not inside the mock: `request` turns anything thrown in fetch into a result.
-    expect(requests).toHaveLength(1);
-    expect(Object.fromEntries(requests[0]!.url.searchParams)).toEqual({
-      token: "test-token",
-      timeout: "120",
-      html: "true",
-      markdown: "false",
-      url: "https://example.com",
-      maxRetries: "3",
-    });
-    expect(requests[0]!.init.body).toBeUndefined();
-  });
-
-  it("preserves explicit false browser/stream/output controls and zero retry budgets", async () => {
-    const fetchFn = mockFetch((url, init) => {
-      expect(url.searchParams.get("browserRendering")).toBe("false");
-      expect(url.searchParams.get("stream")).toBe("false");
-      expect(url.searchParams.get("html")).toBe("false");
-      expect(url.searchParams.get("maxRetries")).toBe("0");
-      expect(url.searchParams.get("tokenCap")).toBe("0");
-      expect(init.body).toBeUndefined();
-      return new Response("Hello");
-    });
-    await scraperApi({
-      token: "test",
-      url: "https://example.com",
-      browserRendering: false,
-      stream: false,
-      html: false,
-      maxRetries: 0,
-      tokenCap: 0,
-      fetchFn,
-    });
-  });
-
-  it("drops HTML the caller did not ask for", async () => {
-    const fetchFn = mockFetch(() =>
-      Response.json({
-        html: "<html>large page</html>",
-        markdown: "# Page",
-        token_usage: 2,
-      }),
-    );
-    const markdownOnly = await scraperApi({
-      token: "test",
-      url: "https://example.com",
-      html: false,
-      markdown: true,
-      fetchFn,
-    });
-    expect(markdownOnly.data).toEqual({
-      html: null,
-      markdown: "# Page",
-      token_usage: 2,
-    });
-    const both = await scraperApi({
-      token: "test",
-      url: "https://example.com",
-      markdown: true,
-      fetchFn,
-    });
-    expect(both.data).toMatchObject({
-      html: "<html>large page</html>",
-      markdown: "# Page",
-    });
-  });
-
-  it("keeps OAuth credentials only in Authorization", async () => {
-    const fetchFn = mockFetch((url, init) => {
-      expect(url.searchParams.has("token")).toBe(false);
-      expect(new Headers(init.headers).get("x-api-token")).toBeNull();
-      expect(new Headers(init.headers).get("authorization")).toBe(
-        "Bearer header.payload.signature",
-      );
       return Response.json({ ok: true });
     });
-    await scraperApi({
-      token: "header.payload.signature",
-      url: "https://example.com",
-      fetchFn,
-    });
-    await webSearchApi({
-      token: "header.payload.signature",
-      query: "example",
-      fetchFn,
-    });
+    await fn("https://example.com", { token: "test", fetchFn });
   });
-
-  it("does not leak the query token when a network error includes the URL", async () => {
-    const fetchFn = mockFetch((url) => {
-      throw new Error(`Failed to load ${url}`);
-    });
-    const result = await scraperApi({
-      token: "query-secret",
-      url: "https://example.com",
-      fetchFn,
-    });
-    expect(result.error).toContain("[REDACTED]");
-    expect(JSON.stringify(result)).not.toContain("query-secret");
-  });
-
-  it("posts the websearch action to the Scraper API host", async () => {
+  it("brand and search use only their CLI fields", async () => {
+    const seen: Record<string, string>[] = [];
     const fetchFn = mockFetch((url, init) => {
-      expect(init.method).toBe("POST");
-      expect(url.href).toBe("https://api.mrscraper.com/");
-      const headers = new Headers(init.headers);
-      expect(headers.get("x-api-token")).toBe("atk_testtesttesttest");
-      expect(headers.get("authorization")).toBe("Bearer atk_testtesttesttest");
-      expect(JSON.parse(String(init.body))).toEqual({
-        action: "websearch",
-        query: "running shoes",
-        country: "id",
-        numResults: 30,
-      });
-      return Response.json({ success: true, data: [], tokenUsage: 1 });
+      expect(init.method).toBe("GET");
+      seen.push(Object.fromEntries(url.searchParams));
+      return Response.json({ ok: true });
     });
-    const result = await webSearchApi({
-      token: "atk_testtesttesttest",
-      query: "running shoes",
+    await scrapeBrand("https://example.com", { token: "test", fetchFn });
+    await webSearch("  web scraping  ", {
+      token: "test",
+      fetchFn,
       country: "ID",
-      numResults: 30,
+      numResults: 20,
+    });
+    expect(seen).toEqual([
+      { url: "https://example.com", action: "brand-scraping", bundle: "none" },
+      {
+        action: "websearch",
+        query: "web scraping",
+        country: "id",
+        numResults: "20",
+      },
+    ]);
+  });
+  it("forces Markdown rendering and captures top screenshots", async () => {
+    const calls: URL[] = [];
+    const fetchFn = mockFetch((url) => {
+      calls.push(url);
+      return Response.json({
+        html: "keep",
+        markdown: "# Test",
+        screenshot: "base64",
+      });
+    });
+    const md = await scrapeMarkdown("https://example.com", {
+      token: "test",
+      fetchFn,
+      html: true,
+      browserRendering: false,
+    });
+    await getScreenshot("https://example.com", {
+      token: "test",
+      fetchFn,
+      screenshot: "top",
+      html: false,
+      markdown: true,
+      maxRetries: 0,
+      saveResult: true,
+      returnCookie: true,
+    });
+    expect(calls[0]!.searchParams.get("browserRendering")).toBe("true");
+    expect(md.data).toMatchObject({ html: "keep" });
+    expect(Object.fromEntries(calls[1]!.searchParams)).toMatchObject({
+      screenshot: "top",
+      browserRendering: "true",
+      html: "false",
+      markdown: "true",
+      maxRetries: "0",
+      saveResult: "true",
+      returnCookie: "true",
+    });
+  });
+  it("JSON defaults and long-prompt POST fallback", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const fetchFn = mockFetch((url, init) => {
+      calls.push({ url, init });
+      return Response.json({ ok: true });
+    });
+    await scrapeJson("https://example.com", { token: "test", fetchFn });
+    const prompt = "é &".repeat(4000);
+    await scrapeJson("https://example.com", {
+      token: "test",
+      fetchFn,
+      prompt,
+      maxRetries: 0,
+    });
+    expect(Object.fromEntries(calls[0]!.url.searchParams)).toMatchObject({
+      agent: "general",
+      prompt: "Extract all data as complete as possible.",
+      html: "false",
+      screenshot: "false",
+    });
+    expect(calls[1]!.init.method).toBe("POST");
+    expect(JSON.parse(String(calls[1]!.init.body))).toEqual({
+      url: "https://example.com",
+      agent: "general",
+      prompt,
+    });
+    for (const key of [
+      "url",
+      "agent",
+      "prompt",
+      "token",
+      "blockResources",
+      "returnCookie",
+    ])
+      expect(calls[1]!.url.searchParams.has(key)).toBe(false);
+  });
+  it("OAuth JWT credentials stay only in Authorization", async () => {
+    const fetchFn = mockFetch((url, init) => {
+      expect(url.searchParams.has("token")).toBe(false);
+      expect(init.headers).toMatchObject({
+        Authorization: "Bearer header.payload.signature",
+      });
+      expect(init.headers).not.toHaveProperty("x-api-token");
+      return Response.json({ ok: true });
+    });
+    await scrapeHtml("https://example.com", {
+      token: "header.payload.signature",
       fetchFn,
     });
-    expect(result.status_code).toBe(200);
-  });
-
-  it("takes the query from text or from the q parameter of a search results URL", () => {
-    expect(searchQuery(" site:example.com ")).toBe("site:example.com");
-    expect(
-      searchQuery("https://search.example/results?q=running+shoes&page=2"),
-    ).toBe("running shoes");
-    expect(() => searchQuery("https://search.example/results")).toThrow(
-      "q parameter",
-    );
-    expect(() => searchQuery("  ")).toThrow("query is required");
   });
 });

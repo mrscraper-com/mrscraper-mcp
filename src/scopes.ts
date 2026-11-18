@@ -6,9 +6,13 @@ import {
 } from "./config.js";
 
 export const TOOL_SCOPES: Record<ToolName, OAuthScope> = {
-  scraperAPI: "scrape:write",
-  webSearch: "scrape:read",
-  status: "account:read",
+  account: "account:read",
+  scrapeHtml: "scrape:write",
+  scrapeMarkdown: "scrape:write",
+  getScreenshot: "scrape:write",
+  scrapeBrand: "scrape:write",
+  scrapeJson: "scrape:write",
+  webSearch: "scrape:write",
 };
 
 export const ALL_SCOPES: OAuthScope[] = [...OAUTH_SCOPES];

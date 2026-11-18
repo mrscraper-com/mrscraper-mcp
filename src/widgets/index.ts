@@ -19,7 +19,7 @@ export const WIDGETS = {
     title: "Search results",
     description: "Web search results with titles, links, and snippets.",
   },
-  status: {
+  account: {
     bundle: "status",
     uri: "ui://mrscraper/status/v1.html",
     title: "Account status",

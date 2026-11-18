@@ -78,19 +78,22 @@ export async function testTool(
     assert.deepEqual(
       [...names].sort(),
       [...TOOL_NAMES].sort(),
-      "Server must expose only scraperAPI, webSearch, and status. Rebuild or restart the server.",
+      "Server must expose all seven MrScraper services. Rebuild or restart the server.",
     );
     const upstreamTimeout =
       typeof args.timeout === "number" && args.timeout > 0
         ? args.timeout
-        : name === "scraperAPI"
+        : ["account", "webSearch", "scrapeBrand"].includes(name)
           ? 120
-          : 600;
+          : 300;
     const result = await client.callTool(
       { name, arguments: args },
       {
         timeout:
-          (upstreamTimeout + (name === "scraperAPI" ? 30 : 0) + 15) * 1000,
+          (upstreamTimeout +
+            (["account", "webSearch", "scrapeBrand"].includes(name) ? 0 : 30) +
+            15) *
+          1000,
       },
     );
     console.log(
@@ -146,28 +149,26 @@ async function main(): Promise<number> {
     },
   });
   if (values.help) {
-    console.log(`Usage: npm run test:manual -- <scraperAPI|webSearch|status> [options]
+    console.log(`Usage: npm run test:manual -- <account|scrapeHtml|scrapeMarkdown|getScreenshot|scrapeBrand|scrapeJson|webSearch> [options]
 
-  --url URL       Page for scraperAPI (default: Scrapethissite countries page)
+  --url URL       Target page URL (default: Scrapethissite countries page)
   --query TEXT    Query for webSearch (default: MrScraper web scraping)
   --args JSON     Complete tool arguments; overrides the sample arguments
   --target URL    Test an existing HTTP MCP server instead of local stdio
 
 Examples:
-  npm run test:manual -- scraperAPI --url https://example.com
+  npm run test:manual -- scrapeHtml --url https://example.com
   npm run test:manual -- webSearch --query "web scraping"
-  npm run test:manual -- status
-  npm run test:manual -- scraperAPI --args '{"url":"https://example.com","markdown":true,"screenshot":true}'
+  npm run test:manual -- account
+  npm run test:manual -- getScreenshot --args '{"url":"https://example.com","screenshot":"top"}'
 
-The webSearch sample asks for results from the United States (region us). Each invocation calls one tool.
+The webSearch sample asks for results from the United States (country us). Each invocation calls one tool.
 Set MRSCRAPER_API_KEY or MRSCRAPER_API_TOKEN first; .env is loaded automatically.`);
     return 0;
   }
   const name = positionals[0];
   if (positionals.length !== 1 || !TOOL_NAMES.includes(name as ToolName)) {
-    console.error(
-      "Choose exactly one tool: scraperAPI, webSearch, or status. Use --help for examples.",
-    );
+    console.error("Choose one of the seven services. Use --help for examples.");
     return 2;
   }
   let args: unknown;
@@ -175,11 +176,11 @@ Set MRSCRAPER_API_KEY or MRSCRAPER_API_TOKEN first; .env is loaded automatically
     args =
       values.args !== undefined
         ? JSON.parse(values.args)
-        : name === "scraperAPI"
-          ? { url: values.url }
-          : name === "status"
-            ? {}
-            : { url: values.query, region: "us" };
+        : name === "account"
+          ? {}
+          : name === "webSearch"
+            ? { query: values.query, country: "us" }
+            : { url: values.url };
   } catch {
     console.error("--args must be valid JSON.");
     return 2;
