@@ -29,11 +29,12 @@ export const apiResponseSchema = z.object({
 });
 const url = z
   .url({ protocol: /^https?$/ })
-  .describe("Absolute HTTP or HTTPS page URL.");
+  .describe("Absolute HTTP or HTTPS URL of the page to process.");
 const country = z
   .string()
   .regex(/^[A-Za-z]{2}$/)
-  .default("us");
+  .default("us")
+  .describe("Two-letter country code to search from, sent in lowercase.");
 const page = {
   url,
   timeout: z
@@ -42,57 +43,106 @@ const page = {
     .min(1)
     .max(300)
     .default(300)
-    .describe("Page timeout in seconds; transport adds 30 seconds."),
-  geoCode: country.describe("Country to load the page from."),
-  proxyCountry: country.describe("Country of the proxy server."),
-  super: z.boolean().default(false).describe("Use real-device routing."),
+    .describe(
+      "Page load timeout in seconds, from 1 to 300. The HTTP request allows 30 additional seconds.",
+    ),
+  geoCode: country.describe(
+    "Two-letter country code to load the page from, sent in lowercase.",
+  ),
+  proxyCountry: country.describe(
+    "Two-letter country code of the proxy server, sent in lowercase.",
+  ),
+  super: z
+    .boolean()
+    .default(false)
+    .describe("Whether to route the request through real devices."),
   waitUntil: z
     .enum(["domcontentloaded", "load", "networkidle0", "networkidle2"])
-    .default("domcontentloaded"),
-  proxy: z.string().trim().min(1).optional().describe("Custom proxy URL."),
+    .default("domcontentloaded")
+    .describe(
+      "Navigation completion event to wait for: domcontentloaded, load, networkidle0, or networkidle2.",
+    ),
+  proxy: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Custom proxy URL used to load the page."),
   maxRetries: z
     .number()
     .int()
     .min(0)
     .optional()
-    .describe("Retry limit; omit for no limit."),
+    .describe(
+      "Maximum number of retries, as a nonnegative integer. Omit this parameter for no limit.",
+    ),
   saveResult: z
     .boolean()
     .default(false)
-    .describe("Save the result to the dashboard."),
+    .describe("Whether to save the result to the dashboard Result tab."),
 };
 const loading = {
   blockResources: z
     .boolean()
     .default(false)
-    .describe("Block images, fonts, and stylesheets."),
+    .describe(
+      "Whether to block images, fonts, and stylesheets while loading the page.",
+    ),
   waitForSelector: z
     .string()
     .trim()
     .min(1)
     .optional()
-    .describe("CSS selector to wait for."),
+    .describe(
+      "Wait for the page to contain the specified CSS selector before returning the result.",
+    ),
   returnCookie: z
     .boolean()
     .default(false)
-    .describe("Include browser session cookies."),
+    .describe("Whether to include browser session cookies in the response."),
 };
 export const scrapeHtmlInputSchema = z
-  .object({ ...page, ...loading, browserRendering: z.boolean().default(false) })
+  .object({
+    ...page,
+    ...loading,
+    warmStart: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Whether to enable warm start for more reliable scraping, at the cost of additional latency.",
+      ),
+    browserRendering: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Whether to render the page in a browser before returning the result.",
+      ),
+  })
   .strict();
 export const scrapeMarkdownInputSchema = scrapeHtmlInputSchema.extend({
   html: z
     .boolean()
     .default(false)
-    .describe("Also return HTML; enables browser rendering."),
+    .describe("Whether to include the page HTML in the response."),
 });
 export const getScreenshotInputSchema = z
   .object({
     ...page,
     ...loading,
-    screenshot: z.enum(["full", "top"]).default("full"),
-    html: z.boolean().default(true),
-    markdown: z.boolean().default(false),
+    screenshot: z
+      .enum(["full", "top"])
+      .default("full")
+      .describe(
+        "Screenshot area to capture: full for the entire page or top for the top viewport.",
+      ),
+    html: z
+      .boolean()
+      .default(true)
+      .describe("Whether to include the page HTML in the response."),
+    markdown: z
+      .boolean()
+      .default(false)
+      .describe("Whether to include the page Markdown in the response."),
   })
   .strict();
 export const scrapeBrandInputSchema = z.object({ url }).strict();
@@ -105,11 +155,22 @@ export const scrapeJsonInputSchema = z
       .refine((value) => Boolean(value.trim()), "prompt must be non-empty")
       .default("Extract all data as complete as possible.")
       .describe(
-        "Extraction instruction; append Json Schema: and a schema to shape output.",
+        "Instructions describing the data to extract. Append Json Schema: and a JSON schema to shape the output.",
       ),
-    browserRendering: z.boolean().default(false),
-    html: z.boolean().default(false),
-    screenshot: z.boolean().default(false),
+    browserRendering: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Whether to render the page in a browser before returning the result.",
+      ),
+    html: z
+      .boolean()
+      .default(false)
+      .describe("Whether to include the page HTML in the response."),
+    screenshot: z
+      .boolean()
+      .default(false)
+      .describe("Whether to include a base64 screenshot in the response."),
   })
   .strict();
 export const webSearchInputSchema = z
@@ -122,9 +183,19 @@ export const webSearchInputSchema = z
         (value) => [...value].length <= 1000,
         "query must be 1 to 1000 characters",
       )
-      .describe("Search query text."),
+      .describe(
+        "Search query text, trimmed before sending, containing 1 to 1000 characters.",
+      ),
     country,
-    numResults: z.number().int().min(10).max(100).default(10),
+    numResults: z
+      .number()
+      .int()
+      .min(10)
+      .max(100)
+      .default(10)
+      .describe(
+        "Number of search results to request, as an integer from 10 to 100. Fewer results may be returned.",
+      ),
   })
   .strict();
 export const statusInputSchema = z.object({}).strict();
@@ -153,19 +224,18 @@ function asStructured(result: Record<string, unknown>) {
 }
 export const TOOL_DESCRIPTIONS = {
   status:
-    "Return the raw account status API response without summarizing or adding fields.",
-  scrapeHtml:
-    "Retrieve raw HTML from a known public page. Supports optional browser rendering, page loading, proxies, and dashboard saving. Consumes API quota.",
+    "Return the raw account status API response without summarizing, redacting body fields, or adding calculated fields.",
+  scrapeHtml: "Retrieve the raw HTML of a page. Browser rendering is optional.",
   scrapeMarkdown:
-    "Retrieve clean Markdown from a known page. html=true also returns HTML and forces browser rendering. Consumes API quota.",
+    "Retrieve a page as Markdown. Including HTML also enables browser rendering and returns both outputs as JSON.",
   getScreenshot:
-    "Capture a base64 screenshot of a full page or top viewport. Browser rendering is always enabled. Consumes API quota.",
+    "Capture a base64 screenshot of the full page or top viewport. Browser rendering is always enabled.",
   scrapeBrand:
-    "Extract a website brand as JSON with bundle=none. Consumes API quota.",
+    "Extract a website's colors, typography, logos, and social links as JSON.",
   scrapeJson:
-    "Extract structured JSON with the general agent. Append Json Schema: and a schema to the prompt to shape output. Long prompts use POST automatically. Consumes API quota.",
+    "Extract structured JSON from a page using a natural-language prompt. Append Json Schema: and a JSON schema to shape the output.",
   webSearch:
-    "Search the web for query text and return ranked titles, URLs, descriptions, and sources. Country defaults to us; numResults is 10 to 100. Consumes API quota.",
+    "Search the web and return ranked results with titles, URLs, descriptions, and sources.",
 } as const;
 
 export function registerTools(

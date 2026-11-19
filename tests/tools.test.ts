@@ -82,7 +82,7 @@ describe("MCP seven-service surface", () => {
           expect(properties).toHaveProperty("super", {
             type: "boolean",
             default: false,
-            description: "Use real-device routing.",
+            description: "Whether to route the request through real devices.",
           });
         }
       } finally {
@@ -132,6 +132,56 @@ describe("MCP seven-service surface", () => {
         expect(new URL(String(url)).searchParams.get("saveResult")).toBe(
           "true",
         );
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    },
+  );
+
+  it.each(["scrapeHtml", "scrapeMarkdown"])(
+    "forwards warmStart on both client surfaces for %s",
+    async (name) => {
+      for (const surface of ["default", "chatgpt"] as const) {
+        const fetchFn = fake();
+        const { client, server } = await connect(fetchFn, surface);
+        try {
+          for (const warmStart of [false, true]) {
+            const result = await client.callTool({
+              name,
+              arguments: { url: "https://example.com", warmStart },
+            });
+            expect(result.isError).not.toBe(true);
+            const [url] = vi.mocked(fetchFn).mock.calls.at(-1)!;
+            expect(new URL(String(url)).searchParams.get("warmStart")).toBe(
+              String(warmStart),
+            );
+          }
+          const invalid = await client.callTool({
+            name,
+            arguments: { url: "https://example.com", warmStart: "true" },
+          });
+          expect(invalid.isError).toBe(true);
+          expect(fetchFn).toHaveBeenCalledTimes(2);
+        } finally {
+          await client.close();
+          await server.close();
+        }
+      }
+    },
+  );
+  it.each(["getScreenshot", "scrapeJson"])(
+    "rejects warmStart on %s",
+    async (name) => {
+      const fetchFn = fake();
+      const { client, server } = await connect(fetchFn);
+      try {
+        const result = await client.callTool({
+          name,
+          arguments: { url: "https://example.com", warmStart: true },
+        });
+        expect(result.isError).toBe(true);
+        expect(fetchFn).not.toHaveBeenCalled();
       } finally {
         await client.close();
         await server.close();

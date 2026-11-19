@@ -113,15 +113,15 @@ Connect MrScraper MCP to this agent. Detect the current MCP client and configure
 
 ## Tools
 
-| Tool             | What it does                                                       |
-| ---------------- | ------------------------------------------------------------------ |
-| `status`         | Read account plan, token usage, remaining tokens, and rate limits. |
-| `scrapeHtml`     | Retrieve raw HTML from a public page.                              |
-| `scrapeMarkdown` | Retrieve Markdown, optionally with HTML.                           |
-| `getScreenshot`  | Capture a full-page or top-viewport base64 screenshot.             |
-| `scrapeBrand`    | Extract a website's brand as JSON.                                 |
-| `scrapeJson`     | Extract structured JSON using a prompt.                            |
-| `webSearch`      | Search the web for ranked titles, URLs, descriptions, and sources. |
+| Tool             | What it does                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `status`         | Return the raw account status API response without summarizing, redacting body fields, or adding calculated fields.             |
+| `scrapeHtml`     | Retrieve the raw HTML of a page. Browser rendering is optional.                                                                 |
+| `scrapeMarkdown` | Retrieve a page as Markdown. Including HTML also enables browser rendering and returns both outputs as JSON.                    |
+| `getScreenshot`  | Capture a base64 screenshot of the full page or top viewport. Browser rendering is always enabled.                              |
+| `scrapeBrand`    | Extract a website's colors, typography, logos, and social links as JSON.                                                        |
+| `scrapeJson`     | Extract structured JSON from a page using a natural-language prompt. Append Json Schema: and a JSON schema to shape the output. |
+| `webSearch`      | Search the web and return ranked results with titles, URLs, descriptions, and sources.                                          |
 
 The six scraping/search tools consume quota. `status`, `scrapeBrand`, and `webSearch` are read-only. The other tools are marked non-read-only because they support saving results with `saveResult` on every client surface. Hosts with MCP Apps support also show search results and account usage widgets.
 

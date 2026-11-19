@@ -114,6 +114,7 @@ describe("CLI service contract", () => {
         markdown: "false",
         screenshot: "false",
         browserRendering: "false",
+        warmStart: "false",
         blockResources: "false",
         returnCookie: "false",
       },
@@ -126,6 +127,7 @@ describe("CLI service contract", () => {
         markdown: "true",
         screenshot: "false",
         browserRendering: "false",
+        warmStart: "false",
         blockResources: "false",
         returnCookie: "false",
       },
@@ -312,3 +314,22 @@ describe("CLI service contract", () => {
     });
   });
 });
+
+it.each([scrapeHtml, scrapeMarkdown])(
+  "forwards warmStart booleans for %s",
+  async (operation) => {
+    const seen: string[] = [];
+    const fetchFn = mockFetch((url) => {
+      seen.push(url.searchParams.get("warmStart")!);
+      return Response.json({ ok: true });
+    });
+    for (const warmStart of [false, true]) {
+      await operation("https://example.com", {
+        token: "test",
+        fetchFn,
+        warmStart,
+      });
+    }
+    expect(seen).toEqual(["false", "true"]);
+  },
+);

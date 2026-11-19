@@ -17,47 +17,74 @@ export function getAuthHeaders(token: string): Record<string, string> {
 export type WaitUntil =
   "domcontentloaded" | "load" | "networkidle0" | "networkidle2";
 export interface PageOptions {
+  /** API key used to authenticate the request. */
   token?: string;
   fetchFn?: typeof fetch;
+  /** Page load timeout in seconds, from 1 to 300. The HTTP request allows 30 additional seconds. */
   timeout?: number;
+  /** Two-letter country code to load the page from, sent in lowercase. */
   geoCode?: string;
+  /** Two-letter country code of the proxy server, sent in lowercase. */
   proxyCountry?: string;
+  /** Whether to route the request through real devices. */
   super?: boolean;
+  /** Navigation completion event to wait for: domcontentloaded, load, networkidle0, or networkidle2. */
   waitUntil?: WaitUntil;
+  /** Custom proxy URL used to load the page. */
   proxy?: string;
+  /** Maximum number of retries, as a nonnegative integer. Omit this parameter for no limit. */
   maxRetries?: number;
+  /** Whether to save the result to the dashboard Result tab. */
   saveResult?: boolean;
 }
 export interface LoadingOptions {
+  /** Whether to block images, fonts, and stylesheets while loading the page. */
   blockResources?: boolean;
+  /** Wait for the page to contain the specified CSS selector before returning the result. */
   waitForSelector?: string;
+  /** Whether to include browser session cookies in the response. */
   returnCookie?: boolean;
 }
 export interface HtmlOptions extends PageOptions, LoadingOptions {
+  /** Whether to enable warm start for more reliable scraping, at the cost of additional latency. */
+  warmStart?: boolean;
+  /** Whether to render the page in a browser before returning the result. */
   browserRendering?: boolean;
 }
 export interface MarkdownOptions extends HtmlOptions {
+  /** Whether to include the page HTML in the response. */
   html?: boolean;
 }
 export interface ScreenshotOptions extends PageOptions, LoadingOptions {
+  /** Screenshot area to capture: full for the entire page or top for the top viewport. */
   screenshot?: "full" | "top";
+  /** Whether to include the page HTML in the response. */
   html?: boolean;
+  /** Whether to include the page Markdown in the response. */
   markdown?: boolean;
 }
 export interface JsonOptions extends PageOptions {
+  /** Instructions describing the data to extract. Append Json Schema: and a JSON schema to shape the output. */
   prompt?: string;
+  /** Whether to render the page in a browser before returning the result. */
   browserRendering?: boolean;
+  /** Whether to include the page HTML in the response. */
   html?: boolean;
+  /** Whether to include a base64 screenshot in the response. */
   screenshot?: boolean;
 }
 export interface BrandOptions {
+  /** API key used to authenticate the request. */
   token?: string;
   fetchFn?: typeof fetch;
 }
 export interface WebSearchOptions {
+  /** API key used to authenticate the request. */
   token?: string;
   fetchFn?: typeof fetch;
+  /** Two-letter country code to search from, sent in lowercase. */
   country?: string;
+  /** Number of search results to request, as an integer from 10 to 100. Fewer results may be returned. */
   numResults?: number;
 }
 export interface WebSearchResult {
@@ -187,7 +214,9 @@ async function get(
     fetchFn: options.fetchFn,
   });
 }
-/** Retrieve raw HTML using the CLI's page and loading defaults. */
+/** Retrieve the raw HTML of a page. Browser rendering is optional.
+ * @param url Absolute HTTP or HTTPS URL of the page to process.
+ */
 export async function scrapeHtml(
   url: string,
   options: HtmlOptions = {},
@@ -199,13 +228,16 @@ export async function scrapeHtml(
       "browserRendering",
       options.browserRendering ?? false,
     ),
+    warmStart: boolean("warmStart", options.warmStart ?? false),
     html: true,
     markdown: false,
     screenshot: false,
   };
   return get(params, options, Number(params.timeout) + 30);
 }
-/** Retrieve Markdown. html=true also returns HTML and forces browser rendering. */
+/** Retrieve a page as Markdown. Including HTML also enables browser rendering and returns both outputs as JSON.
+ * @param url Absolute HTTP or HTTPS URL of the page to process.
+ */
 export async function scrapeMarkdown(
   url: string,
   options: MarkdownOptions = {},
@@ -219,13 +251,16 @@ export async function scrapeMarkdown(
     ...pageParams(url, options),
     ...loadingParams(options),
     browserRendering: html || browserRendering,
+    warmStart: boolean("warmStart", options.warmStart ?? false),
     html,
     markdown: true,
     screenshot: false,
   };
   return get(params, options, Number(params.timeout) + 30);
 }
-/** Capture a base64 full-page or top-viewport screenshot with browser rendering enabled. */
+/** Capture a base64 screenshot of the full page or top viewport. Browser rendering is always enabled.
+ * @param url Absolute HTTP or HTTPS URL of the page to process.
+ */
 export async function getScreenshot(
   url: string,
   options: ScreenshotOptions = {},
@@ -243,7 +278,9 @@ export async function getScreenshot(
   };
   return get(params, options, Number(params.timeout) + 30);
 }
-/** Extract JSON with agent=general; prompts over the 8 KB URL limit use POST. */
+/** Extract structured JSON from a page using a natural-language prompt. Append Json Schema: and a JSON schema to shape the output.
+ * @param url Absolute HTTP or HTTPS URL of the page to process.
+ */
 export async function scrapeJson(
   url: string,
   options: JsonOptions = {},
@@ -279,7 +316,9 @@ export async function scrapeJson(
     fetchFn: options.fetchFn,
   });
 }
-/** Extract a website's brand as JSON (bundle=none). */
+/** Extract a website's colors, typography, logos, and social links as JSON.
+ * @param url Absolute HTTP or HTTPS URL of the page to process.
+ */
 export async function scrapeBrand(
   url: string,
   options: BrandOptions = {},
@@ -290,7 +329,9 @@ export async function scrapeBrand(
     120,
   );
 }
-/** Search the web for ranked titles, URLs, descriptions, and sources. */
+/** Search the web and return ranked results with titles, URLs, descriptions, and sources.
+ * @param query Search query text, trimmed before sending, containing 1 to 1000 characters.
+ */
 export async function webSearch(
   query: string,
   options: WebSearchOptions = {},
