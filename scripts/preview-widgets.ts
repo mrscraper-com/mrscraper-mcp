@@ -39,18 +39,16 @@ const SAMPLES: Record<WidgetName, unknown> = {
   status: {
     status_code: 200,
     data: {
-      account: {
-        subscription_status: "active",
-        enterprise: false,
-        token_usage: 61_240,
-        token_limit: 100_000,
-        token_remaining: 38_760,
-        usage_percent: 61.24,
-        ends_at: "2026-09-14",
+      data: {
+        stripeStatus: "active",
+        isEnterprise: false,
+        tokenUsage: 61_240,
+        tokenLimit: 100_000,
+        endsAt: "2026-09-14",
         user: {
           name: "Test Account",
           email: "you@example.test",
-          verified: true,
+          isVerified: true,
         },
       },
     },

@@ -62,7 +62,7 @@ async function main(): Promise<number> {
       JSON.stringify([...TOOL_NAMES].sort())
     ) {
       throw new Error(
-        "Expected only scraperAPI, webSearch, and status. Rebuild or restart the server.",
+        "Expected all seven MrScraper services. Rebuild or restart the server.",
       );
     }
 
@@ -78,16 +78,22 @@ async function main(): Promise<number> {
       const timeout =
         typeof args.timeout === "number" && args.timeout > 0
           ? args.timeout
-          : name === "scraperAPI"
-            ? 120
-            : 600;
+          : name === "status"
+            ? 600
+            : ["webSearch", "scrapeBrand"].includes(name)
+              ? 120
+              : 300;
       const result = await client.callTool(
         {
           name,
           arguments: args,
         },
         {
-          timeout: (timeout + (name === "scraperAPI" ? 30 : 0) + 15) * 1000,
+          timeout:
+            (timeout +
+              (["status", "webSearch", "scrapeBrand"].includes(name) ? 0 : 30) +
+              15) *
+            1000,
         },
       );
       printJson(`tool result: ${name}`, {

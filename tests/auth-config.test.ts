@@ -6,9 +6,33 @@ import {
   normalizeBearerToken,
   resolveApiToken,
 } from "../src/auth.js";
-import { resolveTransport } from "../src/config.js";
+import { getApiEndpoints, resolveTransport } from "../src/config.js";
 
 afterEach(() => vi.unstubAllEnvs());
+
+describe("CLI endpoint configuration", () => {
+  it("uses the same platform and scraper hosts as the CLI", () => {
+    vi.stubEnv("MRSCRAPER_API_BASE_URL", undefined);
+    vi.stubEnv("MRSCRAPER_FETCH_BASE_URL", undefined);
+    expect(getApiEndpoints()).toEqual({
+      apiBaseUrl: "https://api.app.mrscraper.com/api/v1",
+      scraperApiUrl: "https://api.mrscraper.com",
+      subscriptionAccounts:
+        "https://api.app.mrscraper.com/api/v1/subscription-accounts",
+    });
+  });
+
+  it("supports the CLI's endpoint environment overrides", () => {
+    vi.stubEnv("MRSCRAPER_API_BASE_URL", "http://127.0.0.1:8001/api/v1");
+    vi.stubEnv("MRSCRAPER_FETCH_BASE_URL", "http://127.0.0.1:8002");
+    expect(getApiEndpoints()).toEqual({
+      apiBaseUrl: "http://127.0.0.1:8001/api/v1",
+      scraperApiUrl: "http://127.0.0.1:8002",
+      subscriptionAccounts:
+        "http://127.0.0.1:8001/api/v1/subscription-accounts",
+    });
+  });
+});
 
 describe("transport configuration", () => {
   it.each([

@@ -1,319 +1,137 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it, vi } from "vitest";
-
-import { TOOL_NAMES } from "../src/config.js";
+import { TOOL_NAMES, type ToolSurface } from "../src/config.js";
 import { createMrscraperServer } from "../src/server.js";
 import {
-  scraperAPIInputSchema,
-  scraperAPITool,
-  statusTool,
+  scrapeHtmlInputSchema,
+  scrapeJsonInputSchema,
+  getScreenshotInputSchema,
   webSearchInputSchema,
-  webSearchTool,
 } from "../src/tools.js";
 
-function mockFetch(
-  implementation: (url: URL, init: RequestInit) => Response | Promise<Response>,
-): typeof fetch {
-  return vi.fn(async (input: URL | RequestInfo, init?: RequestInit) =>
-    implementation(new URL(String(input)), init || {}),
-  ) as unknown as typeof fetch;
-}
-
-async function connect(fetchFn: typeof fetch) {
+async function connect(
+  fetchFn: typeof fetch,
+  surface: ToolSurface = "default",
+) {
   const server = createMrscraperServer(
     { era: "legacy" },
-    {
-      resolveToken: () => "test-token",
-      fetchFn,
-    },
+    { resolveToken: () => "test-token", fetchFn, surface },
   );
   const client = new Client({ name: "tools-test", version: "1" });
-  const [clientTransport, serverTransport] =
-    InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await server.connect(st);
+  await client.connect(ct);
   return { client, server };
 }
+const fake = () =>
+  vi.fn(async () =>
+    Response.json({
+      data: {
+        tokenLimit: 100,
+        tokenUsage: 20,
+        user: { name: "User" },
+        latestApiToken: "secret",
+      },
+    }),
+  ) as unknown as typeof fetch;
+const pageToolNames = [
+  "scrapeHtml",
+  "scrapeMarkdown",
+  "getScreenshot",
+  "scrapeJson",
+] as const;
 
-describe("SDK-compatible tool inputs", () => {
-  it.each(["ftp://example.com/file", "relative/path", "not-a-url"])(
-    "rejects a non-HTTP page URL: %s",
-    (url) => {
-      expect(() => scraperAPIInputSchema.parse({ url })).toThrow();
+describe("MCP seven-service surface", () => {
+  it.each(["default", "chatgpt"] as const)(
+    "lists seven tools with accurate hints on %s",
+    async (surface) => {
+      const { client, server } = await connect(fake(), surface);
+      try {
+        const { tools } = await client.listTools();
+        expect(tools.map((t) => t.name)).toEqual([
+          "status",
+          "scrapeHtml",
+          "scrapeMarkdown",
+          "getScreenshot",
+          "scrapeBrand",
+          "scrapeJson",
+          "webSearch",
+        ]);
+        for (const tool of tools) {
+          const canSave = Object.hasOwn(
+            tool.inputSchema.properties ?? {},
+            "saveResult",
+          );
+          expect(tool.annotations).toMatchObject({
+            readOnlyHint: !canSave,
+            destructiveHint: false,
+            openWorldHint: tool.name !== "status",
+          });
+          expect(tool.inputSchema.properties).not.toHaveProperty("token");
+          expect(tool.outputSchema).toBeDefined();
+        }
+        const search = tools.find((tool) => tool.name === "webSearch")!;
+        expect(Object.keys(search.inputSchema.properties ?? {}).sort()).toEqual(
+          ["country", "numResults", "query"],
+        );
+        for (const name of pageToolNames) {
+          const properties = tools.find((tool) => tool.name === name)!
+            .inputSchema.properties;
+          expect(properties).not.toHaveProperty("superMode");
+          expect(properties).toHaveProperty("saveResult");
+          expect(properties).toHaveProperty("super", {
+            type: "boolean",
+            default: false,
+            description: "Whether to route the request through real devices.",
+          });
+        }
+      } finally {
+        await client.close();
+        await server.close();
+      }
     },
   );
-
-  it.each([
-    { timeout: 0 },
-    { timeout: 301 },
-    { timeout: 1.5 },
-    { max_retries: -1 },
-    { token_cap: -1 },
-    { screenshot: "true" },
-  ])("rejects invalid scraperAPI controls: %j", (options) => {
-    expect(() =>
-      scraperAPIInputSchema.parse({ url: "https://example.com", ...options }),
-    ).toThrow();
-  });
-
-  it("allows automatic browser fallback with a selector and forces browser loading for screenshots", async () => {
-    const requests: URL[] = [];
-    const fetchFn = mockFetch((url) => {
-      requests.push(url);
-      return new Response("<p>Hello</p>");
-    });
-    await scraperAPITool(
-      "test",
-      scraperAPIInputSchema.parse({
-        url: "https://example.com",
-        wait_for_selector: ".ready",
-      }),
-      { fetchFn },
-    );
-    await scraperAPITool(
-      "test",
-      scraperAPIInputSchema.parse({
-        url: "https://example.com",
-        screenshot: true,
-        browser_rendering: false,
-      }),
-      { fetchFn },
-    );
-    expect(requests[0]!.searchParams.has("browserRendering")).toBe(false);
-    expect(requests[0]!.searchParams.get("waitForSelector")).toBe(".ready");
-    expect(requests[1]!.searchParams.get("browserRendering")).toBe("true");
-  });
-
-  it("maps snake-case loading options to SDK query fields", async () => {
-    const requests: { url: URL; init: RequestInit }[] = [];
-    const fetchFn = mockFetch((url, init) => {
-      requests.push({ url, init });
-      return Response.json({ markdown: "Hello" });
-    });
-    await scraperAPITool(
-      "test",
-      scraperAPIInputSchema.parse({
-        url: "https://example.com",
-        geo_code: "ID",
-        proxy_country: "SG",
-        super: true,
-        use_proxy: false,
-        home_page: true,
-        block_resources: true,
-        bypass_proxy: true,
-        cookie_jar: "domain=example.com",
-        max_retries: 0,
-        token_cap: 0,
-      }),
-      { fetchFn },
-    );
-    // Checked here, not inside the mock: `request` turns anything thrown in fetch into a result.
-    expect(requests).toHaveLength(1);
-    const { url, init } = requests[0]!;
-    expect(url.searchParams.get("geoCode")).toBe("ID");
-    expect(url.searchParams.get("proxyCountry")).toBe("SG");
-    expect(url.searchParams.get("super")).toBe("true");
-    expect(url.searchParams.get("useProxy")).toBe("false");
-    expect(url.searchParams.get("warmStart")).toBe("true");
-    expect(url.searchParams.get("blockResources")).toBe("true");
-    expect(url.searchParams.get("bypassProxy")).toBe("true");
-    expect(url.searchParams.get("cookieJar")).toBe("domain=example.com");
-    expect(url.searchParams.get("maxRetries")).toBe("0");
-    expect(url.searchParams.get("tokenCap")).toBe("0");
-    expect(init.body).toBeUndefined();
-  });
-
-  it("sends a country only when the caller sets one", async () => {
-    const requests: URL[] = [];
-    const fetchFn = mockFetch((url) => {
-      requests.push(url);
-      return new Response("<p>Hello</p>");
-    });
-    await scraperAPITool(
-      "test",
-      scraperAPIInputSchema.parse({ url: "https://example.ro" }),
-      { fetchFn },
-    );
-    await scraperAPITool(
-      "test",
-      scraperAPIInputSchema.parse({
-        url: "https://example.ro",
-        geo_code: "RO",
-      }),
-      { fetchFn },
-    );
-    expect(requests[0]!.searchParams.has("geoCode")).toBe(false);
-    expect(requests[1]!.searchParams.get("geoCode")).toBe("RO");
-  });
-
-  it.each([
-    { url: " " },
-    { url: "query", region: "usa" },
-    { url: "query", num_results: 9 },
-    { url: "query", num_results: 101 },
-    { url: "query", timeout: 0 },
-  ])("rejects invalid webSearch controls: %j", (input) => {
-    expect(() => webSearchInputSchema.parse(input)).toThrow();
-  });
-
-  it("sends the websearch action with the query, country, and result count", async () => {
-    const bodies: unknown[] = [];
-    const fetchFn = mockFetch((url, init) => {
-      expect(url.href).toBe("https://api.mrscraper.com/");
-      bodies.push(JSON.parse(String(init.body)));
-      return Response.json({ success: true, data: [], tokenUsage: 1 });
-    });
-    await webSearchTool("test", webSearchInputSchema.parse({ url: "test" }), {
-      fetchFn,
-    });
-    await webSearchTool(
-      "test",
-      webSearchInputSchema.parse({
-        url: "running shoes",
-        region: "GB",
-        num_results: 20,
-        timeout: 1.5,
-      }),
-      { fetchFn },
-    );
-    expect(bodies).toEqual([
-      { action: "websearch", query: "test" },
-      {
-        action: "websearch",
-        query: "running shoes",
-        country: "gb",
-        numResults: 20,
-      },
-    ]);
-  });
-});
-
-describe("MCP tool surface", () => {
-  it("exposes the three tools without API-token arguments", async () => {
-    const { client, server } = await connect(
-      mockFetch(() => Response.json({ ok: true })),
-    );
-    try {
-      const { tools } = await client.listTools();
-      expect(tools.map((tool) => tool.name)).toEqual(TOOL_NAMES);
-      for (const tool of tools) {
-        const webTool = tool.name !== "status";
-        expect(tool.title).toBeTruthy();
-        expect(tool.description).toBeTruthy();
-        expect(tool.outputSchema).toBeDefined();
-        expect(tool.annotations).toMatchObject({
-          title: tool.title,
-          readOnlyHint: true,
-          openWorldHint: webTool,
-          destructiveHint: false,
-        });
-        if (webTool) {
-          expect(tool.inputSchema.required).toEqual(["url"]);
-        } else {
-          expect(tool.inputSchema.properties ?? {}).toEqual({});
-        }
-        expect(tool.inputSchema.properties).not.toHaveProperty("token");
-        expect(tool.inputSchema.properties).not.toHaveProperty("api_key");
-        for (const property of Object.values(
-          tool.inputSchema.properties || {},
-        )) {
-          expect(
-            property &&
-              typeof property === "object" &&
-              "description" in property
-              ? property.description
-              : undefined,
-          ).toBeTruthy();
-        }
-      }
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it("calls both web tools through MCP with the structured response envelope", async () => {
-    const fetchFn = mockFetch((_url, init) =>
-      init.method === "POST" &&
-      JSON.parse(String(init.body)).action === "websearch"
-        ? Response.json({
-            success: true,
-            data: [{ rank: 1, title: "Example", url: "https://example.com" }],
-            tokenUsage: 1,
-          })
-        : new Response("<p>Hello</p>", {
-            headers: { "content-type": "text/html" },
-          }),
-    );
+  it.each(pageToolNames)("forwards the super API key for %s", async (name) => {
+    const fetchFn = fake();
     const { client, server } = await connect(fetchFn);
     try {
-      for (const name of ["scraperAPI", "webSearch"]) {
+      for (const value of [false, true]) {
         const result = await client.callTool({
           name,
-          arguments:
-            name === "scraperAPI"
-              ? { url: "https://example.com" }
-              : { url: "example" },
+          arguments: { url: "https://example.com", super: value },
         });
-        expect(result.isError).toBeUndefined();
-        expect(result.structuredContent).toMatchObject({
-          status_code: 200,
-          headers: expect.any(Object),
-        });
-        expect(result.content).toEqual([
-          {
-            type: "text",
-            text: JSON.stringify(result.structuredContent, null, 2),
-          },
-        ]);
+        expect(result.isError).not.toBe(true);
+        const [requestUrl] = vi.mocked(fetchFn).mock.calls.at(-1)!;
+        const params = new URL(String(requestUrl)).searchParams;
+        expect(params.get("super")).toBe(String(value));
+        expect(params.has("superMode")).toBe(false);
       }
+      const unsupported = await client.callTool({
+        name,
+        arguments: { url: "https://example.com", superMode: true },
+      });
+      expect(unsupported.isError).toBe(true);
       expect(fetchFn).toHaveBeenCalledTimes(2);
     } finally {
       await client.close();
       await server.close();
     }
   });
-
-  it("still accepts the search options of version 0.2 and ignores them", async () => {
-    const bodies: unknown[] = [];
-    const fetchFn = mockFetch((_url, init) => {
-      bodies.push(JSON.parse(String(init.body)));
-      return Response.json({ success: true, data: [], tokenUsage: 1 });
-    });
-    const { client, server } = await connect(fetchFn);
-    try {
-      const result = await client.callTool({
-        name: "webSearch",
-        arguments: {
-          url: "https://search.example/results?q=running+shoes",
-          raw: false,
-          region: "ID",
-          language: "id",
-          page: 2,
-          format: "json",
-          render_js: true,
-        },
-      });
-      expect(result.isError).toBeUndefined();
-      expect(bodies).toEqual([
-        { action: "websearch", query: "running shoes", country: "id" },
-      ]);
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it.each(["fetch", "scrape", "serp", "rerun", "results", "result"])(
-    "removes the old %s tool",
+  it.each(pageToolNames)(
+    "supports CLI dashboard saving on the ChatGPT %s tool",
     async (name) => {
-      const fetchFn = mockFetch(() => Response.json({ ok: true }));
-      const { client, server } = await connect(fetchFn);
+      const fetchFn = fake();
+      const { client, server } = await connect(fetchFn, "chatgpt");
       try {
-        await expect(
-          client.callTool({ name, arguments: {} }),
-        ).rejects.toThrow();
-        expect(fetchFn).not.toHaveBeenCalled();
+        const result = await client.callTool({
+          name,
+          arguments: { url: "https://example.com", saveResult: true },
+        });
+        expect(result.isError).not.toBe(true);
+        const [url] = vi.mocked(fetchFn).mock.calls[0]!;
+        expect(new URL(String(url)).searchParams.get("saveResult")).toBe(
+          "true",
+        );
       } finally {
         await client.close();
         await server.close();
@@ -321,41 +139,157 @@ describe("MCP tool surface", () => {
     },
   );
 
-  it("reports upstream failures as MCP errors and strips credentials", async () => {
-    const { client, server } = await connect(
-      mockFetch(() =>
-        Response.json(
-          {
-            latestApiToken: "secret",
-            "x-discard-token-secret": "discard-secret",
-          },
-          {
-            status: 429,
-            headers: {
-              "set-cookie": "secret",
-              "x-discard-token-secret": "discard-secret",
-            },
-          },
-        ),
-      ),
-    );
+  it.each(["scrapeHtml", "scrapeMarkdown"])(
+    "forwards warmStart on both client surfaces for %s",
+    async (name) => {
+      for (const surface of ["default", "chatgpt"] as const) {
+        const fetchFn = fake();
+        const { client, server } = await connect(fetchFn, surface);
+        try {
+          for (const warmStart of [false, true]) {
+            const result = await client.callTool({
+              name,
+              arguments: { url: "https://example.com", warmStart },
+            });
+            expect(result.isError).not.toBe(true);
+            const [url] = vi.mocked(fetchFn).mock.calls.at(-1)!;
+            expect(new URL(String(url)).searchParams.get("warmStart")).toBe(
+              String(warmStart),
+            );
+          }
+          const invalid = await client.callTool({
+            name,
+            arguments: { url: "https://example.com", warmStart: "true" },
+          });
+          expect(invalid.isError).toBe(true);
+          expect(fetchFn).toHaveBeenCalledTimes(2);
+        } finally {
+          await client.close();
+          await server.close();
+        }
+      }
+    },
+  );
+  it.each(["getScreenshot", "scrapeJson"])(
+    "rejects warmStart on %s",
+    async (name) => {
+      const fetchFn = fake();
+      const { client, server } = await connect(fetchFn);
+      try {
+        const result = await client.callTool({
+          name,
+          arguments: { url: "https://example.com", warmStart: true },
+        });
+        expect(result.isError).toBe(true);
+        expect(fetchFn).not.toHaveBeenCalled();
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    },
+  );
+  it.each(TOOL_NAMES)("calls %s with structured content", async (name) => {
+    const { client, server } = await connect(fake());
     try {
       const result = await client.callTool({
-        name: "scraperAPI",
+        name,
+        arguments:
+          name === "status"
+            ? {}
+            : name === "webSearch"
+              ? { query: "web scraping" }
+              : { url: "https://example.com" },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toMatchObject({ status_code: 200 });
+      expect(result.content).toEqual([
+        {
+          type: "text",
+          text: JSON.stringify(result.structuredContent, null, 2),
+        },
+      ]);
+      if (name === "status") {
+        expect(result.structuredContent).toEqual({
+          status_code: 200,
+          data: {
+            data: {
+              tokenLimit: 100,
+              tokenUsage: 20,
+              user: { name: "User" },
+              latestApiToken: "secret",
+            },
+          },
+          headers: expect.any(Object),
+        });
+        expect(result.structuredContent).not.toHaveProperty("kind");
+      } else {
+        expect(JSON.stringify(result)).not.toContain('"secret"');
+      }
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+  it.each([
+    { data: [{ tokenUsage: 1 }, { tokenUsage: 2 }], meta: { total: 2 } },
+    { data: null, message: "No account" },
+    null,
+    [],
+  ])("preserves the raw status body %j", async (body) => {
+    const fetchFn = vi.fn(async () =>
+      Response.json(body),
+    ) as unknown as typeof fetch;
+    const { client, server } = await connect(fetchFn);
+    try {
+      const result = await client.callTool({ name: "status", arguments: {} });
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toEqual({
+        status_code: 200,
+        data: body,
+        headers: expect.any(Object),
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+  it("flags HTTP errors and strips credentials", async () => {
+    const fetchFn = vi.fn(async () =>
+      Response.json(
+        { message: "Limit reached" },
+        {
+          status: 429,
+          headers: { "set-cookie": "secret", "x-api-token": "secret" },
+        },
+      ),
+    ) as unknown as typeof fetch;
+    const { client, server } = await connect(fetchFn);
+    try {
+      const result = await client.callTool({
+        name: "scrapeHtml",
         arguments: { url: "https://example.com" },
       });
       expect(result.isError).toBe(true);
       expect(result.structuredContent).toMatchObject({
         status_code: 429,
-        error: "HTTP 429",
+        headers: {},
       });
-      const output = result.structuredContent as Record<string, unknown>;
-      expect(output.headers).not.toHaveProperty("set-cookie");
-      expect(output.headers).not.toHaveProperty("x-discard-token-secret");
-      expect(output.data).toMatchObject({
-        latestApiToken: "[REDACTED]",
-        "x-discard-token-secret": "[REDACTED]",
+      expect(JSON.stringify(result)).not.toContain("secret");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+  it("rejects unsupported options before calling upstream", async () => {
+    const fetchFn = fake();
+    const { client, server } = await connect(fetchFn);
+    try {
+      const result = await client.callTool({
+        name: "scrapeJson",
+        arguments: { url: "https://example.com", returnCookie: true },
       });
+      expect(result.isError).toBe(true);
+      expect(fetchFn).not.toHaveBeenCalled();
     } finally {
       await client.close();
       await server.close();
@@ -363,102 +297,51 @@ describe("MCP tool surface", () => {
   });
 });
 
-describe("status tool", () => {
-  const account = {
-    stripeStatus: "active",
-    stripeSubscriptionId: "sub_secret",
-    stripeCustomerId: "cus_secret",
-    tokenLimit: 1000,
-    tokenUsage: 250,
-    rateLimit: 10,
-    rateTtl: 60,
-    isAutoRenew: true,
-    isEnterprise: false,
-    endsAt: "2026-11-01",
-    user: {
-      name: "Ada",
-      email: "ada@example.test",
-      isVerified: true,
-      latestApiToken: "atk_secret",
-    },
-  };
-
-  it("returns the account summary through MCP without credentials", async () => {
-    const requests: Array<{ url: URL; init: RequestInit }> = [];
-    const fetchFn = mockFetch((url, init) => {
-      requests.push({ url, init });
-      return Response.json({ data: account });
-    });
-    const { client, server } = await connect(fetchFn);
-    try {
-      const result = await client.callTool({ name: "status", arguments: {} });
-      expect(result.isError).toBeUndefined();
-      expect(result.structuredContent).toMatchObject({
-        kind: "mrscraper-cli-status-summary",
-        source_endpoints: ["/subscription-accounts"],
-        status_code: 200,
-        data: {
-          account: {
-            subscription_status: "active",
-            token_usage: 250,
-            token_limit: 1000,
-            token_remaining: 750,
-            usage_percent: 25,
-            rate_limit: 10,
-            auto_renew: true,
-            ends_at: "2026-11-01",
-            user: { name: "Ada", email: "ada@example.test", verified: true },
-          },
-        },
-      });
-      const text = JSON.stringify(result);
-      for (const secret of ["sub_secret", "cus_secret", "atk_secret"]) {
-        expect(text).not.toContain(secret);
-      }
-      expect(requests).toHaveLength(1);
-      expect(requests[0]!.url.pathname).toBe("/api/v1/subscription-accounts");
-      expect(requests[0]!.init.method).toBe("GET");
-      expect(new Headers(requests[0]!.init.headers).get("x-api-token")).toBe(
-        "test-token",
-      );
-    } finally {
-      await client.close();
-      await server.close();
-    }
+describe("input validation", () => {
+  it.each([
+    { url: "file:///tmp/a" },
+    { url: "https://example.com", timeout: 301 },
+    { url: "https://example.com", maxRetries: -1 },
+    { url: "https://example.com", geoCode: "usa" },
+    { url: "https://example.com", waitUntil: "networkidle" },
+  ])("rejects invalid page input %j", (input) =>
+    expect(() => scrapeHtmlInputSchema.parse(input)).toThrow(),
+  );
+  it("rejects invalid screenshot and JSON controls", () => {
+    expect(() =>
+      getScreenshotInputSchema.parse({
+        url: "https://example.com",
+        screenshot: true,
+      }),
+    ).toThrow();
+    expect(() =>
+      scrapeJsonInputSchema.parse({ url: "https://example.com", prompt: " " }),
+    ).toThrow();
+    expect(() =>
+      scrapeJsonInputSchema.parse({
+        url: "https://example.com",
+        blockResources: true,
+      }),
+    ).toThrow();
   });
+  it.each([
+    { query: " " },
+    { query: "a".repeat(1001) },
+    { query: "ok", country: "usa" },
+    { query: "ok", numResults: 9 },
+    { query: "ok", numResults: 101 },
+    { query: "ok", numResults: 10.5 },
+    { query: "ok", timeout: 120 },
+  ])("rejects invalid search input %j", (input) =>
+    expect(() => webSearchInputSchema.parse(input)).toThrow(),
+  );
+});
 
-  it("returns an upstream failure unchanged and flags it as an MCP error", async () => {
-    const { client, server } = await connect(
-      mockFetch(() =>
-        Response.json({ message: "Unauthenticated." }, { status: 401 }),
-      ),
-    );
-    try {
-      const result = await client.callTool({ name: "status", arguments: {} });
-      expect(result.isError).toBe(true);
-      expect(result.structuredContent).toMatchObject({
-        status_code: 401,
-        data: { message: "Unauthenticated." },
-      });
-      expect(result.structuredContent).not.toHaveProperty("kind");
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it("reports zero usage when the account has no token limit", async () => {
-    const output = await statusTool(
-      "test",
-      {},
-      {
-        fetchFn: mockFetch(() =>
-          Response.json({ data: { tokenUsage: 5, tokenLimit: 0 } }),
-        ),
-      },
-    );
-    expect(output.data).toMatchObject({
-      account: { token_limit: 0, token_remaining: 0, usage_percent: 0 },
-    });
-  });
+it("counts Unicode query characters like the CLI", () => {
+  expect(() =>
+    webSearchInputSchema.parse({ query: "😀".repeat(1000) }),
+  ).not.toThrow();
+  expect(() =>
+    webSearchInputSchema.parse({ query: "😀".repeat(1001) }),
+  ).toThrow();
 });

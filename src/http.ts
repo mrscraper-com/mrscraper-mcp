@@ -51,6 +51,7 @@ export interface HttpRequestOptions {
   json?: unknown;
   timeout?: number;
   fetchFn?: typeof fetch;
+  sanitizeData?: boolean;
 }
 
 function redactSensitiveString(value: string): string {
@@ -113,14 +114,18 @@ function responseHeaders(response: Response): Record<string, string> {
   );
 }
 
-async function responseData(response: Response): Promise<JSONValue> {
+async function responseData(
+  response: Response,
+  sanitizeData: boolean,
+): Promise<JSONValue> {
   const body = await response.text();
   const contentType = (
     response.headers.get("content-type") || ""
   ).toLowerCase();
   if (contentType.includes("application/json")) {
     try {
-      return sanitizeResponseData(body ? JSON.parse(body) : null);
+      const parsed: JSONValue = body ? JSON.parse(body) : null;
+      return sanitizeData ? sanitizeResponseData(parsed) : parsed;
     } catch {
       return sanitizeResponseData(body);
     }
@@ -162,7 +167,7 @@ export async function request(
 
   try {
     const response = await (options.fetchFn || fetch)(target, init);
-    const data = await responseData(response);
+    const data = await responseData(response, options.sanitizeData !== false);
     const safeHeaders = responseHeaders(response);
     if (response.status === 401) {
       return {
