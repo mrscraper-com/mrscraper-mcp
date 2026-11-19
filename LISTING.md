@@ -163,10 +163,10 @@ Clients configured by file:
 
 | Scope          | Allows                        |
 | -------------- | ----------------------------- |
-| `scrape:write` | All six scraping/search tools |
+| `scraper:read` | All six scraping/search tools |
 | `account:read` | `status`                      |
 
-Existing connections with only `scrape:read` must authorize `scrape:write` to run scraping/search.
+Existing OAuth connections using older scope names must reconnect and approve `scraper:read` to run scraping/search. Status requires `account:read`.
 
 You can disconnect a client at any time under Connected applications in your MrScraper account.
 

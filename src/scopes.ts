@@ -7,12 +7,12 @@ import {
 
 export const TOOL_SCOPES: Record<ToolName, OAuthScope> = {
   status: "account:read",
-  scrapeHtml: "scrape:write",
-  scrapeMarkdown: "scrape:write",
-  getScreenshot: "scrape:write",
-  scrapeBrand: "scrape:write",
-  scrapeJson: "scrape:write",
-  webSearch: "scrape:write",
+  scrapeHtml: "scraper:read",
+  scrapeMarkdown: "scraper:read",
+  getScreenshot: "scraper:read",
+  scrapeBrand: "scraper:read",
+  scrapeJson: "scraper:read",
+  webSearch: "scraper:read",
 };
 
 export const ALL_SCOPES: OAuthScope[] = [...OAUTH_SCOPES];
