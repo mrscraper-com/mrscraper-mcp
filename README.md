@@ -58,7 +58,7 @@ Clients without OAuth can send an API key as `Authorization: Bearer YOUR_TOKEN`.
     "url": "https://example.com",
     "browserRendering": true,
     "warmStart": true,
-    "waitForSelector": ".content",
+    "waitForSelector": "body",
     "timeout": 120,
     "maxRetries": 0
   }
@@ -66,6 +66,8 @@ Clients without OAuth can send an API key as `Authorization: Bearer YOUR_TOKEN`.
 ```
 
 Examples use `example.com` as the sample target. Replace it for your use case. Live scraping and search calls consume account quota.
+
+Response examples show selected keys and types observed in live API responses. Values are placeholders; page content, base64 images, and arrays are abbreviated. Actual responses may contain additional fields. See [live response verification](docs/response-verification.json).
 
 ## Shared parameters
 
@@ -102,7 +104,54 @@ The HTTP deadline is fixed at 600 seconds. It is not a service parameter.
 
 #### Response
 
-The complete account API response body is preserved inside data. If the API wraps account details in data, those details are available at data.data. Sensitive response headers are removed.
+The API body contains message and data. Account details remain nested in data, including subscriptionItem and scraperAllowance. The response envelope therefore exposes account details at data.data. Sensitive response headers are removed.
+
+MCP tool result; the API response envelope is in `structuredContent`:
+
+**Success response**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "[Formatted JSON matching structuredContent]"
+    }
+  ],
+  "structuredContent": {
+    "status_code": 200,
+    "data": {
+      "message": "Example response",
+      "data": {
+        "id": "ACCOUNT_ID",
+        "tokenLimit": 100000,
+        "tokenUsage": 2500,
+        "stripeStatus": "active",
+        "user": {
+          "name": "Example user",
+          "email": "user@example.com",
+          "isVerified": true
+        },
+        "subscriptionItem": {
+          "name": "Example plan",
+          "tokenLimit": 100000
+        },
+        "scraperAllowance": {
+          "remaining": 97500,
+          "plans": [
+            {
+              "remaining": 97500
+            }
+          ]
+        }
+      }
+    },
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    }
+  }
+}
+```
 
 ### Scrape HTML
 
@@ -138,7 +187,7 @@ Retrieve the raw HTML of a page. Browser rendering is optional.
     "url": "https://example.com",
     "browserRendering": true,
     "warmStart": true,
-    "waitForSelector": ".content",
+    "waitForSelector": "body",
     "timeout": 120,
     "maxRetries": 0
   }
@@ -148,6 +197,28 @@ Retrieve the raw HTML of a page. Browser rendering is optional.
 #### Response
 
 The default response body is HTML text. Additional controls can cause the API to return JSON; the returned structure is preserved.
+
+MCP tool result; the API response envelope is in `structuredContent`:
+
+**Success response**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "[Formatted JSON matching structuredContent]"
+    }
+  ],
+  "structuredContent": {
+    "status_code": 200,
+    "data": "<html><body>Example page content...</body></html>",
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    }
+  }
+}
+```
 
 ### Scrape Markdown
 
@@ -191,6 +262,51 @@ Retrieve a page as Markdown. Including HTML also enables browser rendering and r
 #### Response
 
 The default response body is Markdown text. Enabling HTML returns JSON containing both HTML and Markdown.
+
+MCP tool result; the API response envelope is in `structuredContent`:
+
+**With html enabled**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "[Formatted JSON matching structuredContent]"
+    }
+  ],
+  "structuredContent": {
+    "status_code": 200,
+    "data": {
+      "html": "<html>...</html>",
+      "markdown": "# Example page\n\n..."
+    },
+    "headers": {
+      "content-type": "application/json"
+    }
+  }
+}
+```
+
+**Default Markdown text**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "[Formatted JSON matching structuredContent]"
+    }
+  ],
+  "structuredContent": {
+    "status_code": 200,
+    "data": "# Example page\n\nExample Markdown content...",
+    "headers": {
+      "content-type": "text/markdown; charset=utf-8"
+    }
+  }
+}
+```
 
 ### Get screenshot
 
@@ -236,6 +352,32 @@ Capture a base64 screenshot of the full page or top viewport. Browser rendering 
 
 The response body contains a base64 screenshot and requested page outputs. The API can still include HTML when HTML output is disabled.
 
+MCP tool result; the API response envelope is in `structuredContent`:
+
+**Success response**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "[Formatted JSON matching structuredContent]"
+    }
+  ],
+  "structuredContent": {
+    "status_code": 200,
+    "data": {
+      "html": "<html>...</html>",
+      "screenshot": "BASE64_PNG_DATA",
+      "markdown": "# Example page\n\n..."
+    },
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    }
+  }
+}
+```
+
 ### Scrape brand
 
 #### Description
@@ -265,7 +407,51 @@ The request uses `action=brand-scraping` and `bundle=none`; page controls are no
 
 #### Response
 
-The response body preserves the API brand result. Brand data is typically available at data.data.brand in the response envelope.
+The API body contains message and a data object with job_id, status, url, final_url, brand, and error. Brand details are available at data.data.brand in the response envelope.
+
+MCP tool result; the API response envelope is in `structuredContent`:
+
+**Success response**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "[Formatted JSON matching structuredContent]"
+    }
+  ],
+  "structuredContent": {
+    "status_code": 200,
+    "data": {
+      "data": {
+        "job_id": "JOB_ID",
+        "status": "succeeded",
+        "url": "https://example.com",
+        "final_url": "https://example.com",
+        "brand": {
+          "name": "Example brand",
+          "colors": {
+            "background": "#ffffff",
+            "text": "#222222"
+          },
+          "typography": {
+            "body": {
+              "font_family": "Example font"
+            }
+          }
+        },
+        "error": null,
+        "bundle_url": null
+      },
+      "message": "Example response"
+    },
+    "headers": {
+      "content-type": "application/json"
+    }
+  }
+}
+```
 
 ### Scrape JSON
 
@@ -300,7 +486,7 @@ The request uses `agent=general` and GET. If the encoded URL exceeds 8,000 chara
   "name": "scrapeJson",
   "arguments": {
     "url": "https://example.com",
-    "prompt": "Extract the page title. Json Schema: {\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"}}}",
+    "prompt": "Extract the first 2 items with title and price. Json Schema: {\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"},\"price\":{\"type\":\"string\"}},\"required\":[\"title\",\"price\"]}}",
     "browserRendering": true
   }
 }
@@ -308,7 +494,46 @@ The request uses `agent=general` and GET. If the encoded URL exceeds 8,000 chara
 
 #### Response
 
-The response body contains the extraction result in the API's original structure. Optional HTML and screenshot outputs may add fields.
+Extraction results are in the API body's data field and follow the requested schema. Response metadata includes thread_id, token_usage, status, error, runtime, and cookies. html, markdown, and screenshot can be empty strings when not requested.
+
+MCP tool result; the API response envelope is in `structuredContent`:
+
+**Success response**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "[Formatted JSON matching structuredContent]"
+    }
+  ],
+  "structuredContent": {
+    "status_code": 200,
+    "data": {
+      "success": true,
+      "data": [
+        {
+          "title": "Example item",
+          "price": "10.00"
+        }
+      ],
+      "thread_id": "THREAD_ID",
+      "token_usage": 1,
+      "html": "",
+      "markdown": "",
+      "screenshot": "",
+      "status": "Results ready",
+      "error": "",
+      "runtime": 1.23,
+      "cookies": []
+    },
+    "headers": {
+      "content-type": "application/json"
+    }
+  }
+}
+```
 
 ### Web search
 
@@ -341,7 +566,42 @@ The HTTP deadline is fixed at 120 seconds. It is not a service parameter.
 
 #### Response
 
-The response body contains success, message, and a data array. Each result includes rank, title, url, description, and source.
+The API body contains success, message, a data array, and tokenUsage. Each result includes rank, title, url, description, and source.
+
+MCP tool result; the API response envelope is in `structuredContent`:
+
+**Success response**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "[Formatted JSON matching structuredContent]"
+    }
+  ],
+  "structuredContent": {
+    "status_code": 200,
+    "data": {
+      "success": true,
+      "message": "Example response",
+      "data": [
+        {
+          "rank": 1,
+          "title": "Example result",
+          "url": "https://example.com",
+          "description": "Example result description.",
+          "source": "example.com"
+        }
+      ],
+      "tokenUsage": 1
+    },
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    }
+  }
+}
+```
 
 ## Response format
 
@@ -349,9 +609,19 @@ Successful services use an envelope containing `status_code`, `data`, and `heade
 
 ```json
 {
-  "status_code": 200,
-  "data": "<html><body>Example</body></html>",
-  "headers": { "content-type": "text/html" }
+  "content": [
+    {
+      "type": "text",
+      "text": "[Formatted JSON matching structuredContent]"
+    }
+  ],
+  "structuredContent": {
+    "status_code": 200,
+    "data": "<html><body>Example page content...</body></html>",
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    }
+  }
 }
 ```
 
