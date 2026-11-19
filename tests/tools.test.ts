@@ -34,6 +34,12 @@ const fake = () =>
       },
     }),
   ) as unknown as typeof fetch;
+const pageToolNames = [
+  "scrapeHtml",
+  "scrapeMarkdown",
+  "getScreenshot",
+  "scrapeJson",
+] as const;
 
 describe("MCP seven-service surface", () => {
   it.each(["default", "chatgpt"] as const)(
@@ -42,20 +48,90 @@ describe("MCP seven-service surface", () => {
       const { client, server } = await connect(fake(), surface);
       try {
         const { tools } = await client.listTools();
-        expect(tools.map((t) => t.name)).toEqual(TOOL_NAMES);
+        expect(tools.map((t) => t.name)).toEqual([
+          "status",
+          "scrapeHtml",
+          "scrapeMarkdown",
+          "getScreenshot",
+          "scrapeBrand",
+          "scrapeJson",
+          "webSearch",
+        ]);
         for (const tool of tools) {
+          const canSave = Object.hasOwn(
+            tool.inputSchema.properties ?? {},
+            "saveResult",
+          );
           expect(tool.annotations).toMatchObject({
-            readOnlyHint: tool.name === "account",
+            readOnlyHint: !canSave,
             destructiveHint: false,
-            openWorldHint: tool.name !== "account",
+            openWorldHint: tool.name !== "status",
           });
           expect(tool.inputSchema.properties).not.toHaveProperty("token");
           expect(tool.outputSchema).toBeDefined();
         }
-        const html = tools.find((t) => t.name === "scrapeHtml")!;
-        if (surface === "chatgpt")
-          expect(html.inputSchema.properties).not.toHaveProperty("saveResult");
-        else expect(html.inputSchema.properties).toHaveProperty("saveResult");
+        const search = tools.find((tool) => tool.name === "webSearch")!;
+        expect(Object.keys(search.inputSchema.properties ?? {}).sort()).toEqual(
+          ["country", "numResults", "query"],
+        );
+        for (const name of pageToolNames) {
+          const properties = tools.find((tool) => tool.name === name)!
+            .inputSchema.properties;
+          expect(properties).not.toHaveProperty("superMode");
+          expect(properties).toHaveProperty("saveResult");
+          expect(properties).toHaveProperty("super", {
+            type: "boolean",
+            default: false,
+            description: "Use real-device routing.",
+          });
+        }
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    },
+  );
+  it.each(pageToolNames)("forwards the super API key for %s", async (name) => {
+    const fetchFn = fake();
+    const { client, server } = await connect(fetchFn);
+    try {
+      for (const value of [false, true]) {
+        const result = await client.callTool({
+          name,
+          arguments: { url: "https://example.com", super: value },
+        });
+        expect(result.isError).not.toBe(true);
+        const [requestUrl] = vi.mocked(fetchFn).mock.calls.at(-1)!;
+        const params = new URL(String(requestUrl)).searchParams;
+        expect(params.get("super")).toBe(String(value));
+        expect(params.has("superMode")).toBe(false);
+      }
+      const unsupported = await client.callTool({
+        name,
+        arguments: { url: "https://example.com", superMode: true },
+      });
+      expect(unsupported.isError).toBe(true);
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+  it.each(pageToolNames)(
+    "supports CLI dashboard saving on the ChatGPT %s tool",
+    async (name) => {
+      const fetchFn = fake();
+      const { client, server } = await connect(fetchFn, "chatgpt");
+      try {
+        const result = await client.callTool({
+          name,
+          arguments: { url: "https://example.com", saveResult: true },
+        });
+        expect(result.isError).not.toBe(true);
+        const [url] = vi.mocked(fetchFn).mock.calls[0]!;
+        expect(new URL(String(url)).searchParams.get("saveResult")).toBe(
+          "true",
+        );
       } finally {
         await client.close();
         await server.close();
@@ -68,7 +144,7 @@ describe("MCP seven-service surface", () => {
       const result = await client.callTool({
         name,
         arguments:
-          name === "account"
+          name === "status"
             ? {}
             : name === "webSearch"
               ? { query: "web scraping" }
@@ -82,11 +158,46 @@ describe("MCP seven-service surface", () => {
           text: JSON.stringify(result.structuredContent, null, 2),
         },
       ]);
-      expect(JSON.stringify(result)).not.toContain('"secret"');
-      if (name === "account")
-        expect(result.structuredContent).toMatchObject({
-          data: { account: { token_remaining: 80, user: { name: "User" } } },
+      if (name === "status") {
+        expect(result.structuredContent).toEqual({
+          status_code: 200,
+          data: {
+            data: {
+              tokenLimit: 100,
+              tokenUsage: 20,
+              user: { name: "User" },
+              latestApiToken: "secret",
+            },
+          },
+          headers: expect.any(Object),
         });
+        expect(result.structuredContent).not.toHaveProperty("kind");
+      } else {
+        expect(JSON.stringify(result)).not.toContain('"secret"');
+      }
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+  it.each([
+    { data: [{ tokenUsage: 1 }, { tokenUsage: 2 }], meta: { total: 2 } },
+    { data: null, message: "No account" },
+    null,
+    [],
+  ])("preserves the raw status body %j", async (body) => {
+    const fetchFn = vi.fn(async () =>
+      Response.json(body),
+    ) as unknown as typeof fetch;
+    const { client, server } = await connect(fetchFn);
+    try {
+      const result = await client.callTool({ name: "status", arguments: {} });
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toEqual({
+        status_code: 200,
+        data: body,
+        headers: expect.any(Object),
+      });
     } finally {
       await client.close();
       await server.close();
@@ -170,6 +281,7 @@ describe("input validation", () => {
     { query: "ok", numResults: 9 },
     { query: "ok", numResults: 101 },
     { query: "ok", numResults: 10.5 },
+    { query: "ok", timeout: 120 },
   ])("rejects invalid search input %j", (input) =>
     expect(() => webSearchInputSchema.parse(input)).toThrow(),
   );

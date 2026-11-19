@@ -22,7 +22,7 @@ export interface PageOptions {
   timeout?: number;
   geoCode?: string;
   proxyCountry?: string;
-  superMode?: boolean;
+  super?: boolean;
   waitUntil?: WaitUntil;
   proxy?: string;
   maxRetries?: number;
@@ -59,8 +59,6 @@ export interface WebSearchOptions {
   fetchFn?: typeof fetch;
   country?: string;
   numResults?: number;
-  /** Local HTTP deadline in seconds. Defaults to 120. */
-  timeout?: number;
 }
 export interface WebSearchResult {
   rank: number;
@@ -134,7 +132,7 @@ function pageParams(
     timeout = 300,
     geoCode = "us",
     proxyCountry = "us",
-    superMode = false,
+    super: superRouting = false,
     waitUntil = "domcontentloaded",
     proxy,
     maxRetries,
@@ -151,7 +149,7 @@ function pageParams(
     timeout: integer("timeout", timeout, 1, 300),
     geoCode: country("geoCode", geoCode),
     proxyCountry: country("proxyCountry", proxyCountry),
-    super: boolean("superMode", superMode),
+    super: boolean("super", superRouting),
     waitUntil,
     saveResult: boolean("saveResult", saveResult),
   };
@@ -300,9 +298,6 @@ export async function webSearch(
   const value = text("query", query);
   if ([...value].length > 1000)
     throw new RangeError("query must be 1 to 1000 characters");
-  const timeout = options.timeout ?? 120;
-  if (!Number.isFinite(timeout) || timeout <= 0)
-    throw new RangeError("timeout must be greater than 0 seconds");
   return get(
     {
       action: "websearch",
@@ -311,7 +306,7 @@ export async function webSearch(
       numResults: integer("numResults", options.numResults ?? 10, 10, 100),
     },
     options,
-    timeout,
+    120,
   );
 }
 
@@ -320,6 +315,7 @@ export async function getSubscriptionAccountApi(
   { fetchFn }: { fetchFn?: typeof fetch } = {},
 ): Promise<ApiResponse> {
   return request("GET", getApiEndpoints().subscriptionAccounts, {
+    sanitizeData: false,
     headers: { accept: "application/json", ...getAuthHeaders(token) },
     fetchFn,
   });

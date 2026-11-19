@@ -7,6 +7,7 @@ import {
   scrapeBrand,
   scrapeJson,
   webSearch,
+  getSubscriptionAccountApi,
 } from "../src/api.js";
 import { request, sanitizeResponseData } from "../src/http.js";
 
@@ -113,6 +114,8 @@ describe("CLI service contract", () => {
         markdown: "false",
         screenshot: "false",
         browserRendering: "false",
+        blockResources: "false",
+        returnCookie: "false",
       },
     ],
     [
@@ -123,6 +126,8 @@ describe("CLI service contract", () => {
         markdown: "true",
         screenshot: "false",
         browserRendering: "false",
+        blockResources: "false",
+        returnCookie: "false",
       },
     ],
     [
@@ -133,6 +138,19 @@ describe("CLI service contract", () => {
         markdown: "false",
         screenshot: "full",
         browserRendering: "true",
+        blockResources: "false",
+        returnCookie: "false",
+      },
+    ],
+    [
+      "JSON",
+      scrapeJson,
+      {
+        browserRendering: "false",
+        html: "false",
+        screenshot: "false",
+        agent: "general",
+        prompt: "Extract all data as complete as possible.",
       },
     ],
   ] as const)("GETs %s with CLI defaults", async (_name, fn, flags) => {
@@ -148,8 +166,6 @@ describe("CLI service contract", () => {
         super: "false",
         waitUntil: "domcontentloaded",
         saveResult: "false",
-        blockResources: "false",
-        returnCookie: "false",
         ...flags,
       });
       expect(init.headers).toMatchObject({
@@ -160,14 +176,31 @@ describe("CLI service contract", () => {
     });
     await fn("https://example.com", { token: "test", fetchFn });
   });
+  it("reads status from the CLI platform endpoint", async () => {
+    const fetchFn = mockFetch((url, init) => {
+      expect(init.method).toBe("GET");
+      expect(url.href).toBe(
+        "https://api.app.mrscraper.com/api/v1/subscription-accounts",
+      );
+      expect(init.headers).toMatchObject({
+        accept: "application/json",
+        Authorization: "Bearer test",
+        "x-api-token": "test",
+      });
+      return Response.json({ data: { tokenLimit: 100 } });
+    });
+    await getSubscriptionAccountApi("test", { fetchFn });
+  });
   it("brand and search use only their CLI fields", async () => {
     const seen: Record<string, string>[] = [];
     const fetchFn = mockFetch((url, init) => {
       expect(init.method).toBe("GET");
+      expect(url.origin).toBe("https://api.mrscraper.com");
       seen.push(Object.fromEntries(url.searchParams));
       return Response.json({ ok: true });
     });
     await scrapeBrand("https://example.com", { token: "test", fetchFn });
+    await webSearch("web scraping", { token: "test", fetchFn });
     await webSearch("  web scraping  ", {
       token: "test",
       fetchFn,
@@ -176,6 +209,12 @@ describe("CLI service contract", () => {
     });
     expect(seen).toEqual([
       { url: "https://example.com", action: "brand-scraping", bundle: "none" },
+      {
+        action: "websearch",
+        query: "web scraping",
+        country: "us",
+        numResults: "10",
+      },
       {
         action: "websearch",
         query: "web scraping",

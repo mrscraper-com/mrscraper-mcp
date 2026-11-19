@@ -78,9 +78,11 @@ async function main(): Promise<number> {
       const timeout =
         typeof args.timeout === "number" && args.timeout > 0
           ? args.timeout
-          : ["account", "webSearch", "scrapeBrand"].includes(name)
-            ? 120
-            : 300;
+          : name === "status"
+            ? 600
+            : ["webSearch", "scrapeBrand"].includes(name)
+              ? 120
+              : 300;
       const result = await client.callTool(
         {
           name,
@@ -89,9 +91,7 @@ async function main(): Promise<number> {
         {
           timeout:
             (timeout +
-              (["account", "webSearch", "scrapeBrand"].includes(name)
-                ? 0
-                : 30) +
+              (["status", "webSearch", "scrapeBrand"].includes(name) ? 0 : 30) +
               15) *
             1000,
         },

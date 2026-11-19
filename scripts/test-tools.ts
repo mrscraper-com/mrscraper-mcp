@@ -83,15 +83,17 @@ export async function testTool(
     const upstreamTimeout =
       typeof args.timeout === "number" && args.timeout > 0
         ? args.timeout
-        : ["account", "webSearch", "scrapeBrand"].includes(name)
-          ? 120
-          : 300;
+        : name === "status"
+          ? 600
+          : ["webSearch", "scrapeBrand"].includes(name)
+            ? 120
+            : 300;
     const result = await client.callTool(
       { name, arguments: args },
       {
         timeout:
           (upstreamTimeout +
-            (["account", "webSearch", "scrapeBrand"].includes(name) ? 0 : 30) +
+            (["status", "webSearch", "scrapeBrand"].includes(name) ? 0 : 30) +
             15) *
           1000,
       },
@@ -141,7 +143,7 @@ async function main(): Promise<number> {
       args: { type: "string" },
       url: {
         type: "string",
-        default: "https://www.scrapethissite.com/pages/simple/",
+        default: "https://example.com",
       },
       query: { type: "string", default: "MrScraper web scraping" },
       target: { type: "string" },
@@ -149,7 +151,7 @@ async function main(): Promise<number> {
     },
   });
   if (values.help) {
-    console.log(`Usage: npm run test:manual -- <account|scrapeHtml|scrapeMarkdown|getScreenshot|scrapeBrand|scrapeJson|webSearch> [options]
+    console.log(`Usage: npm run test:manual -- <status|scrapeHtml|scrapeMarkdown|getScreenshot|scrapeBrand|scrapeJson|webSearch> [options]
 
   --url URL       Target page URL (default: Scrapethissite countries page)
   --query TEXT    Query for webSearch (default: MrScraper web scraping)
@@ -159,7 +161,7 @@ async function main(): Promise<number> {
 Examples:
   npm run test:manual -- scrapeHtml --url https://example.com
   npm run test:manual -- webSearch --query "web scraping"
-  npm run test:manual -- account
+  npm run test:manual -- status
   npm run test:manual -- getScreenshot --args '{"url":"https://example.com","screenshot":"top"}'
 
 The webSearch sample asks for results from the United States (country us). Each invocation calls one tool.
@@ -176,7 +178,7 @@ Set MRSCRAPER_API_KEY or MRSCRAPER_API_TOKEN first; .env is loaded automatically
     args =
       values.args !== undefined
         ? JSON.parse(values.args)
-        : name === "account"
+        : name === "status"
           ? {}
           : name === "webSearch"
             ? { query: values.query, country: "us" }

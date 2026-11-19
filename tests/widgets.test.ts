@@ -119,6 +119,10 @@ describe("widget resources", () => {
       ui: { resourceUri: WIDGETS.webSearch.uri },
       "openai/outputTemplate": WIDGETS.webSearch.uri,
     });
+    expect(byName.get("status")?._meta).toMatchObject({
+      ui: { resourceUri: WIDGETS.status.uri },
+      "openai/outputTemplate": WIDGETS.status.uri,
+    });
 
     expect(
       byName.get("scrapeHtml")?._meta?.["openai/outputTemplate"],

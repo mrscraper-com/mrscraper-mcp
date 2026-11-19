@@ -1,7 +1,7 @@
 export const VERSION = "0.5.0";
 
 export const TOOL_NAMES = [
-  "account",
+  "status",
   "scrapeHtml",
   "scrapeMarkdown",
   "getScreenshot",

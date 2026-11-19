@@ -1,3 +1,4 @@
+import { summarizeSubscriptionAccount } from "../src/status.js";
 import { onToolOutput } from "./bridge.js";
 import { errorMessage, isRecord, payload } from "./data.js";
 import { element, empty, mount } from "./render.js";
@@ -25,13 +26,13 @@ const render = mount((output) => {
   }
 
   const data = payload(output);
-  const account =
-    isRecord(data) && isRecord(data.account) ? data.account : null;
-  if (!account) {
+  const details = isRecord(data) && "data" in data ? data.data : data;
+  if (!isRecord(details)) {
     container.append(empty("No account details were returned."));
     return container;
   }
 
+  const account = summarizeSubscriptionAccount(details);
   const used = number(account.token_usage);
   const limit = number(account.token_limit);
   const percent = number(account.usage_percent);

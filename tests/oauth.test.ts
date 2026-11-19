@@ -201,7 +201,7 @@ function toolCall(
         name,
         arguments:
           options.arguments ??
-          (name === "account"
+          (name === "status"
             ? {}
             : name === "webSearch"
               ? { query: "MrScraper" }
@@ -248,7 +248,7 @@ describe("scope mapping", () => {
     expect(
       requiredScopesForRequest({
         method: "tools/call",
-        params: { name: "account" },
+        params: { name: "status" },
       }),
     ).toEqual(["account:read"]);
   });
@@ -263,7 +263,7 @@ describe("scope mapping", () => {
     expect(
       requiredScopesForRequest([
         { method: "tools/call", params: { name: "webSearch" } },
-        { method: "tools/call", params: { name: "account" } },
+        { method: "tools/call", params: { name: "status" } },
       ]).sort(),
     ).toEqual(["account:read", "scrape:write"]);
   });
@@ -398,7 +398,7 @@ describe("per-tool scope gate", () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
     const token = await mintToken({ scope: "scrape:write" });
-    for (const name of TOOL_NAMES.filter((name) => name !== "account")) {
+    for (const name of TOOL_NAMES.filter((name) => name !== "status")) {
       await expectToolSuccess(await toolCall(baseUrl, name, token));
     }
     expect(
@@ -438,7 +438,7 @@ describe("per-tool scope gate", () => {
     expect(requests).toEqual([]);
   });
 
-  it.each(TOOL_NAMES.filter((name) => name !== "account"))(
+  it.each(TOOL_NAMES.filter((name) => name !== "status"))(
     "rejects a read-only token for %s",
     async (name) => {
       const requests: UpstreamRequest[] = [];
@@ -448,16 +448,16 @@ describe("per-tool scope gate", () => {
       expect(requests).toEqual([]);
     },
   );
-  it("allows account with account:read alone", async () => {
+  it("allows status with account:read alone", async () => {
     const baseUrl = await startApp();
     const token = await mintToken({ scope: "account:read" });
-    await expectToolSuccess(await toolCall(baseUrl, "account", token));
+    await expectToolSuccess(await toolCall(baseUrl, "status", token));
   });
 
   it("refuses status without account:read", async () => {
     const baseUrl = await startApp();
     const token = await mintToken({ scope: "scrape:read" });
-    const response = await toolCall(baseUrl, "account", token);
+    const response = await toolCall(baseUrl, "status", token);
     expect(response.status).toBe(403);
     const challenge = response.headers.get("www-authenticate") ?? "";
     expect(challenge).toContain('error="insufficient_scope"');
@@ -547,37 +547,49 @@ describe("ChatGPT endpoint", () => {
     );
   });
 
-  it("accepts an /mcp access token and sends the default page request without the caller's proxy, cookie, or header options", async () => {
+  it("accepts CLI proxy controls on both MCP endpoints", async () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
     const token = await mintToken();
     await expectToolSuccess(await toolCall(baseUrl, "scrapeHtml", token));
-    const rejected = await toolCall(baseUrl, "scrapeHtml", token, {
-      path: CHATGPT_MCP_PATH,
-      arguments: { url: "https://example.com", proxy: "http://proxy.example" },
-    });
-    const text = await rejected.text();
-    expect(text).toContain("isError");
-    expect(requests).toHaveLength(1);
+    await expectToolSuccess(
+      await toolCall(baseUrl, "scrapeHtml", token, {
+        path: CHATGPT_MCP_PATH,
+        arguments: {
+          url: "https://example.com",
+          proxy: "http://proxy.example",
+        },
+      }),
+    );
+    expect(requests).toHaveLength(2);
   });
 
   it.each([
     "https://chatgpt.com/oauth/client.json",
     "https://chatgpt.com/oauth/codex/client.json",
   ])(
-    "serves the ChatGPT page options on /mcp to the OpenAI OAuth client %s",
+    "serves all CLI page options on /mcp to the OAuth client %s",
     async (clientId) => {
       const baseUrl = await startApp();
       expect(
         await scraperOptions(baseUrl, await mintToken({ clientId })),
-      ).toEqual([
-        "browserRendering",
-        "geoCode",
-        "timeout",
-        "url",
-        "waitForSelector",
-        "waitUntil",
-      ]);
+      ).toEqual(
+        expect.arrayContaining([
+          "browserRendering",
+          "geoCode",
+          "timeout",
+          "url",
+          "waitForSelector",
+          "waitUntil",
+          "proxyCountry",
+          "super",
+          "proxy",
+          "maxRetries",
+          "saveResult",
+          "blockResources",
+          "returnCookie",
+        ]),
+      );
     },
   );
 
@@ -589,7 +601,7 @@ describe("ChatGPT endpoint", () => {
           "proxy",
           "returnCookie",
           "saveResult",
-          "superMode",
+          "super",
         ]),
       );
     }

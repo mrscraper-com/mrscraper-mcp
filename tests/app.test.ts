@@ -154,7 +154,7 @@ describe("HTTP application", () => {
   });
 
   it.each([CHATGPT_MCP_PATH, `${CHATGPT_MCP_PATH}/`, "/MCP/ChatGPT"])(
-    "offers only page-loading options on the ChatGPT endpoint %s and the full set on /mcp",
+    "offers the same CLI page options on %s and /mcp",
     async (path) => {
       const { baseUrl } = await startApp({
         authEnabled: true,
@@ -176,20 +176,13 @@ describe("HTTP application", () => {
           await client.close();
         }
       };
-      expect(await pageOptions(path)).toEqual([
-        "browserRendering",
-        "geoCode",
-        "timeout",
-        "url",
-        "waitForSelector",
-        "waitUntil",
-      ]);
+      expect(await pageOptions(path)).toEqual(await pageOptions("/mcp"));
       expect(await pageOptions("/mcp")).toEqual(
         expect.arrayContaining([
           "proxy",
           "returnCookie",
           "saveResult",
-          "superMode",
+          "super",
         ]),
       );
     },

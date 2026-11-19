@@ -4,7 +4,7 @@ import { testTool } from "./test-tools.js";
 import { TOOL_NAMES } from "../src/config.js";
 const { values } = parseArgs({
   options: {
-    url: { type: "string", default: "https://books.toscrape.com/" },
+    url: { type: "string", default: "https://example.com" },
     query: { type: "string", default: "web scraping" },
     target: { type: "string" },
   },
@@ -14,7 +14,7 @@ for (const name of TOOL_NAMES) {
   try {
     failed += await testTool(
       name,
-      name === "account"
+      name === "status"
         ? {}
         : name === "webSearch"
           ? { query: values.query, country: "us" }
