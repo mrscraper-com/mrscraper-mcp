@@ -121,7 +121,7 @@ describe("widget resources", () => {
     });
 
     expect(
-      byName.get("scraperAPI")?._meta?.["openai/outputTemplate"],
+      byName.get("scrapeHtml")?._meta?.["openai/outputTemplate"],
     ).toBeUndefined();
   });
 

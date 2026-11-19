@@ -1,6 +1,14 @@
-export const VERSION = "0.4.2";
+export const VERSION = "0.5.0";
 
-export const TOOL_NAMES = ["scraperAPI", "webSearch", "status"] as const;
+export const TOOL_NAMES = [
+  "scrapeHtml",
+  "scrapeMarkdown",
+  "getScreenshot",
+  "scrapeBrand",
+  "scrapeJson",
+  "webSearch",
+  "status",
+] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 
@@ -28,7 +36,7 @@ export function getApiEndpoints(): ApiEndpoints {
     "MRSCRAPER_API_BASE_URL",
     "https://api.app.mrscraper.com/api/v1",
   );
-  // scraperAPI and webSearch share this host; webSearch posts action "websearch".
+  // The six scraping and search tools use this host.
   const scraperApiUrl = baseUrl(
     "MRSCRAPER_FETCH_BASE_URL",
     "https://api.mrscraper.com",

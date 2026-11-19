@@ -1,7 +1,7 @@
 {
   "name": "@mrscraper/mcp",
-  "version": "0.4.2",
-  "description": "MrScraper MCP server with scraperAPI for page content and webSearch for web search.",
+  "version": "0.5.0",
+  "description": "MrScraper MCP server: pages as HTML, Markdown, or screenshots, JSON and brand extraction, web search, and account status.",
   "license": "MIT",
   "author": "MrScraper",
   "repository": {

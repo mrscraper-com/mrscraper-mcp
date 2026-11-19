@@ -2,7 +2,8 @@
 
 import { parseArgs } from "node:util";
 
-import { testTool } from "./test-tools.js";
+import { TOOL_NAMES } from "../src/config.js";
+import { sampleArguments, testTool } from "./test-tools.js";
 
 const { values } = parseArgs({
   options: {
@@ -15,25 +16,18 @@ const { values } = parseArgs({
   },
 });
 
-try {
-  const scraper = await testTool(
-    "scraperAPI",
-    { url: values.url },
-    values.target,
-  );
-  if (scraper) {
-    process.exitCode = scraper;
-  } else {
-    process.exitCode = await testTool(
-      "webSearch",
-      { url: values.query, region: "us" },
+let failed = 0;
+for (const name of TOOL_NAMES) {
+  try {
+    failed += await testTool(
+      name,
+      sampleArguments(name, values.url, values.query),
       values.target,
     );
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    failed++;
   }
-  if (!process.exitCode) {
-    process.exitCode = await testTool("status", {}, values.target);
-  }
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
 }
+console.log(`${TOOL_NAMES.length - failed}/${TOOL_NAMES.length} tools passed`);
+process.exitCode = failed ? 1 : 0;

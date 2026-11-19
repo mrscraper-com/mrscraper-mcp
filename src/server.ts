@@ -10,7 +10,8 @@ import { registerTools, type ToolDependencies } from "./tools.js";
 import { registerWidgets } from "./widgets/index.js";
 
 export const SERVER_INSTRUCTIONS =
-  "MrScraper provides three tools. `scraperAPI` retrieves a known page as HTML, Markdown, or a screenshot. " +
+  "MrScraper provides seven tools. `scrapeHtml`, `scrapeMarkdown`, and `getScreenshot` retrieve a known page as HTML, Markdown, or a screenshot. " +
+  "`scrapeJson` extracts structured JSON from a page with a prompt, and `scrapeBrand` extracts a website's colors, typography, and logos. " +
   "`webSearch` searches the web for query text and returns ranked results with titles, URLs, and descriptions. " +
   "`status` reports the connected account's plan, token usage, and remaining tokens. " +
   "Tools authenticate through the MCP connection and do not accept API tokens as arguments.";

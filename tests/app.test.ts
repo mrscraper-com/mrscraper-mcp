@@ -170,24 +170,27 @@ describe("HTTP application", () => {
         try {
           const { tools } = await client.listTools();
           expect(tools.map((tool) => tool.name)).toEqual(TOOL_NAMES);
-          const scraper = tools.find((tool) => tool.name === "scraperAPI")!;
+          const scraper = tools.find((tool) => tool.name === "scrapeHtml")!;
           return Object.keys(scraper.inputSchema.properties ?? {}).sort();
         } finally {
           await client.close();
         }
       };
       expect(await pageOptions(path)).toEqual([
-        "browser_rendering",
-        "geo_code",
-        "html",
-        "markdown",
-        "screenshot",
+        "browserRendering",
+        "geoCode",
         "timeout",
         "url",
-        "wait_for_selector",
+        "waitForSelector",
+        "waitUntil",
       ]);
       expect(await pageOptions("/mcp")).toEqual(
-        expect.arrayContaining(["proxy", "cookie_jar", "headers", "super"]),
+        expect.arrayContaining([
+          "proxy",
+          "returnCookie",
+          "saveResult",
+          "super",
+        ]),
       );
     },
   );
@@ -225,7 +228,7 @@ describe("HTTP application", () => {
     await client.connect(transport);
     try {
       const response = await client.callTool({
-        name: "scraperAPI",
+        name: "scrapeHtml",
         arguments: { url: "https://example.com" },
       });
       expect(response.isError).toBe(true);

@@ -10,6 +10,7 @@ import {
 } from "@modelcontextprotocol/client";
 
 import { TOOL_NAMES } from "../src/config.js";
+import { DEFAULT_TIMEOUT_SECONDS } from "../src/http.js";
 
 function printJson(label: string, value: unknown): void {
   console.log(`\n== ${label} ==`);
@@ -62,7 +63,7 @@ async function main(): Promise<number> {
       JSON.stringify([...TOOL_NAMES].sort())
     ) {
       throw new Error(
-        "Expected only scraperAPI, webSearch, and status. Rebuild or restart the server.",
+        "Expected the seven MrScraper tools. Rebuild or restart the server.",
       );
     }
 
@@ -74,21 +75,13 @@ async function main(): Promise<number> {
         );
         return 2;
       }
-      const args = argumentsValue as Record<string, unknown>;
-      const timeout =
-        typeof args.timeout === "number" && args.timeout > 0
-          ? args.timeout
-          : name === "scraperAPI"
-            ? 120
-            : 600;
       const result = await client.callTool(
         {
           name,
-          arguments: args,
+          arguments: argumentsValue as Record<string, unknown>,
         },
-        {
-          timeout: (timeout + (name === "scraperAPI" ? 30 : 0) + 15) * 1000,
-        },
+        // Outlasts the longest upstream deadline any tool sets.
+        { timeout: (DEFAULT_TIMEOUT_SECONDS + 15) * 1000 },
       );
       printJson(`tool result: ${name}`, {
         structuredContent: result.structuredContent,

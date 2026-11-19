@@ -1,8 +1,18 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
-import { getSubscriptionAccountApi, scraperApi, webSearchApi } from "./api.js";
-import type { ToolSurface } from "./config.js";
+import {
+  DEFAULT_JSON_PROMPT,
+  WAIT_UNTIL_EVENTS,
+  getScreenshot,
+  getSubscriptionAccountApi,
+  scrapeBrand,
+  scrapeHtml,
+  scrapeJson,
+  scrapeMarkdown,
+  webSearch,
+} from "./api.js";
+import type { ToolName, ToolSurface } from "./config.js";
 import type { ApiResponse } from "./http.js";
 import { summarizeSubscriptionAccount } from "./status.js";
 import { widgetMeta } from "./widgets/index.js";
@@ -24,16 +34,6 @@ const apiResponseSchema = z.object({
   error: z.string().optional().describe("Request failure message, if any."),
 });
 
-export const scraperAPIOutputSchema = apiResponseSchema.meta({
-  title: "Scraper API response",
-  description:
-    "Page content as HTML, Markdown, a screenshot, or a combination.",
-});
-export const webSearchOutputSchema = apiResponseSchema.meta({
-  title: "Web search response",
-  description:
-    "Ranked web search results, each with rank, title, url, description, and source.",
-});
 export const statusOutputSchema = z
   .object({
     kind: z.literal("mrscraper-cli-status-summary").optional(),
@@ -49,232 +49,172 @@ export const statusOutputSchema = z
       "Account identity, subscription, token limit, token usage, and remaining tokens.",
   });
 
-export const scraperAPIInputSchema = z.object({
+const country = z
+  .string()
+  .regex(/^[A-Za-z]{2}$/, "must be a two-letter country code")
+  .toLowerCase()
+  .default("us");
+
+const pageOptions = {
   url: z
     .url({ protocol: /^https?$/ })
-    .describe("Required absolute HTTP or HTTPS page URL."),
-  html: z.boolean().default(true).describe("Request HTML page content."),
-  markdown: z
+    .describe("Absolute HTTP or HTTPS page URL."),
+  super: z
     .boolean()
     .default(false)
-    .describe("Request Markdown page content."),
+    .describe("Route the request through real devices."),
+  waitUntil: z
+    .enum(WAIT_UNTIL_EVENTS)
+    .default("domcontentloaded")
+    .describe("Navigation event that completes page loading."),
   timeout: z
     .number()
     .int()
     .min(1)
     .max(300)
-    .default(120)
+    .default(300)
     .describe(
-      "Page timeout in seconds (1–300); transport allows 30 additional seconds.",
+      "Page load timeout in seconds, 1–300; the request allows 30 seconds more.",
     ),
-  geo_code: z
-    .string()
-    .nullable()
-    .optional()
-    .describe(
-      "Proxy geolocation country code, such as US, ID, or SG. When omitted, the Scraper API chooses the country (US by default).",
-    ),
-  proxy_country: z
-    .string()
-    .nullable()
-    .optional()
-    .describe("Compatibility country option sent as proxyCountry."),
-  block_resources: z
-    .boolean()
-    .nullable()
-    .optional()
-    .default(false)
-    .describe("Block images, CSS, and fonts during loading."),
-  browser_rendering: z
-    .boolean()
-    .nullable()
-    .optional()
-    .describe(
-      "True forces browser rendering, false disables it; omit or use null for automatic fallback.",
-    ),
-  super: z
-    .boolean()
-    .default(false)
-    .describe("Use real-device routing independently of browser rendering."),
-  use_proxy: z
-    .boolean()
-    .default(true)
-    .describe("Allow the service to use a configured proxy."),
+  geoCode: country.describe("Two-letter country code to load the page from."),
+  proxyCountry: country.describe(
+    "Two-letter country code of the proxy server.",
+  ),
   proxy: z
-    .string()
-    .nullable()
-    .optional()
-    .describe("Custom proxy in username:password@host:port form."),
-  wait_for_selector: z
-    .string()
-    .nullable()
-    .optional()
-    .describe("CSS selector to wait for before returning page content."),
-  home_page: z
-    .boolean()
-    .default(false)
-    .describe(
-      "Visit the site's root before the target URL; sent as warmStart=true.",
-    ),
-  screenshot: z
-    .boolean()
-    .default(false)
-    .describe("Capture a screenshot; always enables browser rendering."),
-  bypass_proxy: z
-    .boolean()
-    .default(false)
-    .describe("Enable the API's proxy-bypass/resource-blocking behavior."),
-  cookie_jar: z
-    .string()
-    .nullable()
-    .optional()
-    .describe(
-      "Cookie configuration string, such as domain=example.com&country=us&max_used=100&max_age=50m.",
-    ),
-  headers: z
-    .union([z.record(z.string(), z.string()), z.string()])
-    .nullable()
-    .optional()
-    .describe("Target page request headers as an object or JSON string."),
-  max_retries: z
-    .number()
-    .int()
-    .min(0)
-    .default(3)
-    .describe("Maximum Web Unblocker retries; 0 disables retries."),
-  token_cap: z
-    .number()
-    .int()
-    .min(0)
-    .nullable()
-    .optional()
-    .describe("Optional nonnegative retry-token budget."),
-  stream: z
-    .boolean()
-    .nullable()
-    .optional()
-    .describe(
-      "Ask the API to stream; the MCP server buffers the response into the normal envelope.",
-    ),
-  discard_token_secret: z
-    .string()
-    .default("")
-    .describe("Optional value for the x-discard-token-secret upstream header."),
-});
-
-export const webSearchInputSchema = z.object({
-  url: z
     .string()
     .trim()
     .min(1)
-    .describe(
-      "Required search query text. A search results URL also works; its q parameter becomes the query.",
-    ),
-  region: z
+    .nullish()
+    .describe("Your own proxy, such as http://user:pass@host:port."),
+  maxRetries: z
+    .number()
+    .int()
+    .min(0)
+    .nullish()
+    .describe("Maximum retries; omit for no limit."),
+  saveResult: z
+    .boolean()
+    .default(false)
+    .describe("Save the result to the dashboard Result tab."),
+};
+
+const loadingOptions = {
+  waitForSelector: z
     .string()
     .trim()
-    .regex(/^[A-Za-z]{2}$/, "region must be a two-letter country code")
-    .nullable()
-    .optional()
+    .min(1)
+    .nullish()
+    .describe("CSS selector to wait for before returning."),
+  blockResources: z
+    .boolean()
+    .default(false)
+    .describe("Block images, fonts, and stylesheets."),
+  returnCookie: z
+    .boolean()
+    .default(false)
+    .describe("Include the browser session cookies."),
+};
+
+const browserRendering = z
+  .boolean()
+  .default(false)
+  .describe("Render the page in Chromium.");
+
+export const scrapeHtmlInputSchema = z.strictObject({
+  ...pageOptions,
+  ...loadingOptions,
+  browserRendering,
+});
+
+export const scrapeMarkdownInputSchema = scrapeHtmlInputSchema.extend({
+  html: z
+    .boolean()
+    .default(false)
+    .describe("Also return the page HTML; renders the page in Chromium."),
+});
+
+export const getScreenshotInputSchema = z.strictObject({
+  ...pageOptions,
+  ...loadingOptions,
+  screenshot: z
+    .enum(["full", "top"])
+    .default("full")
+    .describe("Capture the full page or the top viewport."),
+  html: z.boolean().default(true).describe("Include the page HTML."),
+  markdown: z.boolean().default(false).describe("Include the page Markdown."),
+});
+
+export const scrapeBrandInputSchema = z.strictObject({ url: pageOptions.url });
+
+export const scrapeJsonInputSchema = z.strictObject({
+  ...pageOptions,
+  prompt: z
+    .string()
+    .trim()
+    .min(1)
+    .default(DEFAULT_JSON_PROMPT)
     .describe(
-      "Two-letter country code for the results, for example us or gb. Defaults to us.",
+      "Data to extract; append 'Json Schema:' and a JSON schema to shape it.",
     ),
-  num_results: z
+  browserRendering,
+  html: z.boolean().default(false).describe("Also return the page HTML."),
+  screenshot: z
+    .boolean()
+    .default(false)
+    .describe("Also return a base64 screenshot."),
+});
+
+export const webSearchInputSchema = z.strictObject({
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(
+      (value) => [...value].length <= 1000,
+      "query must be 1 to 1000 characters",
+    )
+    .describe("Search query, 1–1000 characters."),
+  country: country.describe("Two-letter country code to search from."),
+  numResults: z
     .number()
     .int()
     .min(10)
     .max(100)
-    .nullable()
-    .optional()
-    .describe(
-      "Number of results to return, from 10 to 100. Defaults to 10; fewer may come back.",
-    ),
-  timeout: z
-    .number()
-    .positive()
-    .default(600)
-    .describe("Local upstream HTTP deadline in seconds; not sent to the API."),
+    .default(10)
+    .describe("Number of results, 10–100; fewer may be returned."),
 });
-
-// The ChatGPT and Codex listing loads public pages without proxy, cookie,
-// header, or retry controls; the omitted options keep their defaults.
-export const chatgptScraperAPIInputSchema = scraperAPIInputSchema
-  .pick({
-    url: true,
-    html: true,
-    markdown: true,
-    screenshot: true,
-    browser_rendering: true,
-    wait_for_selector: true,
-    timeout: true,
-  })
-  .extend({
-    geo_code: z
-      .string()
-      .nullable()
-      .optional()
-      .describe(
-        "Country to load the page from, such as US, ID, or SG. When omitted, the Scraper API chooses the country (US by default).",
-      ),
-  });
-
-export const chatgptWebSearchInputSchema = webSearchInputSchema.extend({
-  url: z.string().trim().min(1).describe("Required search query text."),
-});
-
-export async function scraperAPITool(
-  token: string,
-  input: z.infer<typeof scraperAPIInputSchema>,
-  dependencies: ToolDependencies = {},
-): Promise<Record<string, unknown>> {
-  return scraperApi({
-    token,
-    url: input.url,
-    html: input.html,
-    markdown: input.markdown,
-    timeout: input.timeout,
-    geoCode: input.geo_code,
-    proxyCountry: input.proxy_country,
-    blockResources: input.block_resources,
-    browserRendering: input.browser_rendering,
-    super: input.super,
-    useProxy: input.use_proxy,
-    proxy: input.proxy,
-    waitForSelector: input.wait_for_selector,
-    homePage: input.home_page,
-    screenshot: input.screenshot,
-    bypassProxy: input.bypass_proxy,
-    cookieJar: input.cookie_jar,
-    headers: input.headers,
-    maxRetries: input.max_retries,
-    tokenCap: input.token_cap,
-    stream: input.stream,
-    discardTokenSecret: input.discard_token_secret,
-    fetchFn: dependencies.fetchFn,
-  });
-}
-
-export async function webSearchTool(
-  token: string,
-  input: z.infer<typeof webSearchInputSchema>,
-  dependencies: ToolDependencies = {},
-): Promise<Record<string, unknown>> {
-  return webSearchApi({
-    token,
-    query: input.url,
-    country: input.region,
-    numResults: input.num_results,
-    timeout: input.timeout,
-    fetchFn: dependencies.fetchFn,
-  });
-}
 
 export const statusInputSchema = z.object({});
 
+// ChatGPT and Codex get the basic page controls; hidden options keep their defaults.
+const CHATGPT_HIDDEN_OPTIONS: Record<string, true> = {
+  super: true,
+  proxyCountry: true,
+  proxy: true,
+  maxRetries: true,
+  saveResult: true,
+  blockResources: true,
+  returnCookie: true,
+};
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** Mirrors the CLI: HTTP errors, `success: false`, `error` bodies, and failed brand jobs. */
 function isApiFailure(result: Record<string, unknown>): boolean {
+  const body = asRecord(result.data);
+  const job = asRecord(body?.data);
   return Boolean(
     result.error ||
-    (typeof result.status_code === "number" && result.status_code >= 400),
+    (typeof result.status_code === "number" && result.status_code >= 400) ||
+    body?.success === false ||
+    (typeof body?.error === "string" && body.error.length > 0) ||
+    (job?.job_id &&
+      (job.status === "failed" ||
+        (typeof job.error === "string" && job.error.length > 0))),
   );
 }
 
@@ -287,21 +227,14 @@ export async function statusTool(
     fetchFn: dependencies.fetchFn,
   });
   if (isApiFailure(response)) return response;
-  const body = response.data;
-  const account =
-    body && typeof body === "object" && !Array.isArray(body) && "data" in body
-      ? body.data
-      : body;
+  const body = asRecord(response.data);
+  const account = body && "data" in body ? body.data : response.data;
   return {
     kind: "mrscraper-cli-status-summary",
     source_endpoints: ["/subscription-accounts"],
     status_code: response.status_code,
     data: {
-      account: summarizeSubscriptionAccount(
-        account && typeof account === "object" && !Array.isArray(account)
-          ? (account as Record<string, unknown>)
-          : {},
-      ),
+      account: summarizeSubscriptionAccount(asRecord(account) ?? {}),
     },
   };
 }
@@ -314,28 +247,22 @@ function asStructured(result: Record<string, unknown>) {
   };
 }
 
-const annotations = {
-  readOnlyHint: true,
-  openWorldHint: true,
-  destructiveHint: false,
-};
-
-export const TOOL_DESCRIPTIONS = {
-  scraperAPI:
-    "Retrieves a known page through MrScraper's Scraper API as HTML, Markdown, a screenshot, or a combination. Matches the Python SDK's scraper_api options. Omit browser_rendering for automatic browser fallback; screenshot=true always enables it. super enables real-device routing independently. home_page maps to warmStart. Proxy, cookie, target-header, retry, and timeout options control page loading. Returns status_code, data, and sanitized headers.",
+export const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
+  scrapeHtml:
+    "Retrieves the raw HTML of a web page. browserRendering renders the page in Chromium; waitUntil, waitForSelector, and timeout control when loading completes, and geoCode sets the country the page loads from. Returns status_code, data (the HTML), and sanitized headers.",
+  scrapeMarkdown:
+    "Retrieves a web page as clean Markdown, without navigation, scripts, or ads. html=true also returns the page HTML, rendered in Chromium, as JSON holding both. browserRendering, waitUntil, waitForSelector, timeout, and geoCode control page loading. Returns status_code, data, and sanitized headers.",
+  getScreenshot:
+    "Captures a base64-encoded screenshot of a web page rendered in Chromium: the entire page with screenshot=full (default) or the top viewport with screenshot=top. The response also holds the page HTML unless html=false, and Markdown when markdown=true. Returns status_code, data, and sanitized headers.",
+  scrapeBrand:
+    "Extracts a website's brand as JSON: colors, typography, logos, icons, social links, and metadata. Returns status_code, data with the job_id, status, and brand, and sanitized headers.",
+  scrapeJson:
+    "Extracts structured JSON from a web page using a natural-language prompt and the general agent. Appending 'Json Schema:' and a JSON schema to the prompt shapes the output. html=true and screenshot=true also return the page HTML and a base64 screenshot. Returns status_code, data, and sanitized headers.",
   webSearch:
-    "Searches the web for query text passed as url and returns ranked results, each with rank, title, url, description, and source. region sets the results' country as a two-letter code (default us). num_results sets how many results to return, from 10 to 100 (default 10). A search results URL also works: its q parameter becomes the query. timeout controls the local request deadline. Returns status_code, data, and sanitized headers.",
+    "Searches the web for a query and returns ranked results, each with rank, title, url, description, and source. country sets the two-letter country to search from (default us). numResults sets how many results to return, from 10 to 100 (default 10); fewer may come back. Returns status_code, data, and sanitized headers.",
   status:
     "Returns the connected MrScraper account's identity (name, email, and verification state), subscription status, token limit, token usage, remaining tokens, and rate limit. Use it to check the account and remaining quota, for example before a large batch of requests. It takes no input and reports account usage, not the progress of a request.",
-} as const;
-
-export const CHATGPT_TOOL_DESCRIPTIONS = {
-  scraperAPI:
-    "Retrieves a public web page as HTML, Markdown, a screenshot, or a combination. Browser rendering starts automatically when a page needs it; browser_rendering forces or disables it, and screenshot=true always enables it. wait_for_selector waits for an element before returning, and geo_code loads the page from a specific country. Returns status_code, data, and sanitized headers.",
-  webSearch:
-    "Searches the web for query text passed as url and returns ranked results, each with rank, title, url, description, and source. region sets the results' country as a two-letter code (default us). num_results sets how many results to return, from 10 to 100 (default 10). timeout controls the local request deadline. Returns status_code, data, and sanitized headers.",
-  status: TOOL_DESCRIPTIONS.status,
-} as const;
+};
 
 export function registerTools(
   server: McpServer,
@@ -343,50 +270,85 @@ export function registerTools(
   dependencies: ToolDependencies = {},
   surface: ToolSurface = "default",
 ): void {
-  const chatgpt = surface === "chatgpt";
-  const descriptions = chatgpt ? CHATGPT_TOOL_DESCRIPTIONS : TOOL_DESCRIPTIONS;
-  const scraperAPIConfig = {
-    title: "Scraper API",
-    annotations: { title: "Scraper API", ...annotations },
-    description: descriptions.scraperAPI,
-    outputSchema: scraperAPIOutputSchema,
-  };
-  if (chatgpt) {
+  const registerWebTool = <S extends z.ZodObject>(
+    name: Exclude<ToolName, "status">,
+    title: string,
+    inputSchema: S,
+    call: (
+      token: string,
+      input: z.output<S>,
+      dependencies: ToolDependencies,
+    ) => Promise<ApiResponse>,
+    meta?: Record<string, unknown>,
+  ): void => {
     server.registerTool(
-      "scraperAPI",
-      { ...scraperAPIConfig, inputSchema: chatgptScraperAPIInputSchema },
+      name,
+      {
+        title,
+        description: TOOL_DESCRIPTIONS[name],
+        inputSchema:
+          surface === "chatgpt"
+            ? z.strictObject(
+                Object.fromEntries(
+                  Object.entries(inputSchema.shape).filter(
+                    ([key]) => !Object.hasOwn(CHATGPT_HIDDEN_OPTIONS, key),
+                  ),
+                ),
+              )
+            : inputSchema,
+        outputSchema: apiResponseSchema,
+        annotations: {
+          title,
+          readOnlyHint: true,
+          destructiveHint: false,
+          openWorldHint: true,
+        },
+        _meta: meta,
+      },
+      // The full schema also supplies defaults for options hidden from ChatGPT.
       async (input) =>
         asStructured(
-          await scraperAPITool(
-            getToken(),
-            scraperAPIInputSchema.parse(input),
-            dependencies,
-          ),
+          await call(getToken(), inputSchema.parse(input), dependencies),
         ),
     );
-  } else {
-    server.registerTool(
-      "scraperAPI",
-      { ...scraperAPIConfig, inputSchema: scraperAPIInputSchema },
-      async (input) =>
-        asStructured(await scraperAPITool(getToken(), input, dependencies)),
-    );
-  }
-  const webSearchSchema: typeof webSearchInputSchema = chatgpt
-    ? chatgptWebSearchInputSchema
-    : webSearchInputSchema;
-  server.registerTool(
+  };
+
+  registerWebTool(
+    "scrapeHtml",
+    "Scrape HTML",
+    scrapeHtmlInputSchema,
+    scrapeHtml,
+  );
+  registerWebTool(
+    "scrapeMarkdown",
+    "Scrape Markdown",
+    scrapeMarkdownInputSchema,
+    scrapeMarkdown,
+  );
+  registerWebTool(
+    "getScreenshot",
+    "Get Screenshot",
+    getScreenshotInputSchema,
+    getScreenshot,
+  );
+  registerWebTool(
+    "scrapeBrand",
+    "Scrape Brand",
+    scrapeBrandInputSchema,
+    scrapeBrand,
+  );
+  registerWebTool(
+    "scrapeJson",
+    "Scrape JSON",
+    scrapeJsonInputSchema,
+    scrapeJson,
+  );
+  registerWebTool(
     "webSearch",
-    {
-      title: "Web Search",
-      annotations: { title: "Web Search", ...annotations },
-      description: descriptions.webSearch,
-      inputSchema: webSearchSchema,
-      outputSchema: webSearchOutputSchema,
-      _meta: widgetMeta("webSearch", "Searching the web…", "Search complete."),
-    },
-    async (input) =>
-      asStructured(await webSearchTool(getToken(), input, dependencies)),
+    "Web Search",
+    webSearchInputSchema,
+    webSearch,
+    widgetMeta("webSearch", "Searching the web…", "Search complete."),
   );
   server.registerTool(
     "status",

@@ -126,8 +126,8 @@ async function startApp(
     });
     if (
       request.path === "/" &&
-      request.method === "POST" &&
-      request.body?.action === "websearch"
+      request.method === "GET" &&
+      request.query.action === "websearch"
     ) {
       response.json({
         success: true,
@@ -201,11 +201,11 @@ function toolCall(
         name,
         arguments:
           options.arguments ??
-          (name === "scraperAPI"
-            ? { url: "https://example.com" }
+          (name === "status"
+            ? {}
             : name === "webSearch"
-              ? { url: "MrScraper" }
-              : {}),
+              ? { query: "MrScraper" }
+              : { url: "https://example.com" }),
       },
     }),
   });
@@ -233,9 +233,7 @@ describe("token shape detection", () => {
 
 describe("scope mapping", () => {
   it("covers every registered tool", () => {
-    expect(Object.keys(TOOL_SCOPES).sort()).toEqual(
-      ["scraperAPI", "webSearch", "status"].sort(),
-    );
+    expect(Object.keys(TOOL_SCOPES).sort()).toEqual([...TOOL_NAMES].sort());
   });
 
   it("gates only tools/call", () => {
@@ -244,7 +242,7 @@ describe("scope mapping", () => {
     expect(
       requiredScopesForRequest({
         method: "tools/call",
-        params: { name: "scraperAPI" },
+        params: { name: "scrapeHtml" },
       }),
     ).toEqual(["scrape:write"]);
     expect(
@@ -259,7 +257,7 @@ describe("scope mapping", () => {
     expect(
       requiredScopesForRequest([
         { method: "tools/call", params: { name: "webSearch" } },
-        { method: "tools/call", params: { name: "scraperAPI" } },
+        { method: "tools/call", params: { name: "scrapeHtml" } },
       ]).sort(),
     ).toEqual(["scrape:read", "scrape:write"]);
     expect(
@@ -326,31 +324,31 @@ describe("OAuth discovery documents", () => {
       expect((await fetch(`${baseUrl}${path}`)).status).toBe(404);
     }
 
-    const response = await toolCall(baseUrl, "scraperAPI");
+    const response = await toolCall(baseUrl, "scrapeHtml");
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).not.toContain(
       "resource_metadata=",
     );
-    await expectToolSuccess(await toolCall(baseUrl, "scraperAPI", "valid-key"));
+    await expectToolSuccess(await toolCall(baseUrl, "scrapeHtml", "valid-key"));
   });
 });
 
 describe("bearer challenges", () => {
   it("points unauthenticated callers at the resource metadata document", async () => {
     const baseUrl = await startApp();
-    const response = await toolCall(baseUrl, "scraperAPI");
+    const response = await toolCall(baseUrl, "scrapeHtml");
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toContain(
       'resource_metadata="https://mcp.mrscraper.test/.well-known/oauth-protected-resource/mcp"',
     );
   });
 
-  it("executes scraperAPI with a valid write access token", async () => {
+  it("executes scrapeHtml with a valid write access token", async () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
     const token = await mintToken();
     const data = await expectToolSuccess(
-      await toolCall(baseUrl, "scraperAPI", token),
+      await toolCall(baseUrl, "scrapeHtml", token),
     );
     expect(data.data).toEqual({ html: "<h1>Example Domain</h1>", error: null });
     expect(requests).toHaveLength(1);
@@ -362,7 +360,7 @@ describe("bearer challenges", () => {
     expect(requests[0]!.url.searchParams.get("url")).toBe(
       "https://example.com",
     );
-    expect(requests[0]!.url.searchParams.get("maxRetries")).toBe("3");
+    expect(requests[0]!.url.searchParams.get("maxRetries")).toBeNull();
     expect(requests[0]!.url.searchParams.has("token")).toBe(false);
   });
 
@@ -371,7 +369,7 @@ describe("bearer challenges", () => {
     const token = await mintToken({
       audience: "https://elsewhere.example/mcp",
     });
-    expect((await toolCall(baseUrl, "scraperAPI", token)).status).toBe(401);
+    expect((await toolCall(baseUrl, "scrapeHtml", token)).status).toBe(401);
   });
 
   it("rejects a token minted for the bare public origin", async () => {
@@ -379,36 +377,40 @@ describe("bearer challenges", () => {
     const token = await mintToken({
       audience: "https://mcp.mrscraper.test",
     });
-    expect((await toolCall(baseUrl, "scraperAPI", token)).status).toBe(401);
+    expect((await toolCall(baseUrl, "scrapeHtml", token)).status).toBe(401);
   });
 
   it("rejects a token from another issuer", async () => {
     const baseUrl = await startApp();
     const token = await mintToken({ issuer: ISSUER_PLACEHOLDER });
-    expect((await toolCall(baseUrl, "scraperAPI", token)).status).toBe(401);
+    expect((await toolCall(baseUrl, "scrapeHtml", token)).status).toBe(401);
   });
 
   it("rejects an expired token", async () => {
     const baseUrl = await startApp();
     const token = await mintToken({ expiresIn: "-1m" });
-    expect((await toolCall(baseUrl, "scraperAPI", token)).status).toBe(401);
+    expect((await toolCall(baseUrl, "scrapeHtml", token)).status).toBe(401);
   });
 });
 
 describe("per-tool scope gate", () => {
-  it("executes both scraping tools with read and write scopes", async () => {
+  it("executes every scraping tool with read and write scopes", async () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
     const token = await mintToken({ scope: "scrape:read scrape:write" });
-    for (const name of ["scraperAPI", "webSearch"]) {
+    for (const name of TOOL_NAMES.filter((name) => name !== "status")) {
       await expectToolSuccess(await toolCall(baseUrl, name, token));
     }
     expect(
       requests.map((request) => [
         request.url.pathname,
-        (request.body as { action?: string } | undefined)?.action ?? null,
+        request.url.searchParams.get("action"),
       ]),
     ).toEqual([
+      ["/", null],
+      ["/", null],
+      ["/", null],
+      ["/", "brand-scraping"],
       ["/", null],
       ["/", "websearch"],
     ]);
@@ -421,7 +423,7 @@ describe("per-tool scope gate", () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
     const token = await mintToken({ scope: "scrape:read account:read" });
-    const response = await toolCall(baseUrl, "scraperAPI", token);
+    const response = await toolCall(baseUrl, "scrapeHtml", token);
     expect(response.status).toBe(403);
     const challenge = response.headers.get("www-authenticate") ?? "";
     expect(challenge).toContain('error="insufficient_scope"');
@@ -436,7 +438,21 @@ describe("per-tool scope gate", () => {
     expect(requests).toEqual([]);
   });
 
-  it("allows a read tool held by a read-only token", async () => {
+  it.each([
+    "scrapeHtml",
+    "scrapeMarkdown",
+    "getScreenshot",
+    "scrapeBrand",
+    "scrapeJson",
+  ])("refuses %s to a read-only token", async (name) => {
+    const requests: UpstreamRequest[] = [];
+    const baseUrl = await startApp(oauthConfig(), requests);
+    const token = await mintToken({ scope: "scrape:read" });
+    expect((await toolCall(baseUrl, name, token)).status).toBe(403);
+    expect(requests).toEqual([]);
+  });
+
+  it("allows webSearch with a read-only token", async () => {
     const baseUrl = await startApp();
     const token = await mintToken({ scope: "scrape:read" });
     const data = await expectToolSuccess(
@@ -488,13 +504,13 @@ describe("API key compatibility", () => {
   it("still accepts a MrScraper API key as the bearer credential", async () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
-    await expectToolSuccess(await toolCall(baseUrl, "scraperAPI", "valid-key"));
+    await expectToolSuccess(await toolCall(baseUrl, "scrapeHtml", "valid-key"));
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
       authorization: "Bearer valid-key",
       apiToken: "valid-key",
     });
-    expect(requests[0]!.url.searchParams.get("token")).toBe("valid-key");
+    expect(requests[0]!.url.searchParams.get("token")).toBeNull();
   });
 
   it("grants an API key every scope so no tool is gated", async () => {
@@ -506,7 +522,7 @@ describe("API key compatibility", () => {
 
   it("still rejects an unknown API key", async () => {
     const baseUrl = await startApp();
-    expect((await toolCall(baseUrl, "scraperAPI", "nope")).status).toBe(401);
+    expect((await toolCall(baseUrl, "scrapeHtml", "nope")).status).toBe(401);
   });
 });
 
@@ -525,7 +541,7 @@ async function scraperOptions(baseUrl: string, token: string) {
   const event = text.split("\n").find((line) => line.startsWith("data: "));
   const { result } = JSON.parse(event ? event.slice(6) : text);
   const scraper = result.tools.find(
-    (tool: { name: string }) => tool.name === "scraperAPI",
+    (tool: { name: string }) => tool.name === "scrapeHtml",
   );
   return Object.keys(scraper.inputSchema.properties).sort();
 }
@@ -533,7 +549,7 @@ async function scraperOptions(baseUrl: string, token: string) {
 describe("ChatGPT endpoint", () => {
   it("sends ChatGPT to the /mcp resource metadata, so one sign-in covers both endpoints", async () => {
     const baseUrl = await startApp();
-    const response = await toolCall(baseUrl, "scraperAPI", undefined, {
+    const response = await toolCall(baseUrl, "scrapeHtml", undefined, {
       path: CHATGPT_MCP_PATH,
     });
     expect(response.status).toBe(401);
@@ -542,34 +558,21 @@ describe("ChatGPT endpoint", () => {
     );
   });
 
-  it("accepts an /mcp access token and sends the default page request without the caller's proxy, cookie, or header options", async () => {
+  it("accepts an /mcp access token, gives hidden page options their defaults, and rejects them as input", async () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
     const token = await mintToken();
-    await expectToolSuccess(await toolCall(baseUrl, "scraperAPI", token));
+    await expectToolSuccess(await toolCall(baseUrl, "scrapeHtml", token));
     await expectToolSuccess(
-      await toolCall(baseUrl, "scraperAPI", token, {
-        path: CHATGPT_MCP_PATH,
-        arguments: {
-          url: "https://example.com",
-          proxy: "user:secret@proxy.example:8080",
-          use_proxy: false,
-          super: true,
-          bypass_proxy: true,
-          home_page: true,
-          cookie_jar: "domain=example.com",
-          headers: { "x-forwarded-for": "203.0.113.1" },
-          max_retries: 0,
-        },
-      }),
+      await toolCall(baseUrl, "scrapeHtml", token, { path: CHATGPT_MCP_PATH }),
     );
+    const rejected = await toolCall(baseUrl, "scrapeHtml", token, {
+      path: CHATGPT_MCP_PATH,
+      arguments: { url: "https://example.com", proxy: "http://proxy.example" },
+    });
+    expect(await rejected.text()).toContain('"isError":true');
     expect(requests).toHaveLength(2);
-    const [direct, chatgpt] = requests.map(({ method, url, body }) => ({
-      method,
-      url: url.href,
-      body,
-    }));
-    expect(chatgpt).toEqual(direct);
+    expect(requests[1]!.url.href).toBe(requests[0]!.url.href);
   });
 
   it.each([
@@ -582,14 +585,12 @@ describe("ChatGPT endpoint", () => {
       expect(
         await scraperOptions(baseUrl, await mintToken({ clientId })),
       ).toEqual([
-        "browser_rendering",
-        "geo_code",
-        "html",
-        "markdown",
-        "screenshot",
+        "browserRendering",
+        "geoCode",
         "timeout",
         "url",
-        "wait_for_selector",
+        "waitForSelector",
+        "waitUntil",
       ]);
     },
   );
@@ -598,7 +599,12 @@ describe("ChatGPT endpoint", () => {
     const baseUrl = await startApp();
     for (const credential of [await mintToken(), "valid-key"]) {
       expect(await scraperOptions(baseUrl, credential)).toEqual(
-        expect.arrayContaining(["proxy", "cookie_jar", "headers", "super"]),
+        expect.arrayContaining([
+          "proxy",
+          "returnCookie",
+          "saveResult",
+          "super",
+        ]),
       );
     }
   });

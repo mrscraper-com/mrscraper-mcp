@@ -1,464 +1,448 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it, vi } from "vitest";
 
-import { TOOL_NAMES } from "../src/config.js";
+import { DEFAULT_JSON_PROMPT } from "../src/api.js";
+import { TOOL_NAMES, type ToolSurface } from "../src/config.js";
 import { createMrscraperServer } from "../src/server.js";
 import {
-  scraperAPIInputSchema,
-  scraperAPITool,
-  statusTool,
+  getScreenshotInputSchema,
+  scrapeHtmlInputSchema,
+  scrapeJsonInputSchema,
   webSearchInputSchema,
-  webSearchTool,
 } from "../src/tools.js";
 
-function mockFetch(
-  implementation: (url: URL, init: RequestInit) => Response | Promise<Response>,
-): typeof fetch {
-  return vi.fn(async (input: URL | RequestInfo, init?: RequestInit) =>
-    implementation(new URL(String(input)), init || {}),
-  ) as unknown as typeof fetch;
+interface UpstreamRequest {
+  method: string;
+  url: URL;
+  headers: Record<string, string>;
+  body: unknown;
 }
 
-async function connect(fetchFn: typeof fetch) {
+function upstream(body: unknown = { ok: true }, init?: ResponseInit) {
+  const requests: UpstreamRequest[] = [];
+  const fetchFn = vi.fn(
+    async (input: URL | RequestInfo, request?: RequestInit) => {
+      requests.push({
+        method: request?.method ?? "GET",
+        url: new URL(String(input)),
+        headers: (request?.headers ?? {}) as Record<string, string>,
+        body: request?.body,
+      });
+      return Response.json(body, init);
+    },
+  ) as unknown as typeof fetch;
+  return { fetchFn, requests };
+}
+
+async function withClient<T>(
+  fetchFn: typeof fetch,
+  surface: ToolSurface,
+  use: (client: Client) => Promise<T>,
+): Promise<T> {
   const server = createMrscraperServer(
     { era: "legacy" },
-    {
-      resolveToken: () => "test-token",
-      fetchFn,
-    },
+    { resolveToken: () => "test-token", fetchFn, surface },
   );
   const client = new Client({ name: "tools-test", version: "1" });
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
-  return { client, server };
+  try {
+    return await use(client);
+  } finally {
+    await client.close();
+    await server.close();
+  }
 }
 
-describe("SDK-compatible tool inputs", () => {
-  it.each(["ftp://example.com/file", "relative/path", "not-a-url"])(
-    "rejects a non-HTTP page URL: %s",
-    (url) => {
-      expect(() => scraperAPIInputSchema.parse({ url })).toThrow();
-    },
+function callTool(
+  name: string,
+  args: Record<string, unknown>,
+  fetchFn: typeof fetch,
+  surface: ToolSurface = "default",
+) {
+  return withClient(fetchFn, surface, (client) =>
+    client.callTool({ name, arguments: args }),
   );
+}
 
-  it.each([
-    { timeout: 0 },
-    { timeout: 301 },
-    { timeout: 1.5 },
-    { max_retries: -1 },
-    { token_cap: -1 },
-    { screenshot: "true" },
-  ])("rejects invalid scraperAPI controls: %j", (options) => {
-    expect(() =>
-      scraperAPIInputSchema.parse({ url: "https://example.com", ...options }),
-    ).toThrow();
-  });
+const url = "https://example.com";
+const PAGE_DEFAULTS = {
+  url,
+  super: "false",
+  waitUntil: "domcontentloaded",
+  timeout: "300",
+  geoCode: "us",
+  proxyCountry: "us",
+  saveResult: "false",
+};
+const LOADING_DEFAULTS = { blockResources: "false", returnCookie: "false" };
 
-  it("allows automatic browser fallback with a selector and forces browser loading for screenshots", async () => {
-    const requests: URL[] = [];
-    const fetchFn = mockFetch((url) => {
-      requests.push(url);
-      return new Response("<p>Hello</p>");
-    });
-    await scraperAPITool(
-      "test",
-      scraperAPIInputSchema.parse({
-        url: "https://example.com",
-        wait_for_selector: ".ready",
-      }),
-      { fetchFn },
-    );
-    await scraperAPITool(
-      "test",
-      scraperAPIInputSchema.parse({
-        url: "https://example.com",
-        screenshot: true,
-        browser_rendering: false,
-      }),
-      { fetchFn },
-    );
-    expect(requests[0]!.searchParams.has("browserRendering")).toBe(false);
-    expect(requests[0]!.searchParams.get("waitForSelector")).toBe(".ready");
-    expect(requests[1]!.searchParams.get("browserRendering")).toBe("true");
-  });
-
-  it("maps snake-case loading options to SDK query fields", async () => {
-    const requests: { url: URL; init: RequestInit }[] = [];
-    const fetchFn = mockFetch((url, init) => {
-      requests.push({ url, init });
-      return Response.json({ markdown: "Hello" });
-    });
-    await scraperAPITool(
-      "test",
-      scraperAPIInputSchema.parse({
-        url: "https://example.com",
-        geo_code: "ID",
-        proxy_country: "SG",
-        super: true,
-        use_proxy: false,
-        home_page: true,
-        block_resources: true,
-        bypass_proxy: true,
-        cookie_jar: "domain=example.com",
-        max_retries: 0,
-        token_cap: 0,
-      }),
-      { fetchFn },
-    );
-    // Checked here, not inside the mock: `request` turns anything thrown in fetch into a result.
-    expect(requests).toHaveLength(1);
-    const { url, init } = requests[0]!;
-    expect(url.searchParams.get("geoCode")).toBe("ID");
-    expect(url.searchParams.get("proxyCountry")).toBe("SG");
-    expect(url.searchParams.get("super")).toBe("true");
-    expect(url.searchParams.get("useProxy")).toBe("false");
-    expect(url.searchParams.get("warmStart")).toBe("true");
-    expect(url.searchParams.get("blockResources")).toBe("true");
-    expect(url.searchParams.get("bypassProxy")).toBe("true");
-    expect(url.searchParams.get("cookieJar")).toBe("domain=example.com");
-    expect(url.searchParams.get("maxRetries")).toBe("0");
-    expect(url.searchParams.get("tokenCap")).toBe("0");
-    expect(init.body).toBeUndefined();
-  });
-
-  it("sends a country only when the caller sets one", async () => {
-    const requests: URL[] = [];
-    const fetchFn = mockFetch((url) => {
-      requests.push(url);
-      return new Response("<p>Hello</p>");
-    });
-    await scraperAPITool(
-      "test",
-      scraperAPIInputSchema.parse({ url: "https://example.ro" }),
-      { fetchFn },
-    );
-    await scraperAPITool(
-      "test",
-      scraperAPIInputSchema.parse({
-        url: "https://example.ro",
-        geo_code: "RO",
-      }),
-      { fetchFn },
-    );
-    expect(requests[0]!.searchParams.has("geoCode")).toBe(false);
-    expect(requests[1]!.searchParams.get("geoCode")).toBe("RO");
-  });
-
-  it.each([
-    { url: " " },
-    { url: "query", region: "usa" },
-    { url: "query", num_results: 9 },
-    { url: "query", num_results: 101 },
-    { url: "query", timeout: 0 },
-  ])("rejects invalid webSearch controls: %j", (input) => {
-    expect(() => webSearchInputSchema.parse(input)).toThrow();
-  });
-
-  it("sends the websearch action with the query, country, and result count", async () => {
-    const bodies: unknown[] = [];
-    const fetchFn = mockFetch((url, init) => {
-      expect(url.href).toBe("https://api.mrscraper.com/");
-      bodies.push(JSON.parse(String(init.body)));
-      return Response.json({ success: true, data: [], tokenUsage: 1 });
-    });
-    await webSearchTool("test", webSearchInputSchema.parse({ url: "test" }), {
-      fetchFn,
-    });
-    await webSearchTool(
-      "test",
-      webSearchInputSchema.parse({
-        url: "running shoes",
-        region: "GB",
-        num_results: 20,
-        timeout: 1.5,
-      }),
-      { fetchFn },
-    );
-    expect(bodies).toEqual([
-      { action: "websearch", query: "test" },
-      {
-        action: "websearch",
-        query: "running shoes",
-        country: "gb",
-        numResults: 20,
-      },
-    ]);
-  });
-});
-
-describe("MCP tool surface", () => {
-  it("exposes the three tools without API-token arguments", async () => {
-    const { client, server } = await connect(
-      mockFetch(() => Response.json({ ok: true })),
-    );
-    try {
-      const { tools } = await client.listTools();
+describe("tool listing", () => {
+  it.each(["default", "chatgpt"] as const)(
+    "lists the seven tools with read-only hints on %s",
+    async (surface) => {
+      const { tools } = await withClient(
+        upstream().fetchFn,
+        surface,
+        (client) => client.listTools(),
+      );
       expect(tools.map((tool) => tool.name)).toEqual(TOOL_NAMES);
       for (const tool of tools) {
-        const webTool = tool.name !== "status";
-        expect(tool.title).toBeTruthy();
-        expect(tool.description).toBeTruthy();
-        expect(tool.outputSchema).toBeDefined();
         expect(tool.annotations).toMatchObject({
-          title: tool.title,
           readOnlyHint: true,
-          openWorldHint: webTool,
           destructiveHint: false,
+          openWorldHint: tool.name !== "status",
         });
-        if (webTool) {
-          expect(tool.inputSchema.required).toEqual(["url"]);
-        } else {
-          expect(tool.inputSchema.properties ?? {}).toEqual({});
-        }
-        expect(tool.inputSchema.properties).not.toHaveProperty("token");
-        expect(tool.inputSchema.properties).not.toHaveProperty("api_key");
-        for (const property of Object.values(
-          tool.inputSchema.properties || {},
-        )) {
-          expect(
-            property &&
-              typeof property === "object" &&
-              "description" in property
-              ? property.description
-              : undefined,
-          ).toBeTruthy();
-        }
-      }
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it("calls both web tools through MCP with the structured response envelope", async () => {
-    const fetchFn = mockFetch((_url, init) =>
-      init.method === "POST" &&
-      JSON.parse(String(init.body)).action === "websearch"
-        ? Response.json({
-            success: true,
-            data: [{ rank: 1, title: "Example", url: "https://example.com" }],
-            tokenUsage: 1,
-          })
-        : new Response("<p>Hello</p>", {
-            headers: { "content-type": "text/html" },
-          }),
-    );
-    const { client, server } = await connect(fetchFn);
-    try {
-      for (const name of ["scraperAPI", "webSearch"]) {
-        const result = await client.callTool({
-          name,
-          arguments:
-            name === "scraperAPI"
-              ? { url: "https://example.com" }
-              : { url: "example" },
-        });
-        expect(result.isError).toBeUndefined();
-        expect(result.structuredContent).toMatchObject({
-          status_code: 200,
-          headers: expect.any(Object),
-        });
-        expect(result.content).toEqual([
-          {
-            type: "text",
-            text: JSON.stringify(result.structuredContent, null, 2),
-          },
-        ]);
-      }
-      expect(fetchFn).toHaveBeenCalledTimes(2);
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it("still accepts the search options of version 0.2 and ignores them", async () => {
-    const bodies: unknown[] = [];
-    const fetchFn = mockFetch((_url, init) => {
-      bodies.push(JSON.parse(String(init.body)));
-      return Response.json({ success: true, data: [], tokenUsage: 1 });
-    });
-    const { client, server } = await connect(fetchFn);
-    try {
-      const result = await client.callTool({
-        name: "webSearch",
-        arguments: {
-          url: "https://search.example/results?q=running+shoes",
-          raw: false,
-          region: "ID",
-          language: "id",
-          page: 2,
-          format: "json",
-          render_js: true,
-        },
-      });
-      expect(result.isError).toBeUndefined();
-      expect(bodies).toEqual([
-        { action: "websearch", query: "running shoes", country: "id" },
-      ]);
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it.each(["fetch", "scrape", "serp", "rerun", "results", "result"])(
-    "removes the old %s tool",
-    async (name) => {
-      const fetchFn = mockFetch(() => Response.json({ ok: true }));
-      const { client, server } = await connect(fetchFn);
-      try {
-        await expect(
-          client.callTool({ name, arguments: {} }),
-        ).rejects.toThrow();
-        expect(fetchFn).not.toHaveBeenCalled();
-      } finally {
-        await client.close();
-        await server.close();
+        expect(tool.inputSchema.properties ?? {}).not.toHaveProperty("token");
       }
     },
   );
 
-  it("reports upstream failures as MCP errors and strips credentials", async () => {
-    const { client, server } = await connect(
-      mockFetch(() =>
-        Response.json(
-          {
-            latestApiToken: "secret",
-            "x-discard-token-secret": "discard-secret",
-          },
-          {
-            status: 429,
-            headers: {
-              "set-cookie": "secret",
-              "x-discard-token-secret": "discard-secret",
-            },
-          },
-        ),
-      ),
+  it("hides advanced page options from ChatGPT", async () => {
+    const { tools } = await withClient(
+      upstream().fetchFn,
+      "chatgpt",
+      (client) => client.listTools(),
     );
-    try {
-      const result = await client.callTool({
-        name: "scraperAPI",
-        arguments: { url: "https://example.com" },
-      });
-      expect(result.isError).toBe(true);
-      expect(result.structuredContent).toMatchObject({
-        status_code: 429,
-        error: "HTTP 429",
-      });
-      const output = result.structuredContent as Record<string, unknown>;
-      expect(output.headers).not.toHaveProperty("set-cookie");
-      expect(output.headers).not.toHaveProperty("x-discard-token-secret");
-      expect(output.data).toMatchObject({
-        latestApiToken: "[REDACTED]",
-        "x-discard-token-secret": "[REDACTED]",
-      });
-    } finally {
-      await client.close();
-      await server.close();
-    }
+    const options = Object.fromEntries(
+      tools.map((tool) => [
+        tool.name,
+        Object.keys(tool.inputSchema.properties ?? {}).sort(),
+      ]),
+    );
+    expect(options.scrapeMarkdown).toEqual([
+      "browserRendering",
+      "geoCode",
+      "html",
+      "timeout",
+      "url",
+      "waitForSelector",
+      "waitUntil",
+    ]);
+    expect(options.scrapeJson).toEqual([
+      "browserRendering",
+      "geoCode",
+      "html",
+      "prompt",
+      "screenshot",
+      "timeout",
+      "url",
+      "waitUntil",
+    ]);
+    expect(options.webSearch).toEqual(["country", "numResults", "query"]);
   });
 });
 
-describe("status tool", () => {
-  const account = {
-    stripeStatus: "active",
-    stripeSubscriptionId: "sub_secret",
-    stripeCustomerId: "cus_secret",
-    tokenLimit: 1000,
-    tokenUsage: 250,
-    rateLimit: 10,
-    rateTtl: 60,
-    isAutoRenew: true,
-    isEnterprise: false,
-    endsAt: "2026-11-01",
-    user: {
-      name: "Ada",
-      email: "ada@example.test",
-      isVerified: true,
-      latestApiToken: "atk_secret",
-    },
-  };
-
-  it("returns the account summary through MCP without credentials", async () => {
-    const requests: Array<{ url: URL; init: RequestInit }> = [];
-    const fetchFn = mockFetch((url, init) => {
-      requests.push({ url, init });
-      return Response.json({ data: account });
-    });
-    const { client, server } = await connect(fetchFn);
-    try {
-      const result = await client.callTool({ name: "status", arguments: {} });
-      expect(result.isError).toBeUndefined();
-      expect(result.structuredContent).toMatchObject({
-        kind: "mrscraper-cli-status-summary",
-        source_endpoints: ["/subscription-accounts"],
-        status_code: 200,
-        data: {
-          account: {
-            subscription_status: "active",
-            token_usage: 250,
-            token_limit: 1000,
-            token_remaining: 750,
-            usage_percent: 25,
-            rate_limit: 10,
-            auto_renew: true,
-            ends_at: "2026-11-01",
-            user: { name: "Ada", email: "ada@example.test", verified: true },
-          },
-        },
-      });
-      const text = JSON.stringify(result);
-      for (const secret of ["sub_secret", "cus_secret", "atk_secret"]) {
-        expect(text).not.toContain(secret);
-      }
-      expect(requests).toHaveLength(1);
-      expect(requests[0]!.url.pathname).toBe("/api/v1/subscription-accounts");
-      expect(requests[0]!.init.method).toBe("GET");
-      expect(new Headers(requests[0]!.init.headers).get("x-api-token")).toBe(
-        "test-token",
-      );
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it("returns an upstream failure unchanged and flags it as an MCP error", async () => {
-    const { client, server } = await connect(
-      mockFetch(() =>
-        Response.json({ message: "Unauthenticated." }, { status: 401 }),
-      ),
-    );
-    try {
-      const result = await client.callTool({ name: "status", arguments: {} });
-      expect(result.isError).toBe(true);
-      expect(result.structuredContent).toMatchObject({
-        status_code: 401,
-        data: { message: "Unauthenticated." },
-      });
-      expect(result.structuredContent).not.toHaveProperty("kind");
-    } finally {
-      await client.close();
-      await server.close();
-    }
-  });
-
-  it("reports zero usage when the account has no token limit", async () => {
-    const output = await statusTool(
-      "test",
-      {},
+describe("upstream requests", () => {
+  it.each([
+    [
+      "scrapeHtml",
+      { url },
       {
-        fetchFn: mockFetch(() =>
-          Response.json({ data: { tokenUsage: 5, tokenLimit: 0 } }),
-        ),
+        ...PAGE_DEFAULTS,
+        ...LOADING_DEFAULTS,
+        browserRendering: "false",
+        html: "true",
+        markdown: "false",
+        screenshot: "false",
       },
+    ],
+    [
+      "scrapeMarkdown",
+      { url },
+      {
+        ...PAGE_DEFAULTS,
+        ...LOADING_DEFAULTS,
+        browserRendering: "false",
+        html: "false",
+        markdown: "true",
+        screenshot: "false",
+      },
+    ],
+    [
+      "getScreenshot",
+      { url },
+      {
+        ...PAGE_DEFAULTS,
+        ...LOADING_DEFAULTS,
+        browserRendering: "true",
+        screenshot: "full",
+        html: "true",
+        markdown: "false",
+      },
+    ],
+    [
+      "scrapeJson",
+      { url },
+      {
+        ...PAGE_DEFAULTS,
+        browserRendering: "false",
+        html: "false",
+        screenshot: "false",
+        prompt: DEFAULT_JSON_PROMPT,
+        agent: "general",
+      },
+    ],
+    ["scrapeBrand", { url }, { action: "brand-scraping", url, bundle: "none" }],
+    [
+      "webSearch",
+      { query: "web scraping" },
+      {
+        action: "websearch",
+        query: "web scraping",
+        country: "us",
+        numResults: "10",
+      },
+    ],
+  ] as const)(
+    "%s sends exactly the CLI's GET query",
+    async (name, args, query) => {
+      for (const surface of ["default", "chatgpt"] as const) {
+        const { fetchFn, requests } = upstream();
+        const result = await callTool(name, args, fetchFn, surface);
+        expect(result.isError).not.toBe(true);
+        expect(requests).toHaveLength(1);
+        expect(requests[0]!.method).toBe("GET");
+        expect(requests[0]!.body).toBeUndefined();
+        expect(requests[0]!.url.origin + requests[0]!.url.pathname).toBe(
+          "https://api.mrscraper.com/",
+        );
+        expect(Object.fromEntries(requests[0]!.url.searchParams)).toEqual(
+          query,
+        );
+        expect(requests[0]!.headers).toMatchObject({
+          Authorization: "Bearer test-token",
+          "x-api-token": "test-token",
+        });
+      }
+    },
+  );
+
+  it("passes options through and keeps forced values", async () => {
+    const { fetchFn, requests } = upstream();
+    await callTool(
+      "scrapeMarkdown",
+      { url, html: true, browserRendering: false },
+      fetchFn,
     );
-    expect(output.data).toMatchObject({
-      account: { token_limit: 0, token_remaining: 0, usage_percent: 0 },
+    await callTool(
+      "getScreenshot",
+      {
+        url,
+        screenshot: "top",
+        html: false,
+        markdown: true,
+        super: true,
+        geoCode: "ID",
+        maxRetries: 0,
+        proxy: "http://user:pass@proxy.example:8080",
+        waitForSelector: "#main",
+        saveResult: true,
+      },
+      fetchFn,
+    );
+    await callTool(
+      "webSearch",
+      { query: "  running shoes  ", country: "GB", numResults: 20 },
+      fetchFn,
+    );
+    const [markdown, screenshot, search] = requests.map(({ url }) =>
+      Object.fromEntries(url.searchParams),
+    );
+    expect(markdown).toMatchObject({
+      html: "true",
+      markdown: "true",
+      browserRendering: "true",
     });
+    expect(screenshot).toMatchObject({
+      screenshot: "top",
+      html: "false",
+      markdown: "true",
+      browserRendering: "true",
+      super: "true",
+      geoCode: "id",
+      maxRetries: "0",
+      proxy: "http://user:pass@proxy.example:8080",
+      waitForSelector: "#main",
+      saveResult: "true",
+    });
+    expect(search).toEqual({
+      action: "websearch",
+      query: "running shoes",
+      country: "gb",
+      numResults: "20",
+    });
+  });
+
+  it("treats null optional options as omitted", async () => {
+    const { fetchFn, requests } = upstream();
+    await callTool(
+      "scrapeHtml",
+      { url, proxy: null, maxRetries: null, waitForSelector: null },
+      fetchFn,
+    );
+    for (const key of ["proxy", "maxRetries", "waitForSelector"]) {
+      expect(requests[0]!.url.searchParams.has(key)).toBe(false);
+    }
+  });
+
+  it.each([
+    ["scrapeHtml", { url, tokenCap: 100 }],
+    ["scrapeHtml", { url, record: true }],
+    ["scrapeHtml", { url, action: "brand-scraping" }],
+    ["scrapeHtml", { url, markdown: true }],
+    ["scrapeMarkdown", { url, screenshot: "full" }],
+    ["getScreenshot", { url, browserRendering: false }],
+    ["scrapeJson", { url, waitForSelector: "#main" }],
+    ["scrapeJson", { url, blockResources: true }],
+    ["scrapeJson", { url, returnCookie: true }],
+    ["scrapeBrand", { url, bundle: "full" }],
+    ["webSearch", { query: "shoes", timeout: 30 }],
+  ])("%s rejects %j without calling upstream", async (name, args) => {
+    const { fetchFn, requests } = upstream();
+    const result = await callTool(name, args, fetchFn);
+    expect(result.isError).toBe(true);
+    expect(requests).toEqual([]);
+  });
+
+  it("rejects options hidden from ChatGPT", async () => {
+    const { fetchFn, requests } = upstream();
+    const result = await callTool(
+      "scrapeHtml",
+      { url, proxy: "http://proxy.example" },
+      fetchFn,
+      "chatgpt",
+    );
+    expect(result.isError).toBe(true);
+    expect(requests).toEqual([]);
+  });
+});
+
+describe("results", () => {
+  it("returns the envelope as structured content and JSON text", async () => {
+    const result = await callTool(
+      "webSearch",
+      { query: "web scraping" },
+      upstream({ success: true, data: [] }).fetchFn,
+    );
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      status_code: 200,
+      data: { success: true, data: [] },
+    });
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify(result.structuredContent, null, 2) },
+    ]);
+  });
+
+  it.each([
+    ["an HTTP error", "scrapeHtml", { message: "Limit reached" }, 429],
+    ["success: false", "scrapeJson", { success: false, data: null }, 200],
+    ["a page error", "getScreenshot", { html: null, error: "Timeout" }, 200],
+    [
+      "a failed brand job",
+      "scrapeBrand",
+      { data: { job_id: "job-1", status: "failed" } },
+      200,
+    ],
+  ])("flags %s as isError", async (_case, name, body, status) => {
+    const result = await callTool(
+      name,
+      { url },
+      upstream(body, {
+        status,
+        headers: { "set-cookie": "secret", "x-api-token": "secret" },
+      }).fetchFn,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ status_code: status });
+    expect(JSON.stringify(result)).not.toContain("secret");
+  });
+
+  it("does not flag a successful page with a null error", async () => {
+    const result = await callTool(
+      "getScreenshot",
+      { url },
+      upstream({ screenshot: "base64", html: "<p></p>", error: null }).fetchFn,
+    );
+    expect(result.isError).not.toBe(true);
+  });
+
+  it("drops the HTML the API returns for a screenshot taken with html=false", async () => {
+    const fetchFn = upstream({ screenshot: "base64", html: "<p></p>" }).fetchFn;
+    const without = await callTool(
+      "getScreenshot",
+      { url, html: false },
+      fetchFn,
+    );
+    const withHtml = await callTool("getScreenshot", { url }, fetchFn);
+    expect(without.structuredContent).toMatchObject({
+      data: { screenshot: "base64", html: null },
+    });
+    expect(withHtml.structuredContent).toMatchObject({
+      data: { screenshot: "base64", html: "<p></p>" },
+    });
+  });
+
+  it("summarizes the account without credentials", async () => {
+    const result = await callTool(
+      "status",
+      {},
+      upstream({
+        data: {
+          tokenLimit: 100,
+          tokenUsage: 20,
+          user: { name: "User" },
+          latestApiToken: "secret",
+        },
+      }).fetchFn,
+    );
+    expect(result.structuredContent).toMatchObject({
+      data: { account: { token_remaining: 80, user: { name: "User" } } },
+    });
+    expect(JSON.stringify(result)).not.toContain('"secret"');
+  });
+});
+
+describe("input validation", () => {
+  it.each([
+    { url: "file:///tmp/a" },
+    { url, timeout: 301 },
+    { url, timeout: 0 },
+    { url, maxRetries: -1 },
+    { url, geoCode: "usa" },
+    { url, waitUntil: "networkidle" },
+    { url, superMode: true },
+  ])("rejects invalid page input %j", (input) =>
+    expect(() => scrapeHtmlInputSchema.parse(input)).toThrow(),
+  );
+
+  it("rejects invalid screenshot and JSON controls", () => {
+    expect(() =>
+      getScreenshotInputSchema.parse({ url, screenshot: true }),
+    ).toThrow();
+    expect(() => scrapeJsonInputSchema.parse({ url, prompt: " " })).toThrow();
+  });
+
+  it.each([
+    { query: " " },
+    { query: "a".repeat(1001) },
+    { query: "ok", country: "usa" },
+    { query: "ok", numResults: 9 },
+    { query: "ok", numResults: 101 },
+    { query: "ok", numResults: 10.5 },
+  ])("rejects invalid search input %j", (input) =>
+    expect(() => webSearchInputSchema.parse(input)).toThrow(),
+  );
+
+  it("counts query length in Unicode characters like the CLI", () => {
+    expect(() =>
+      webSearchInputSchema.parse({ query: "😀".repeat(1000) }),
+    ).not.toThrow();
+    expect(() =>
+      webSearchInputSchema.parse({ query: "😀".repeat(1001) }),
+    ).toThrow();
   });
 });

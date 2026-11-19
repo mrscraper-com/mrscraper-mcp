@@ -1,6 +1,11 @@
 import { normalizeBearerToken } from "./auth.js";
 import { getApiEndpoints } from "./config.js";
-import { request, type ApiResponse } from "./http.js";
+import {
+  request,
+  withQuery,
+  type ApiResponse,
+  type QueryParams,
+} from "./http.js";
 import { isOAuthAccessToken } from "./oauth.js";
 
 interface FetchDependency {
@@ -19,122 +24,143 @@ export function getAuthHeaders(token: string): Record<string, string> {
   };
 }
 
-function compact(
-  values: Record<string, string | number | boolean | null | undefined>,
-): Record<string, string | number | boolean> {
-  return Object.fromEntries(
-    Object.entries(values).filter(
-      (entry): entry is [string, string | number | boolean] =>
-        entry[1] !== null && entry[1] !== undefined,
-    ),
+export const WAIT_UNTIL_EVENTS = [
+  "domcontentloaded",
+  "load",
+  "networkidle0",
+  "networkidle2",
+] as const;
+export const DEFAULT_JSON_PROMPT = "Extract all data as complete as possible.";
+
+// The Scraper API refuses request URLs over about 8 KB with 414.
+const MAX_GET_URL_LENGTH = 8000;
+const TRANSPORT_GRACE_SECONDS = 30;
+// Brand (bundle=none) and web search answer within seconds.
+const BRAND_AND_SEARCH_TIMEOUT_SECONDS = 120;
+
+/**
+ * Options shared by the page tools, each sent as the query parameter of the
+ * same name. Fields outside these types, such as `tokenCap`, `record`, and
+ * `action`, are never sent.
+ */
+export type PageOptions = {
+  url: string;
+  super: boolean;
+  waitUntil: (typeof WAIT_UNTIL_EVENTS)[number];
+  timeout: number;
+  geoCode: string;
+  proxyCountry: string;
+  proxy?: string | null;
+  maxRetries?: number | null;
+  saveResult: boolean;
+};
+
+export type LoadingOptions = {
+  waitForSelector?: string | null;
+  blockResources: boolean;
+  returnCookie: boolean;
+};
+
+export type HtmlOptions = PageOptions &
+  LoadingOptions & { browserRendering: boolean };
+
+export type MarkdownOptions = HtmlOptions & { html: boolean };
+
+export type ScreenshotOptions = PageOptions &
+  LoadingOptions & {
+    screenshot: "full" | "top";
+    html: boolean;
+    markdown: boolean;
+  };
+
+export type JsonOptions = PageOptions & {
+  prompt: string;
+  browserRendering: boolean;
+  html: boolean;
+  screenshot: boolean;
+};
+
+export type WebSearchOptions = {
+  query: string;
+  country: string;
+  numResults: number;
+};
+
+function scraperGet(
+  token: string,
+  params: QueryParams,
+  timeout: number,
+  { fetchFn }: FetchDependency,
+): Promise<ApiResponse> {
+  return request("GET", getApiEndpoints().scraperApiUrl, {
+    headers: getAuthHeaders(token),
+    params,
+    timeout,
+    fetchFn,
+  });
+}
+
+function scrapePage(
+  token: string,
+  params: PageOptions & QueryParams,
+  dependencies: FetchDependency,
+): Promise<ApiResponse> {
+  return scraperGet(
+    token,
+    params,
+    params.timeout + TRANSPORT_GRACE_SECONDS,
+    dependencies,
   );
 }
 
-export interface ScraperApiOptions extends FetchDependency {
-  token: string;
-  url: string;
-  html?: boolean;
-  markdown?: boolean;
-  timeout?: number;
-  geoCode?: string | null;
-  proxyCountry?: string | null;
-  blockResources?: boolean | null;
-  browserRendering?: boolean | null;
-  super?: boolean;
-  useProxy?: boolean;
-  proxy?: string | null;
-  waitForSelector?: string | null;
-  homePage?: boolean;
-  screenshot?: boolean;
-  bypassProxy?: boolean;
-  cookieJar?: string | null;
-  headers?: Record<string, string> | string | null;
-  maxRetries?: number;
-  tokenCap?: number | null;
-  stream?: boolean | null;
-  discardTokenSecret?: string;
+/** Retrieves a page as raw HTML. */
+export async function scrapeHtml(
+  token: string,
+  options: HtmlOptions,
+  dependencies: FetchDependency = {},
+): Promise<ApiResponse> {
+  return scrapePage(
+    token,
+    { ...options, html: true, markdown: false, screenshot: false },
+    dependencies,
+  );
 }
 
-export async function scraperApi({
-  token,
-  url,
-  html = true,
-  markdown = false,
-  timeout = 120,
-  geoCode = null,
-  proxyCountry = null,
-  blockResources = false,
-  browserRendering = null,
-  super: superMode = false,
-  useProxy = true,
-  proxy = null,
-  waitForSelector = null,
-  homePage = false,
-  screenshot = false,
-  bypassProxy = false,
-  cookieJar = null,
-  headers = null,
-  maxRetries = 3,
-  tokenCap = null,
-  stream = null,
-  discardTokenSecret = "",
-  fetchFn,
-}: ScraperApiOptions): Promise<ApiResponse> {
-  if (!Number.isInteger(timeout) || timeout < 1 || timeout > 300) {
-    throw new Error("timeout must be between 1 and 300 seconds");
-  }
-  if (!Number.isInteger(maxRetries) || maxRetries < 0) {
-    throw new Error("max_retries must be a nonnegative integer");
-  }
-  if (tokenCap !== null && (!Number.isInteger(tokenCap) || tokenCap < 0)) {
-    throw new Error("token_cap must be a nonnegative integer");
-  }
-  const apiToken = normalizeBearerToken(token);
-  // GET with every option in the query, as the Python SDK's scraper_api sends it. The API replays a
-  // request body to the target page, so a POST carrying {url, maxRetries} reached sites as a POST
-  // with that JSON body and failed with 404/405/422 on most of them.
-  const response = await request("GET", getApiEndpoints().scraperApiUrl, {
-    headers: {
-      ...getAuthHeaders(apiToken),
-      ...(discardTokenSecret
-        ? { "x-discard-token-secret": discardTokenSecret }
-        : {}),
+/** Retrieves a page as Markdown; with `html`, as JSON holding both. */
+export async function scrapeMarkdown(
+  token: string,
+  options: MarkdownOptions,
+  dependencies: FetchDependency = {},
+): Promise<ApiResponse> {
+  return scrapePage(
+    token,
+    {
+      ...options,
+      // The API fails with HTTP 500 for html+markdown without browser rendering.
+      browserRendering: options.html || options.browserRendering,
+      markdown: true,
+      screenshot: false,
     },
-    params: compact({
-      // Match the SDK's API-key query parameter; OAuth JWTs stay in Authorization.
-      token: isOAuthAccessToken(apiToken) ? null : apiToken,
-      timeout,
-      geoCode,
-      proxyCountry,
-      browserRendering: screenshot ? true : browserRendering,
-      super: superMode ? true : null,
-      useProxy: useProxy ? null : false,
-      proxy,
-      html,
-      markdown,
-      waitForSelector,
-      warmStart: homePage ? true : null,
-      screenshot: screenshot ? true : null,
-      blockResources: blockResources ? true : null,
-      bypassProxy: bypassProxy ? true : null,
-      cookieJar,
-      headers:
-        typeof headers === "object" && headers !== null
-          ? JSON.stringify(headers)
-          : headers,
-      stream,
-      url,
-      maxRetries,
-      tokenCap,
-    }),
-    timeout: timeout + 30,
-    fetchFn,
-  });
-  // On GET the API returns the page's HTML alongside Markdown even with html=false (the POST path
-  // left it out). Drop it here so a Markdown request does not hand the model megabytes of HTML.
+    dependencies,
+  );
+}
+
+/** Captures a base64 screenshot of the full page or the top viewport in Chromium. */
+export async function getScreenshot(
+  token: string,
+  options: ScreenshotOptions,
+  dependencies: FetchDependency = {},
+): Promise<ApiResponse> {
+  const response = await scrapePage(
+    token,
+    { ...options, browserRendering: true },
+    dependencies,
+  );
+  // The API returns the page HTML even with html=false; drop it so the model
+  // isn't handed HTML it didn't ask for.
   const { data } = response;
   if (
-    !html &&
+    !options.html &&
     data &&
     typeof data === "object" &&
     !Array.isArray(data) &&
@@ -145,43 +171,60 @@ export async function scraperApi({
   return response;
 }
 
-export interface WebSearchOptions extends FetchDependency {
-  token: string;
-  query: string;
-  country?: string | null;
-  numResults?: number | null;
-  timeout?: number;
-}
-
-/** Returns the query text, or the `q` parameter when given a search results URL. */
-export function searchQuery(input: string): string {
-  const value = String(input || "").trim();
-  if (!value) throw new Error("A web search query is required");
-  if (!/^https?:\/\//i.test(value)) return value;
-  const query = new URL(value).searchParams.get("q")?.trim();
-  if (!query) throw new Error("Search results URL must contain a q parameter");
-  return query;
-}
-
-export async function webSearchApi({
-  token,
-  query,
-  country = null,
-  numResults = null,
-  timeout = 600,
-  fetchFn,
-}: WebSearchOptions): Promise<ApiResponse> {
-  return request("POST", getApiEndpoints().scraperApiUrl, {
+/**
+ * Extracts structured JSON with the `general` agent. Sent as GET; a prompt too
+ * long for the URL is sent with the documented POST body instead.
+ */
+export async function scrapeJson(
+  token: string,
+  options: JsonOptions,
+  { fetchFn }: FetchDependency = {},
+): Promise<ApiResponse> {
+  const endpoint = getApiEndpoints().scraperApiUrl;
+  const params = { ...options, agent: "general" };
+  const init = {
     headers: getAuthHeaders(token),
-    json: compact({
-      action: "websearch",
-      query: searchQuery(query),
-      country: country ? country.toLowerCase() : null,
-      numResults,
-    }),
-    timeout,
+    timeout: options.timeout + TRANSPORT_GRACE_SECONDS,
     fetchFn,
+  };
+  const getUrl = withQuery(endpoint, params).href;
+  if (getUrl.length <= MAX_GET_URL_LENGTH) {
+    return request("GET", getUrl, init);
+  }
+  const { url, prompt, agent, ...query } = params;
+  return request("POST", endpoint, {
+    ...init,
+    params: query,
+    json: { url, prompt, agent },
   });
+}
+
+/** Extracts a website's brand as JSON (`bundle=none`). */
+export async function scrapeBrand(
+  token: string,
+  { url }: { url: string },
+  dependencies: FetchDependency = {},
+): Promise<ApiResponse> {
+  return scraperGet(
+    token,
+    { action: "brand-scraping", url, bundle: "none" },
+    BRAND_AND_SEARCH_TIMEOUT_SECONDS,
+    dependencies,
+  );
+}
+
+/** Searches the web and returns ranked results. */
+export async function webSearch(
+  token: string,
+  { query, country, numResults }: WebSearchOptions,
+  dependencies: FetchDependency = {},
+): Promise<ApiResponse> {
+  return scraperGet(
+    token,
+    { action: "websearch", query, country, numResults },
+    BRAND_AND_SEARCH_TIMEOUT_SECONDS,
+    dependencies,
+  );
 }
 
 export async function getSubscriptionAccountApi(
