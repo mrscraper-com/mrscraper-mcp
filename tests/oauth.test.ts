@@ -201,7 +201,7 @@ function toolCall(
         name,
         arguments:
           options.arguments ??
-          (name === "account"
+          (name === "status"
             ? {}
             : name === "webSearch"
               ? { query: "MrScraper" }
@@ -248,7 +248,7 @@ describe("scope mapping", () => {
     expect(
       requiredScopesForRequest({
         method: "tools/call",
-        params: { name: "account" },
+        params: { name: "status" },
       }),
     ).toEqual(["account:read"]);
   });
@@ -259,13 +259,13 @@ describe("scope mapping", () => {
         { method: "tools/call", params: { name: "webSearch" } },
         { method: "tools/call", params: { name: "scrapeHtml" } },
       ]).sort(),
-    ).toEqual(["scrape:write"]);
+    ).toEqual(["scrape:read", "scrape:write"]);
     expect(
       requiredScopesForRequest([
         { method: "tools/call", params: { name: "webSearch" } },
-        { method: "tools/call", params: { name: "account" } },
+        { method: "tools/call", params: { name: "status" } },
       ]).sort(),
-    ).toEqual(["account:read", "scrape:write"]);
+    ).toEqual(["account:read", "scrape:read"]);
   });
 
   it("advertises every scope a tool requires", () => {
@@ -394,11 +394,11 @@ describe("bearer challenges", () => {
 });
 
 describe("per-tool scope gate", () => {
-  it("executes all six services with write scope alone", async () => {
+  it("executes every scraping tool with read and write scopes", async () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
-    const token = await mintToken({ scope: "scrape:write" });
-    for (const name of TOOL_NAMES.filter((name) => name !== "account")) {
+    const token = await mintToken({ scope: "scrape:read scrape:write" });
+    for (const name of TOOL_NAMES.filter((name) => name !== "status")) {
       await expectToolSuccess(await toolCall(baseUrl, name, token));
     }
     expect(
@@ -438,26 +438,37 @@ describe("per-tool scope gate", () => {
     expect(requests).toEqual([]);
   });
 
-  it.each(TOOL_NAMES.filter((name) => name !== "account"))(
-    "rejects a read-only token for %s",
-    async (name) => {
-      const requests: UpstreamRequest[] = [];
-      const baseUrl = await startApp(oauthConfig(), requests);
-      const token = await mintToken({ scope: "scrape:read" });
-      expect((await toolCall(baseUrl, name, token)).status).toBe(403);
-      expect(requests).toEqual([]);
-    },
-  );
-  it("allows account with account:read alone", async () => {
+  it.each([
+    "scrapeHtml",
+    "scrapeMarkdown",
+    "getScreenshot",
+    "scrapeBrand",
+    "scrapeJson",
+  ])("refuses %s to a read-only token", async (name) => {
+    const requests: UpstreamRequest[] = [];
+    const baseUrl = await startApp(oauthConfig(), requests);
+    const token = await mintToken({ scope: "scrape:read" });
+    expect((await toolCall(baseUrl, name, token)).status).toBe(403);
+    expect(requests).toEqual([]);
+  });
+
+  it("allows webSearch with a read-only token", async () => {
     const baseUrl = await startApp();
-    const token = await mintToken({ scope: "account:read" });
-    await expectToolSuccess(await toolCall(baseUrl, "account", token));
+    const token = await mintToken({ scope: "scrape:read" });
+    const data = await expectToolSuccess(
+      await toolCall(baseUrl, "webSearch", token),
+    );
+    expect(data.data).toEqual({
+      success: true,
+      data: [{ rank: 1, title: "MrScraper", url: "https://mrscraper.com/" }],
+      tokenUsage: 1,
+    });
   });
 
   it("refuses status without account:read", async () => {
     const baseUrl = await startApp();
     const token = await mintToken({ scope: "scrape:read" });
-    const response = await toolCall(baseUrl, "account", token);
+    const response = await toolCall(baseUrl, "status", token);
     expect(response.status).toBe(403);
     const challenge = response.headers.get("www-authenticate") ?? "";
     expect(challenge).toContain('error="insufficient_scope"');
@@ -547,18 +558,21 @@ describe("ChatGPT endpoint", () => {
     );
   });
 
-  it("accepts an /mcp access token and sends the default page request without the caller's proxy, cookie, or header options", async () => {
+  it("accepts an /mcp access token, gives hidden page options their defaults, and rejects them as input", async () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
     const token = await mintToken();
     await expectToolSuccess(await toolCall(baseUrl, "scrapeHtml", token));
+    await expectToolSuccess(
+      await toolCall(baseUrl, "scrapeHtml", token, { path: CHATGPT_MCP_PATH }),
+    );
     const rejected = await toolCall(baseUrl, "scrapeHtml", token, {
       path: CHATGPT_MCP_PATH,
       arguments: { url: "https://example.com", proxy: "http://proxy.example" },
     });
-    const text = await rejected.text();
-    expect(text).toContain("isError");
-    expect(requests).toHaveLength(1);
+    expect(await rejected.text()).toContain('"isError":true');
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.url.href).toBe(requests[0]!.url.href);
   });
 
   it.each([
@@ -589,7 +603,7 @@ describe("ChatGPT endpoint", () => {
           "proxy",
           "returnCookie",
           "saveResult",
-          "superMode",
+          "super",
         ]),
       );
     }

@@ -1,7 +1,17 @@
 import { normalizeBearerToken } from "./auth.js";
 import { getApiEndpoints } from "./config.js";
-import { request, type ApiResponse } from "./http.js";
+import {
+  request,
+  withQuery,
+  type ApiResponse,
+  type QueryParams,
+} from "./http.js";
 import { isOAuthAccessToken } from "./oauth.js";
+
+interface FetchDependency {
+  fetchFn?: typeof fetch;
+}
+
 export function getAuthHeaders(token: string): Record<string, string> {
   const apiToken = normalizeBearerToken(token);
   if (!apiToken) throw new Error("API token is required");
@@ -14,310 +24,212 @@ export function getAuthHeaders(token: string): Record<string, string> {
   };
 }
 
-export type WaitUntil =
-  "domcontentloaded" | "load" | "networkidle0" | "networkidle2";
-export interface PageOptions {
-  token?: string;
-  fetchFn?: typeof fetch;
-  timeout?: number;
-  geoCode?: string;
-  proxyCountry?: string;
-  superMode?: boolean;
-  waitUntil?: WaitUntil;
-  proxy?: string;
-  maxRetries?: number;
-  saveResult?: boolean;
-}
-export interface LoadingOptions {
-  blockResources?: boolean;
-  waitForSelector?: string;
-  returnCookie?: boolean;
-}
-export interface HtmlOptions extends PageOptions, LoadingOptions {
-  browserRendering?: boolean;
-}
-export interface MarkdownOptions extends HtmlOptions {
-  html?: boolean;
-}
-export interface ScreenshotOptions extends PageOptions, LoadingOptions {
-  screenshot?: "full" | "top";
-  html?: boolean;
-  markdown?: boolean;
-}
-export interface JsonOptions extends PageOptions {
-  prompt?: string;
-  browserRendering?: boolean;
-  html?: boolean;
-  screenshot?: boolean;
-}
-export interface BrandOptions {
-  token?: string;
-  fetchFn?: typeof fetch;
-}
-export interface WebSearchOptions {
-  token?: string;
-  fetchFn?: typeof fetch;
-  country?: string;
-  numResults?: number;
-  /** Local HTTP deadline in seconds. Defaults to 120. */
-  timeout?: number;
-}
-export interface WebSearchResult {
-  rank: number;
-  title: string;
-  url: string;
-  description: string;
-  source: string;
-}
-export interface WebSearchResponse {
-  success: boolean;
-  message: string;
-  data: WebSearchResult[];
-}
-export type PageData =
-  | string
-  | {
-      html?: string;
-      markdown?: string;
-      screenshot?: string;
-      [key: string]: unknown;
-    };
+export const WAIT_UNTIL_EVENTS = [
+  "domcontentloaded",
+  "load",
+  "networkidle0",
+  "networkidle2",
+] as const;
 export const DEFAULT_JSON_PROMPT = "Extract all data as complete as possible.";
 
-function requireToken(token?: string): string {
-  const normalized = normalizeBearerToken(token || "");
-  if (!normalized) throw new Error("API token is required");
-  return normalized;
+// The Scraper API refuses request URLs over about 8 KB with 414.
+const MAX_GET_URL_LENGTH = 8000;
+const TRANSPORT_GRACE_SECONDS = 30;
+// Brand (bundle=none) and web search answer within seconds.
+const BRAND_AND_SEARCH_TIMEOUT_SECONDS = 120;
+
+/**
+ * Options shared by the page tools, each sent as the query parameter of the
+ * same name. Fields outside these types, such as `tokenCap`, `record`, and
+ * `action`, are never sent.
+ */
+export type PageOptions = {
+  url: string;
+  super: boolean;
+  waitUntil: (typeof WAIT_UNTIL_EVENTS)[number];
+  timeout: number;
+  geoCode: string;
+  proxyCountry: string;
+  proxy?: string | null;
+  maxRetries?: number | null;
+  saveResult: boolean;
+};
+
+export type LoadingOptions = {
+  waitForSelector?: string | null;
+  blockResources: boolean;
+  returnCookie: boolean;
+};
+
+export type HtmlOptions = PageOptions &
+  LoadingOptions & { browserRendering: boolean };
+
+export type MarkdownOptions = HtmlOptions & { html: boolean };
+
+export type ScreenshotOptions = PageOptions &
+  LoadingOptions & {
+    screenshot: "full" | "top";
+    html: boolean;
+    markdown: boolean;
+  };
+
+export type JsonOptions = PageOptions & {
+  prompt: string;
+  browserRendering: boolean;
+  html: boolean;
+  screenshot: boolean;
+};
+
+export type WebSearchOptions = {
+  query: string;
+  country: string;
+  numResults: number;
+};
+
+function scraperGet(
+  token: string,
+  params: QueryParams,
+  timeout: number,
+  { fetchFn }: FetchDependency,
+): Promise<ApiResponse> {
+  return request("GET", getApiEndpoints().scraperApiUrl, {
+    headers: getAuthHeaders(token),
+    params,
+    timeout,
+    fetchFn,
+  });
 }
 
-function integer(
-  name: string,
-  value: number,
-  min: number,
-  max = Number.MAX_SAFE_INTEGER,
-): number {
-  if (!Number.isSafeInteger(value) || value < min || value > max)
-    throw new RangeError(`${name} must be an integer from ${min} to ${max}`);
-  return value;
-}
-function text(name: string, value: string): string {
-  if (typeof value !== "string" || !value.trim())
-    throw new TypeError(`${name} must be a non-empty string`);
-  return value.trim();
-}
-function pageUrl(value: string): string {
-  let parsed: URL | undefined;
-  try {
-    parsed = new URL(value);
-  } catch {
-    /* Consistent error below. */
-  }
-  if (!parsed || !["http:", "https:"].includes(parsed.protocol))
-    throw new TypeError("url must be an absolute HTTP or HTTPS URL");
-  return value;
-}
-function country(name: string, value: string): string {
-  if (typeof value !== "string" || !/^[a-z]{2}$/i.test(value))
-    throw new TypeError(`${name} must be a two-letter country code`);
-  return value.toLowerCase();
-}
-function boolean(name: string, value: boolean): boolean {
-  if (typeof value !== "boolean")
-    throw new TypeError(`${name} must be a boolean`);
-  return value;
-}
-function pageParams(
-  url: string,
-  options: PageOptions,
-): Record<string, string | number | boolean> {
-  const {
-    timeout = 300,
-    geoCode = "us",
-    proxyCountry = "us",
-    superMode = false,
-    waitUntil = "domcontentloaded",
-    proxy,
-    maxRetries,
-    saveResult = false,
-  } = options;
-  if (
-    !["domcontentloaded", "load", "networkidle0", "networkidle2"].includes(
-      waitUntil,
-    )
-  )
-    throw new TypeError("Invalid waitUntil event");
-  const params: Record<string, string | number | boolean> = {
-    url: pageUrl(url),
-    timeout: integer("timeout", timeout, 1, 300),
-    geoCode: country("geoCode", geoCode),
-    proxyCountry: country("proxyCountry", proxyCountry),
-    super: boolean("superMode", superMode),
-    waitUntil,
-    saveResult: boolean("saveResult", saveResult),
-  };
-  if (proxy !== undefined) params.proxy = text("proxy", proxy);
-  if (maxRetries !== undefined)
-    params.maxRetries = integer("maxRetries", maxRetries, 0);
-  return params;
-}
-function loadingParams(
-  options: LoadingOptions,
-): Record<string, string | number | boolean> {
-  const params: Record<string, string | number | boolean> = {
-    blockResources: boolean("blockResources", options.blockResources ?? false),
-    returnCookie: boolean("returnCookie", options.returnCookie ?? false),
-  };
-  if (options.waitForSelector !== undefined)
-    params.waitForSelector = text("waitForSelector", options.waitForSelector);
-  return params;
-}
-function endpoint(params: Record<string, string | number | boolean>): string {
-  const result = new URL(getApiEndpoints().scraperApiUrl);
-  for (const [key, value] of Object.entries(params))
-    result.searchParams.set(key, String(value));
-  return result.toString();
-}
-async function get(
-  params: Record<string, string | number | boolean>,
-  options: BrandOptions,
-  timeout: number,
+function scrapePage(
+  token: string,
+  params: PageOptions & QueryParams,
+  dependencies: FetchDependency,
 ): Promise<ApiResponse> {
-  const token = requireToken(options.token);
-  return request("GET", endpoint(params), {
-    headers: getAuthHeaders(token),
-    timeout,
-    fetchFn: options.fetchFn,
-  });
+  return scraperGet(
+    token,
+    params,
+    params.timeout + TRANSPORT_GRACE_SECONDS,
+    dependencies,
+  );
 }
-/** Retrieve raw HTML using the CLI's page and loading defaults. */
+
+/** Retrieves a page as raw HTML. */
 export async function scrapeHtml(
-  url: string,
-  options: HtmlOptions = {},
+  token: string,
+  options: HtmlOptions,
+  dependencies: FetchDependency = {},
 ): Promise<ApiResponse> {
-  const params: Record<string, string | number | boolean> = {
-    ...pageParams(url, options),
-    ...loadingParams(options),
-    browserRendering: boolean(
-      "browserRendering",
-      options.browserRendering ?? false,
-    ),
-    html: true,
-    markdown: false,
-    screenshot: false,
-  };
-  return get(params, options, Number(params.timeout) + 30);
-}
-/** Retrieve Markdown. html=true also returns HTML and forces browser rendering. */
-export async function scrapeMarkdown(
-  url: string,
-  options: MarkdownOptions = {},
-): Promise<ApiResponse> {
-  const html = boolean("html", options.html ?? false);
-  const browserRendering = boolean(
-    "browserRendering",
-    options.browserRendering ?? false,
+  return scrapePage(
+    token,
+    { ...options, html: true, markdown: false, screenshot: false },
+    dependencies,
   );
-  const params: Record<string, string | number | boolean> = {
-    ...pageParams(url, options),
-    ...loadingParams(options),
-    browserRendering: html || browserRendering,
-    html,
-    markdown: true,
-    screenshot: false,
-  };
-  return get(params, options, Number(params.timeout) + 30);
 }
-/** Capture a base64 full-page or top-viewport screenshot with browser rendering enabled. */
+
+/** Retrieves a page as Markdown; with `html`, as JSON holding both. */
+export async function scrapeMarkdown(
+  token: string,
+  options: MarkdownOptions,
+  dependencies: FetchDependency = {},
+): Promise<ApiResponse> {
+  return scrapePage(
+    token,
+    {
+      ...options,
+      // The API fails with HTTP 500 for html+markdown without browser rendering.
+      browserRendering: options.html || options.browserRendering,
+      markdown: true,
+      screenshot: false,
+    },
+    dependencies,
+  );
+}
+
+/** Captures a base64 screenshot of the full page or the top viewport in Chromium. */
 export async function getScreenshot(
-  url: string,
-  options: ScreenshotOptions = {},
+  token: string,
+  options: ScreenshotOptions,
+  dependencies: FetchDependency = {},
 ): Promise<ApiResponse> {
-  const screenshot = options.screenshot ?? "full";
-  if (!["full", "top"].includes(screenshot))
-    throw new TypeError("screenshot must be full or top");
-  const params: Record<string, string | number | boolean> = {
-    ...pageParams(url, options),
-    ...loadingParams(options),
-    browserRendering: true,
-    screenshot,
-    html: boolean("html", options.html ?? true),
-    markdown: boolean("markdown", options.markdown ?? false),
-  };
-  return get(params, options, Number(params.timeout) + 30);
+  const response = await scrapePage(
+    token,
+    { ...options, browserRendering: true },
+    dependencies,
+  );
+  // The API returns the page HTML even with html=false; drop it so the model
+  // isn't handed HTML it didn't ask for.
+  const { data } = response;
+  if (
+    !options.html &&
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    typeof data.html === "string"
+  ) {
+    return { ...response, data: { ...data, html: null } };
+  }
+  return response;
 }
-/** Extract JSON with agent=general; prompts over the 8 KB URL limit use POST. */
+
+/**
+ * Extracts structured JSON with the `general` agent. Sent as GET; a prompt too
+ * long for the URL is sent with the documented POST body instead.
+ */
 export async function scrapeJson(
-  url: string,
-  options: JsonOptions = {},
+  token: string,
+  options: JsonOptions,
+  { fetchFn }: FetchDependency = {},
 ): Promise<ApiResponse> {
-  const prompt = options.prompt ?? DEFAULT_JSON_PROMPT;
-  text("prompt", prompt);
-  const params: Record<string, string | number | boolean> = {
-    ...pageParams(url, options),
-    browserRendering: boolean(
-      "browserRendering",
-      options.browserRendering ?? false,
-    ),
-    html: boolean("html", options.html ?? false),
-    screenshot: boolean("screenshot", options.screenshot ?? false),
-    agent: "general",
-    prompt,
-  };
-  const token = requireToken(options.token);
-  const timeout = Number(params.timeout) + 30;
-  const getUrl = endpoint(params);
-  if (getUrl.length <= 8000)
-    return request("GET", getUrl, {
-      headers: getAuthHeaders(token),
-      timeout,
-      fetchFn: options.fetchFn,
-    });
-  const { url: target, prompt: instruction, agent, ...query } = params;
-  return request("POST", endpoint(query), {
-    params: undefined,
-    json: { url: target, prompt: instruction, agent },
+  const endpoint = getApiEndpoints().scraperApiUrl;
+  const params = { ...options, agent: "general" };
+  const init = {
     headers: getAuthHeaders(token),
-    timeout,
-    fetchFn: options.fetchFn,
+    timeout: options.timeout + TRANSPORT_GRACE_SECONDS,
+    fetchFn,
+  };
+  const getUrl = withQuery(endpoint, params).href;
+  if (getUrl.length <= MAX_GET_URL_LENGTH) {
+    return request("GET", getUrl, init);
+  }
+  const { url, prompt, agent, ...query } = params;
+  return request("POST", endpoint, {
+    ...init,
+    params: query,
+    json: { url, prompt, agent },
   });
 }
-/** Extract a website's brand as JSON (bundle=none). */
+
+/** Extracts a website's brand as JSON (`bundle=none`). */
 export async function scrapeBrand(
-  url: string,
-  options: BrandOptions = {},
+  token: string,
+  { url }: { url: string },
+  dependencies: FetchDependency = {},
 ): Promise<ApiResponse> {
-  return get(
-    { action: "brand-scraping", url: pageUrl(url), bundle: "none" },
-    options,
-    120,
+  return scraperGet(
+    token,
+    { action: "brand-scraping", url, bundle: "none" },
+    BRAND_AND_SEARCH_TIMEOUT_SECONDS,
+    dependencies,
   );
 }
-/** Search the web for ranked titles, URLs, descriptions, and sources. */
+
+/** Searches the web and returns ranked results. */
 export async function webSearch(
-  query: string,
-  options: WebSearchOptions = {},
+  token: string,
+  { query, country, numResults }: WebSearchOptions,
+  dependencies: FetchDependency = {},
 ): Promise<ApiResponse> {
-  const value = text("query", query);
-  if ([...value].length > 1000)
-    throw new RangeError("query must be 1 to 1000 characters");
-  const timeout = options.timeout ?? 120;
-  if (!Number.isFinite(timeout) || timeout <= 0)
-    throw new RangeError("timeout must be greater than 0 seconds");
-  return get(
-    {
-      action: "websearch",
-      query: value,
-      country: country("country", options.country ?? "us"),
-      numResults: integer("numResults", options.numResults ?? 10, 10, 100),
-    },
-    options,
-    timeout,
+  return scraperGet(
+    token,
+    { action: "websearch", query, country, numResults },
+    BRAND_AND_SEARCH_TIMEOUT_SECONDS,
+    dependencies,
   );
 }
 
 export async function getSubscriptionAccountApi(
   token: string,
-  { fetchFn }: { fetchFn?: typeof fetch } = {},
+  { fetchFn }: FetchDependency = {},
 ): Promise<ApiResponse> {
   return request("GET", getApiEndpoints().subscriptionAccounts, {
     headers: { accept: "application/json", ...getAuthHeaders(token) },

@@ -5,7 +5,7 @@
 <h1 align="center">MrScraper MCP Server</h1>
 
 <p align="center">
-  <b>The official Model Context Protocol (MCP) server for MrScraper: give your AI assistant live web data. Read any public page as Markdown, HTML, or a screenshot, search the web, and check your plan usage, through a hosted endpoint with browser sign-in or a local server you run yourself.</b>
+  <b>The official Model Context Protocol (MCP) server for MrScraper: give your AI assistant live web data. Read any public page as Markdown, HTML, or a screenshot, extract structured data and brand details, search the web, and check your plan usage, through a hosted endpoint with browser sign-in or a local server you run yourself.</b>
 </p>
 
 <!-- Line 1 · Project -->
@@ -26,9 +26,10 @@
 
 <!-- Line 3 · Tools -->
 <p align="center">
-  <a href="#tools"><img src="https://img.shields.io/badge/services-HTML_·_Markdown_·_Screenshot_·_Brand_·_JSON-1BD0EF?labelColor=0B1220" alt="HTML, Markdown, screenshot, brand, JSON"></a>
+  <a href="#tools"><img src="https://img.shields.io/badge/pages-HTML_·_Markdown_·_Screenshot-1BD0EF?labelColor=0B1220" alt="Pages: HTML, Markdown, screenshot"></a>
+  <a href="#tools"><img src="https://img.shields.io/badge/extraction-JSON_·_Brand-1BD0EF?labelColor=0B1220" alt="Extraction: JSON, brand"></a>
   <a href="#tools"><img src="https://img.shields.io/badge/webSearch-parsed_results-1BD0EF?labelColor=0B1220" alt="webSearch: parsed results"></a>
-  <a href="#tools"><img src="https://img.shields.io/badge/account-plan_usage-1BD0EF?labelColor=0B1220" alt="account: plan usage"></a>
+  <a href="#tools"><img src="https://img.shields.io/badge/status-plan_usage-1BD0EF?labelColor=0B1220" alt="status: plan usage"></a>
 </p>
 
 <p align="center">
@@ -40,12 +41,13 @@
 
 ---
 
-MrScraper MCP connects AI assistants and agents to MrScraper's web data service. Once connected, your assistant can retrieve any public web page, discover pages through web search, and check how many tokens your plan has left, without you copying pages into the chat.
+MrScraper MCP connects AI assistants and agents to MrScraper's web data service. Once connected, your assistant can retrieve any public web page, extract data from it, discover pages through web search, and check how many tokens your plan has left, without you copying pages into the chat.
 
 With MrScraper MCP, you can:
 
 - **Read a page.** Fetch a public page as Markdown, HTML, or a screenshot, or all three at once.
-- **Read pages that need a browser.** Browser rendering starts automatically when a page needs it; you can also wait for an element to appear and load the page from a chosen country.
+- **Read pages that need a browser.** Turn on browser rendering for JavaScript-heavy pages, wait for an element to appear, and load the page from a chosen country.
+- **Extract data.** Describe the data you want, optionally with a JSON schema, and get it back as JSON, or pull a site's colors, fonts, logos, and social links.
 - **Search the web.** Get parsed results (rank, title, link, snippet) for a query, then fetch the pages you need.
 - **Research and compare.** Combine search and page reads to compare pricing pages, product pages, or documentation across sites, with the source pages kept for reference.
 - **Check your usage.** Ask how many tokens your plan has left.
@@ -108,22 +110,22 @@ Pick your AI client. Each client signs you in to MrScraper in your browser the f
 Most AI coding agents can configure the server themselves. Paste this prompt into your agent:
 
 ```text
-Connect MrScraper MCP to this agent. Detect the current MCP client and configure a Streamable HTTP server named mrscraper at https://mcp.mrscraper.com/mcp with no credential. The server uses OAuth 2.1, so the client will open a browser to sign in. If the client cannot do OAuth, fall back to a MrScraper API key from https://app.mrscraper.com/api-tokens stored through the client's environment-variable or secret-storage mechanism and sent as Authorization: Bearer <key>. Reload the MCP client when required, then list the tools and confirm that account, scrapeHtml, scrapeMarkdown, getScreenshot, scrapeBrand, scrapeJson, and webSearch are the only available tools.
+Connect MrScraper MCP to this agent. Detect the current MCP client and configure a Streamable HTTP server named mrscraper at https://mcp.mrscraper.com/mcp with no credential. The server uses OAuth 2.1, so the client will open a browser to sign in. If the client cannot do OAuth, fall back to a MrScraper API key from https://app.mrscraper.com/api-tokens stored through the client's environment-variable or secret-storage mechanism and sent as Authorization: Bearer <key>. Reload the MCP client when required, then list the tools and confirm that scrapeHtml, scrapeMarkdown, getScreenshot, scrapeBrand, scrapeJson, webSearch, and status are the only available tools.
 ```
 
 ## Tools
 
-| Tool             | What it does                                                       |
-| ---------------- | ------------------------------------------------------------------ |
-| `account`        | Read account plan, token usage, remaining tokens, and rate limits. |
-| `scrapeHtml`     | Retrieve raw HTML from a public page.                              |
-| `scrapeMarkdown` | Retrieve Markdown, optionally with HTML.                           |
-| `getScreenshot`  | Capture a full-page or top-viewport base64 screenshot.             |
-| `scrapeBrand`    | Extract a website's brand as JSON.                                 |
-| `scrapeJson`     | Extract structured JSON using a prompt.                            |
-| `webSearch`      | Search the web for ranked titles, URLs, descriptions, and sources. |
+| Tool             | What it does                                                                                                                                                      |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scrapeHtml`     | Retrieves the raw HTML of a known URL. Options include browser rendering, waiting for a CSS selector, country, timeout, and retry limits.                         |
+| `scrapeMarkdown` | Retrieves a known URL as clean Markdown, optionally with its HTML.                                                                                                |
+| `getScreenshot`  | Captures a full-page or top-of-page screenshot in a real browser, with the page HTML and, optionally, Markdown.                                                   |
+| `scrapeJson`     | Extracts structured JSON from a page using a plain-language prompt, optionally shaped by a JSON schema.                                                           |
+| `scrapeBrand`    | Extracts a website's colors, typography, logos, icons, and social links.                                                                                          |
+| `webSearch`      | Searches the web and returns ranked results, each with a title, link, description, and source. Options include the country and the number of results (10 to 100). |
+| `status`         | Returns the account's plan, token limit, token usage, remaining tokens, and rate limit.                                                                           |
 
-The six scraping/search tools consume quota and are marked non-read-only. `account` is read-only. Hosts with MCP Apps support also show search results and account usage widgets.
+The web tools are read-only. Hosts that support MCP Apps also show a search results widget and an account usage meter.
 
 ## Connect manually
 
@@ -161,12 +163,11 @@ Clients configured by file:
 
 ### Permissions you approve
 
-| Scope          | Allows                        |
-| -------------- | ----------------------------- |
-| `scrape:write` | All six scraping/search tools |
-| `account:read` | `account`                     |
-
-Existing connections with only `scrape:read` must authorize `scrape:write` to run scraping/search.
+| Scope          | Allows                                                                       |
+| -------------- | ---------------------------------------------------------------------------- |
+| `scrape:read`  | `webSearch`                                                                  |
+| `scrape:write` | `scrapeHtml`, `scrapeMarkdown`, `getScreenshot`, `scrapeBrand`, `scrapeJson` |
+| `account:read` | `status`                                                                     |
 
 You can disconnect a client at any time under Connected applications in your MrScraper account.
 

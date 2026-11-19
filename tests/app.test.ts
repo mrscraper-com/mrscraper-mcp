@@ -189,7 +189,7 @@ describe("HTTP application", () => {
           "proxy",
           "returnCookie",
           "saveResult",
-          "superMode",
+          "super",
         ]),
       );
     },

@@ -10,10 +10,11 @@ import { registerTools, type ToolDependencies } from "./tools.js";
 import { registerWidgets } from "./widgets/index.js";
 
 export const SERVER_INSTRUCTIONS =
-  "MrScraper provides seven services: `account` checks account usage; `scrapeHtml` retrieves HTML; " +
-  "`scrapeMarkdown` retrieves Markdown; `getScreenshot` captures full-page or top-viewport screenshots; " +
-  "`scrapeBrand` extracts brand data; `scrapeJson` extracts structured JSON; `webSearch` returns ranked web results. " +
-  "Scraping and search consume quota and require scrape:write. Tools authenticate through the MCP connection and do not accept tokens as arguments.";
+  "MrScraper provides seven tools. `scrapeHtml`, `scrapeMarkdown`, and `getScreenshot` retrieve a known page as HTML, Markdown, or a screenshot. " +
+  "`scrapeJson` extracts structured JSON from a page with a prompt, and `scrapeBrand` extracts a website's colors, typography, and logos. " +
+  "`webSearch` searches the web for query text and returns ranked results with titles, URLs, and descriptions. " +
+  "`status` reports the connected account's plan, token usage, and remaining tokens. " +
+  "Tools authenticate through the MCP connection and do not accept API tokens as arguments.";
 
 export interface ServerFactoryOptions extends ToolDependencies {
   resolveToken?: (context: McpRequestContext) => string;

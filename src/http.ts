@@ -45,12 +45,28 @@ export interface ApiResponse {
   [key: string]: unknown;
 }
 
+export type QueryParams = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
+
 export interface HttpRequestOptions {
   headers?: Record<string, string>;
-  params?: Record<string, string | number | boolean | null | undefined>;
+  params?: QueryParams;
   json?: unknown;
   timeout?: number;
   fetchFn?: typeof fetch;
+}
+
+/** Returns `url` with the non-null `params` set in its query string. */
+export function withQuery(url: string, params: QueryParams = {}): URL {
+  const target = new URL(url);
+  for (const [name, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      target.searchParams.set(name, String(value));
+    }
+  }
+  return target;
 }
 
 function redactSensitiveString(value: string): string {
@@ -136,12 +152,7 @@ export async function request(
   const timeout = Number(options.timeout ?? DEFAULT_TIMEOUT_SECONDS);
   const timeoutSeconds =
     Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_TIMEOUT_SECONDS;
-  const target = new URL(url);
-  for (const [name, value] of Object.entries(options.params || {})) {
-    if (value !== undefined && value !== null) {
-      target.searchParams.set(name, String(value));
-    }
-  }
+  const target = withQuery(url, options.params);
 
   const controller = new AbortController();
   const timer = setTimeout(
@@ -192,10 +203,15 @@ export async function request(
       controller.signal.aborted ||
       (error instanceof Error && error.name === "AbortError") ||
       /abort(?:ed)?/i.test(message);
+    // fetch reports every network failure as "fetch failed"; the cause says why.
+    const { cause } = (error ?? {}) as {
+      cause?: { message?: string; code?: string };
+    };
+    const reason = cause?.message || cause?.code;
     return {
       error: aborted
         ? `Request timed out after ${timeoutSeconds}s`
-        : redactSensitiveString(message),
+        : redactSensitiveString(reason ? `${message} (${reason})` : message),
       status_code: null,
       data: null,
       headers: {},

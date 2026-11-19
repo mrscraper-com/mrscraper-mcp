@@ -17,9 +17,21 @@ import {
 } from "@modelcontextprotocol/client/stdio";
 
 import { TOOL_NAMES, VERSION, type ToolName } from "../src/config.js";
+import { DEFAULT_TIMEOUT_SECONDS } from "../src/http.js";
 
 const projectDir = fileURLToPath(new URL("../", import.meta.url));
 const serverFile = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
+// Outlasts the longest upstream deadline any tool sets.
+const CALL_TIMEOUT_MS = (DEFAULT_TIMEOUT_SECONDS + 15) * 1000;
+
+export function sampleArguments(
+  name: ToolName,
+  url: string,
+  query: string,
+): Record<string, unknown> {
+  if (name === "status") return {};
+  return name === "webSearch" ? { query, country: "us" } : { url };
+}
 
 export async function testTool(
   name: ToolName,
@@ -78,23 +90,11 @@ export async function testTool(
     assert.deepEqual(
       [...names].sort(),
       [...TOOL_NAMES].sort(),
-      "Server must expose all seven MrScraper services. Rebuild or restart the server.",
+      "Server must expose the seven MrScraper tools. Rebuild or restart the server.",
     );
-    const upstreamTimeout =
-      typeof args.timeout === "number" && args.timeout > 0
-        ? args.timeout
-        : ["account", "webSearch", "scrapeBrand"].includes(name)
-          ? 120
-          : 300;
     const result = await client.callTool(
       { name, arguments: args },
-      {
-        timeout:
-          (upstreamTimeout +
-            (["account", "webSearch", "scrapeBrand"].includes(name) ? 0 : 30) +
-            15) *
-          1000,
-      },
+      { timeout: CALL_TIMEOUT_MS },
     );
     console.log(
       safeMessage(
@@ -149,9 +149,9 @@ async function main(): Promise<number> {
     },
   });
   if (values.help) {
-    console.log(`Usage: npm run test:manual -- <account|scrapeHtml|scrapeMarkdown|getScreenshot|scrapeBrand|scrapeJson|webSearch> [options]
+    console.log(`Usage: npm run test:manual -- <${TOOL_NAMES.join("|")}> [options]
 
-  --url URL       Target page URL (default: Scrapethissite countries page)
+  --url URL       Page for the page tools (default: Scrapethissite countries page)
   --query TEXT    Query for webSearch (default: MrScraper web scraping)
   --args JSON     Complete tool arguments; overrides the sample arguments
   --target URL    Test an existing HTTP MCP server instead of local stdio
@@ -159,7 +159,7 @@ async function main(): Promise<number> {
 Examples:
   npm run test:manual -- scrapeHtml --url https://example.com
   npm run test:manual -- webSearch --query "web scraping"
-  npm run test:manual -- account
+  npm run test:manual -- status
   npm run test:manual -- getScreenshot --args '{"url":"https://example.com","screenshot":"top"}'
 
 The webSearch sample asks for results from the United States (country us). Each invocation calls one tool.
@@ -168,7 +168,9 @@ Set MRSCRAPER_API_KEY or MRSCRAPER_API_TOKEN first; .env is loaded automatically
   }
   const name = positionals[0];
   if (positionals.length !== 1 || !TOOL_NAMES.includes(name as ToolName)) {
-    console.error("Choose one of the seven services. Use --help for examples.");
+    console.error(
+      `Choose exactly one tool: ${TOOL_NAMES.join(", ")}. Use --help for examples.`,
+    );
     return 2;
   }
   let args: unknown;
@@ -176,11 +178,7 @@ Set MRSCRAPER_API_KEY or MRSCRAPER_API_TOKEN first; .env is loaded automatically
     args =
       values.args !== undefined
         ? JSON.parse(values.args)
-        : name === "account"
-          ? {}
-          : name === "webSearch"
-            ? { query: values.query, country: "us" }
-            : { url: values.url };
+        : sampleArguments(name as ToolName, values.url, values.query);
   } catch {
     console.error("--args must be valid JSON.");
     return 2;

@@ -36,7 +36,7 @@ const SAMPLES: Record<WidgetName, unknown> = {
       tokenUsage: 1,
     },
   },
-  account: {
+  status: {
     status_code: 200,
     data: {
       account: {

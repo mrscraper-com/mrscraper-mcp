@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.mrscraper-com/mrscraper-mcp",
   "title": "MrScraper MCP",
-  "description": "Seven services: account, HTML, Markdown, screenshots, brand, JSON extraction, and web search.",
+  "description": "Scrape pages as HTML, Markdown, or screenshots, extract JSON and brand data, and search the web.",
   "version": "0.5.0",
   "repository": {
     "url": "https://github.com/mrscraper-com/mrscraper-mcp",

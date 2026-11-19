@@ -1,24 +1,27 @@
 #!/usr/bin/env node
+
 import { parseArgs } from "node:util";
-import { testTool } from "./test-tools.js";
+
 import { TOOL_NAMES } from "../src/config.js";
+import { sampleArguments, testTool } from "./test-tools.js";
+
 const { values } = parseArgs({
   options: {
-    url: { type: "string", default: "https://books.toscrape.com/" },
-    query: { type: "string", default: "web scraping" },
+    url: {
+      type: "string",
+      default: "https://www.scrapethissite.com/pages/simple/",
+    },
+    query: { type: "string", default: "MrScraper web scraping" },
     target: { type: "string" },
   },
 });
+
 let failed = 0;
 for (const name of TOOL_NAMES) {
   try {
     failed += await testTool(
       name,
-      name === "account"
-        ? {}
-        : name === "webSearch"
-          ? { query: values.query, country: "us" }
-          : { url: values.url },
+      sampleArguments(name, values.url, values.query),
       values.target,
     );
   } catch (error) {
@@ -26,5 +29,5 @@ for (const name of TOOL_NAMES) {
     failed++;
   }
 }
-console.log(`${TOOL_NAMES.length - failed}/${TOOL_NAMES.length} passed`);
+console.log(`${TOOL_NAMES.length - failed}/${TOOL_NAMES.length} tools passed`);
 process.exitCode = failed ? 1 : 0;
