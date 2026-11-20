@@ -34,7 +34,7 @@ For local stdio, configure the client to start `npx -y @mrscraper/mcp@latest`. T
 
 Obtain an API key from [the MrScraper app](https://app.mrscraper.com/api-tokens). API key used to authenticate the request.
 
-The hosted server supports browser sign-in through OAuth 2.1. Approve `account:read` for status and `scraper:read` for all six scraping/search tools. Existing OAuth connections using older scope names must reconnect and approve `scraper:read` for scraping/search.
+The hosted server supports browser sign-in through OAuth 2.1. Approve `account:read` for status and `scrape:read` for all six scraping/search tools. Connections that already hold `scrape:read` keep working; others must reconnect and approve it for scraping/search.
 
 Clients without OAuth can send an API key as `Authorization: Bearer YOUR_TOKEN`. Local stdio reads `MRSCRAPER_API_KEY`, then `MRSCRAPER_API_TOKEN`. Tools do not accept tokens as arguments.
 
@@ -657,7 +657,7 @@ For local HTTP, run `TRANSPORT=http npm start` after building; the default endpo
 
 OAuth access tokens are verified against the configured issuer's JWKS and must include this resource in their audience. API keys are validated before tool execution. HTTP requests use their caller's credential; stdio reads server environment credentials. Metadata discovery is available at `/.well-known/oauth-protected-resource` and the `/mcp` path-suffixed variant.
 
-All six scraping/search tools require `scraper:read`. Status requires `account:read`. These are the only application scopes advertised in OAuth resource metadata; authorization-server metadata also offers `offline_access` for refresh tokens. HTML, Markdown, screenshot, and JSON tools advertise `readOnlyHint: false` because `saveResult` can persist data; status, brand, and search advertise `readOnlyHint: true`. All tools advertise `destructiveHint: false`; status has `openWorldHint: false` and scraping/search have `openWorldHint: true`.
+All six scraping/search tools require `scrape:read`. Status requires `account:read`. These are the only application scopes advertised in OAuth resource metadata; authorization-server metadata also offers `offline_access` for refresh tokens. The scraper gateway checks the same token again: `GET` requests need `scrape:read`, and the `POST` that `scrapeJson` switches to above 8,000 encoded URL characters needs `scrape:write`, so OAuth connections without that scope receive 403 for such requests. HTML, Markdown, screenshot, and JSON tools advertise `readOnlyHint: false` because `saveResult` can persist data; status, brand, and search advertise `readOnlyHint: true`. All tools advertise `destructiveHint: false`; status has `openWorldHint: false` and scraping/search have `openWorldHint: true`.
 
 Supported hosts can render self-contained search and account widgets. The account widget calculates its visual usage display locally from the raw tool result. Widget display does not change the raw status response.
 
@@ -682,11 +682,11 @@ Trusted local origins, `claude.ai`, `chatgpt.com`, and configured exact origins 
 
 ### Troubleshooting
 
-For 401, reconnect through OAuth or check the bearer key. For `insufficient_scope`, reconnect and approve `scraper:read` for scraping/search or `account:read` for status. Ensure the hosted URL ends in `/mcp` because the audience is bound to that resource. For origin errors, configure the exact browser origin in `MRSCRAPER_ALLOWED_ORIGINS`. Start a new client session if cached tool schemas are stale.
+For 401, reconnect through OAuth or check the bearer key. For `insufficient_scope`, reconnect and approve `scrape:read` for scraping/search or `account:read` for status. Ensure the hosted URL ends in `/mcp` because the audience is bound to that resource. For origin errors, configure the exact browser origin in `MRSCRAPER_ALLOWED_ORIGINS`. Start a new client session if cached tool schemas are stale.
 
 ## Migration
 
-Status keeps its tool name and returns the raw API body. Replace `scraperAPI` with `scrapeHtml`, `scrapeMarkdown`, or `getScreenshot`. Brand and JSON extraction are separate tools. Search uses `query`, `country`, and `numResults`. All clients now receive the full CLI-aligned input schema. Refresh cached tool definitions and approve `scraper:read` when upgrading older OAuth connections. API keys continue to work without OAuth scope approval.
+Status keeps its tool name and returns the raw API body. Replace `scraperAPI` with `scrapeHtml`, `scrapeMarkdown`, or `getScreenshot`. Brand and JSON extraction are separate tools. Search uses `query`, `country`, and `numResults`. All clients now receive the full CLI-aligned input schema. Refresh cached tool definitions. OAuth connections need `scrape:read` for scraping/search; connections that already hold it keep working. API keys continue to work without OAuth scope approval.
 
 ## Development and testing
 

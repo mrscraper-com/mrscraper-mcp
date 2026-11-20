@@ -113,7 +113,9 @@ export function httpRuntimeConfig(): {
   return { host, port, allowedOrigins: parseAllowedOrigins() };
 }
 
-export const OAUTH_SCOPES = ["scraper:read", "account:read"] as const;
+// Scope names issued by the platform's authorization server and checked again
+// by the scraper gateway (GET / needs scrape:read, POST / needs scrape:write).
+export const OAUTH_SCOPES = ["scrape:read", "account:read"] as const;
 
 export type OAuthScope = (typeof OAUTH_SCOPES)[number];
 
