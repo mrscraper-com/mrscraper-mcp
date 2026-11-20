@@ -17,10 +17,12 @@ import type { Express, NextFunction, Request, Response } from "express";
 
 import {
   CHATGPT_MCP_PATH,
+  GLAMA_CLAIM_PATHS,
   OPENAI_OAUTH_CLIENT_PREFIX,
   TOOL_NAMES,
   VERSION,
   getOAuthConfig,
+  glamaClaim,
   httpAuthEnabled,
   httpRuntimeConfig,
   type OAuthConfig,
@@ -237,6 +239,18 @@ export function createHttpApp(options: HttpAppOptions = {}): HttpApp {
       "/.well-known/oauth-protected-resource",
       servePrmAlias(buildOAuthProtectedResourceMetadata(authMetadataOptions)),
     );
+  }
+
+  const claim = glamaClaim();
+  if (claim) {
+    // Public ownership proof for Glama, served without MCP auth.
+    const ownership = {
+      $schema: "https://glama.ai/mcp/schemas/connector.json",
+      claim,
+    };
+    app.get(GLAMA_CLAIM_PATHS, (_request, response) => {
+      response.json(ownership);
+    });
   }
 
   app.use(exactOriginProtection(allowedOrigins.origins));
