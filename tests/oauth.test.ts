@@ -80,7 +80,7 @@ async function mintToken(
   } = {},
 ) {
   return new SignJWT({
-    scope: overrides.scope ?? "scraper:read",
+    scope: overrides.scope ?? "scrape:read",
     client_id:
       overrides.clientId ??
       "https://claude.ai/oauth/claude-code-client-metadata",
@@ -244,7 +244,7 @@ describe("scope mapping", () => {
         method: "tools/call",
         params: { name: "scrapeHtml" },
       }),
-    ).toEqual(["scraper:read"]);
+    ).toEqual(["scrape:read"]);
     expect(
       requiredScopesForRequest({
         method: "tools/call",
@@ -259,13 +259,13 @@ describe("scope mapping", () => {
         { method: "tools/call", params: { name: "webSearch" } },
         { method: "tools/call", params: { name: "scrapeHtml" } },
       ]).sort(),
-    ).toEqual(["scraper:read"]);
+    ).toEqual(["scrape:read"]);
     expect(
       requiredScopesForRequest([
         { method: "tools/call", params: { name: "webSearch" } },
         { method: "tools/call", params: { name: "status" } },
       ]).sort(),
-    ).toEqual(["account:read", "scraper:read"]);
+    ).toEqual(["account:read", "scrape:read"]);
   });
 
   it("advertises every scope a tool requires", () => {
@@ -287,7 +287,7 @@ describe("OAuth discovery documents", () => {
       expect(await response.json()).toMatchObject({
         resource: RESOURCE,
         authorization_servers: [issuer],
-        scopes_supported: ["scraper:read", "account:read"],
+        scopes_supported: ["scrape:read", "account:read"],
       });
     }
   });
@@ -302,7 +302,7 @@ describe("OAuth discovery documents", () => {
     ).json();
     expect(prm.scopes_supported).not.toContain("offline_access");
     expect(as.scopes_supported).toEqual([
-      "scraper:read",
+      "scrape:read",
       "account:read",
       "offline_access",
     ]);
@@ -342,7 +342,7 @@ describe("bearer challenges", () => {
     );
   });
 
-  it("executes scrapeHtml with a valid scraper:read access token", async () => {
+  it("executes scrapeHtml with a valid scrape:read access token", async () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
     const token = await mintToken();
@@ -394,11 +394,11 @@ describe("bearer challenges", () => {
 
 describe("per-tool scope gate", () => {
   it.each(["/mcp", CHATGPT_MCP_PATH])(
-    "executes all six services with scraper:read alone on %s",
+    "executes all six services with scrape:read alone on %s",
     async (path) => {
       const requests: UpstreamRequest[] = [];
       const baseUrl = await startApp(oauthConfig(), requests);
-      const token = await mintToken({ scope: "scraper:read" });
+      const token = await mintToken({ scope: "scrape:read" });
       for (const name of TOOL_NAMES.filter((name) => name !== "status")) {
         await expectToolSuccess(await toolCall(baseUrl, name, token, { path }));
       }
@@ -425,7 +425,7 @@ describe("per-tool scope gate", () => {
 
   it("executes all seven services with both read scopes", async () => {
     const baseUrl = await startApp();
-    const token = await mintToken({ scope: "scraper:read account:read" });
+    const token = await mintToken({ scope: "scrape:read account:read" });
     for (const name of TOOL_NAMES) {
       await expectToolSuccess(await toolCall(baseUrl, name, token));
     }
@@ -441,17 +441,17 @@ describe("per-tool scope gate", () => {
     expect(challenge).toContain('error="insufficient_scope"');
     expect(challenge).toContain("account:read");
 
-    expect(challenge).toContain("scraper:read");
+    expect(challenge).toContain("scrape:read");
     expect(challenge).toContain("resource_metadata=");
     expect(await response.json()).toEqual({
       error: "insufficient_scope",
-      error_description: "This tool requires the scraper:read scope",
+      error_description: "This tool requires the scrape:read scope",
     });
     expect(requests).toEqual([]);
   });
 
   it.each(TOOL_NAMES.filter((name) => name !== "status"))(
-    "rejects a token without scraper:read for %s",
+    "rejects a token without scrape:read for %s",
     async (name) => {
       const requests: UpstreamRequest[] = [];
       const baseUrl = await startApp(oauthConfig(), requests);
@@ -468,7 +468,7 @@ describe("per-tool scope gate", () => {
 
   it("refuses status without account:read", async () => {
     const baseUrl = await startApp();
-    const token = await mintToken({ scope: "scraper:read" });
+    const token = await mintToken({ scope: "scrape:read" });
     const response = await toolCall(baseUrl, "status", token);
     expect(response.status).toBe(403);
     const challenge = response.headers.get("www-authenticate") ?? "";
