@@ -7,7 +7,13 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpApp } from "../src/app.js";
-import { CHATGPT_MCP_PATH, TOOL_NAMES, VERSION } from "../src/config.js";
+import {
+  CHATGPT_MCP_PATH,
+  DEFAULT_GLAMA_CLAIM,
+  GLAMA_CLAIM_PATHS,
+  TOOL_NAMES,
+  VERSION,
+} from "../src/config.js";
 
 const closers: Array<() => Promise<void>> = [];
 
@@ -52,6 +58,34 @@ describe("HTTP application", () => {
       tools: TOOL_NAMES.length,
     });
     expect((await fetch(`${baseUrl}/chatgpt`)).status).toBe(404);
+  });
+
+  it("serves the Glama ownership file without authentication", async () => {
+    const { baseUrl } = await startApp({
+      authEnabled: true,
+      validateToken: async () => false,
+    });
+    for (const path of GLAMA_CLAIM_PATHS) {
+      const response = await fetch(`${baseUrl}${path}`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        $schema: "https://glama.ai/mcp/schemas/connector.json",
+        claim: DEFAULT_GLAMA_CLAIM,
+      });
+    }
+  });
+
+  it("serves a configured Glama claim, or none when it is empty", async () => {
+    vi.stubEnv("MRSCRAPER_GLAMA_CLAIM", "glama_claim_test");
+    const configured = await startApp({ authEnabled: false });
+    const file = await fetch(`${configured.baseUrl}${GLAMA_CLAIM_PATHS[0]}`);
+    expect((await file.json()).claim).toBe("glama_claim_test");
+
+    vi.stubEnv("MRSCRAPER_GLAMA_CLAIM", "");
+    const disabled = await startApp({ authEnabled: false });
+    for (const path of GLAMA_CLAIM_PATHS) {
+      expect((await fetch(`${disabled.baseUrl}${path}`)).status).toBe(404);
+    }
   });
 
   it("protects localhost from untrusted browser origins", async () => {

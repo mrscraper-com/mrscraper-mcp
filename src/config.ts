@@ -82,6 +82,24 @@ export function parseAllowedOrigins(): string[] {
   return [...new Set([...DEFAULT_ALLOWED_ORIGINS, ...configured])];
 }
 
+// Glama connector ownership proof for the hosted server at mcp.mrscraper.com.
+// The token is public by design. Set MRSCRAPER_GLAMA_CLAIM to another token,
+// or to an empty value to stop serving the file.
+export const DEFAULT_GLAMA_CLAIM =
+  "glama_claim_WcbtWUx-SQR6UPEOqR6KGU_f0aHg1gFa";
+
+export const GLAMA_CLAIM_PATHS = [
+  "/.well-known/glama.json",
+  "/mcp/.well-known/glama.json",
+];
+
+export function glamaClaim(): string | undefined {
+  const claim = (
+    process.env.MRSCRAPER_GLAMA_CLAIM ?? DEFAULT_GLAMA_CLAIM
+  ).trim();
+  return claim || undefined;
+}
+
 export function httpRuntimeConfig(): {
   host: string;
   port: number;

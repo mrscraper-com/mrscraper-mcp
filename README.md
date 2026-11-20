@@ -661,21 +661,22 @@ All six scraping/search tools require `scraper:read`. Status requires `account:r
 
 Supported hosts can render self-contained search and account widgets. The account widget calculates its visual usage display locally from the raw tool result. Widget display does not change the raw status response.
 
-| Environment variable             | Default                          | Purpose                                            |
-| -------------------------------- | -------------------------------- | -------------------------------------------------- |
-| `TRANSPORT`                      | `stdio`                          | Select `stdio` or `http`.                          |
-| `HOST`                           | `127.0.0.1`                      | HTTP bind address; Docker uses `0.0.0.0`.          |
-| `PORT`                           | `8000`                           | HTTP listen port.                                  |
-| `MRSCRAPER_HTTP_AUTH`            | `1`                              | Enable HTTP bearer verification.                   |
-| `MRSCRAPER_OAUTH`                | `1`                              | Accept OAuth access tokens.                        |
-| `MRSCRAPER_MCP_PUBLIC_URL`       | `https://mcp.mrscraper.com`      | Public origin and token audience prefix.           |
-| `MRSCRAPER_OAUTH_ISSUER`         | `https://api.app.mrscraper.com`  | Authorization issuer.                              |
-| `MRSCRAPER_OAUTH_JWKS_URL`       | `<issuer>/.well-known/jwks.json` | Token verification keys.                           |
-| `MRSCRAPER_ALLOWED_ORIGINS`      | unset                            | Additional exact browser origins.                  |
-| `MRSCRAPER_API_BASE_URL`         | platform API                     | Account endpoint override.                         |
-| `MRSCRAPER_FETCH_BASE_URL`       | Scraper API                      | Scraping/search endpoint override.                 |
-| `MRSCRAPER_LOG_HTTP_PAYLOAD`     | off                              | Request-body diagnostics for trusted environments. |
-| `MRSCRAPER_LOG_HTTP_PAYLOAD_MAX` | `8192`                           | Maximum diagnostic payload length.                 |
+| Environment variable             | Default                          | Purpose                                                                                                           |
+| -------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `TRANSPORT`                      | `stdio`                          | Select `stdio` or `http`.                                                                                         |
+| `HOST`                           | `127.0.0.1`                      | HTTP bind address; Docker uses `0.0.0.0`.                                                                         |
+| `PORT`                           | `8000`                           | HTTP listen port.                                                                                                 |
+| `MRSCRAPER_HTTP_AUTH`            | `1`                              | Enable HTTP bearer verification.                                                                                  |
+| `MRSCRAPER_OAUTH`                | `1`                              | Accept OAuth access tokens.                                                                                       |
+| `MRSCRAPER_MCP_PUBLIC_URL`       | `https://mcp.mrscraper.com`      | Public origin and token audience prefix.                                                                          |
+| `MRSCRAPER_OAUTH_ISSUER`         | `https://api.app.mrscraper.com`  | Authorization issuer.                                                                                             |
+| `MRSCRAPER_OAUTH_JWKS_URL`       | `<issuer>/.well-known/jwks.json` | Token verification keys.                                                                                          |
+| `MRSCRAPER_ALLOWED_ORIGINS`      | unset                            | Additional exact browser origins.                                                                                 |
+| `MRSCRAPER_GLAMA_CLAIM`          | hosted server's token            | Glama ownership token served at `/.well-known/glama.json` and `/mcp/.well-known/glama.json`; empty disables both. |
+| `MRSCRAPER_API_BASE_URL`         | platform API                     | Account endpoint override.                                                                                        |
+| `MRSCRAPER_FETCH_BASE_URL`       | Scraper API                      | Scraping/search endpoint override.                                                                                |
+| `MRSCRAPER_LOG_HTTP_PAYLOAD`     | off                              | Request-body diagnostics for trusted environments.                                                                |
+| `MRSCRAPER_LOG_HTTP_PAYLOAD_MAX` | `8192`                           | Maximum diagnostic payload length.                                                                                |
 
 Trusted local origins, `claude.ai`, `chatgpt.com`, and configured exact origins are accepted. Service-to-service clients generally send no Origin header. Registry metadata is in `server.json`; `.github/workflows/publish-mcp-registry.yml` publishes matching immutable versions through GitHub OIDC.
 
