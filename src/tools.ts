@@ -238,18 +238,18 @@ export const TOOL_DESCRIPTIONS = {
     "Search the web and return ranked results with titles, URLs, descriptions, and sources.",
 } as const;
 
-// ChatGPT and Codex sign-ins get the page tools without the proxy, real-device, retry, cookie
-// and warm-start inputs, which OpenAI's review read as getting around site restrictions
-// (3 Nov 2026). A call that sets one is rejected. They send no proxy country, and the other
-// hidden inputs keep their defaults.
-export const CHATGPT_HIDDEN_INPUTS = [
-  "proxy",
-  "proxyCountry",
-  "super",
-  "maxRetries",
-  "returnCookie",
-  "warmStart",
-] as const;
+// ChatGPT and Codex sign-ins get the page tools without `super` (real-device routing) and
+// `proxy` (a custom proxy URL), which OpenAI's review read as getting around site
+// restrictions (3 Nov 2026); a call that sets one is rejected. `proxyCountry` stays settable
+// there but has no default: when the caller omits it, no proxy country is sent.
+export const CHATGPT_HIDDEN_INPUTS = ["proxy", "super"] as const;
+const chatgptProxyCountry = z
+  .string()
+  .regex(/^[A-Za-z]{2}$/)
+  .optional()
+  .describe(
+    "Two-letter country code of the proxy server, sent in lowercase. Omit it to use none.",
+  );
 export function inputSchemaFor(
   schema: z.ZodObject,
   surface: ToolSurface,
@@ -259,12 +259,20 @@ export function inputSchemaFor(
   for (const name of CHATGPT_HIDDEN_INPUTS) {
     if (Object.hasOwn(schema.shape, name)) hidden[name] = true;
   }
-  return schema.omit(hidden);
+  const reduced = schema.omit(hidden);
+  return Object.hasOwn(reduced.shape, "proxyCountry")
+    ? reduced.extend({ proxyCountry: chatgptProxyCountry })
+    : reduced;
 }
 
-// The ChatGPT surface sends no proxy country; every other client sends the default, us.
-function hiddenInputValues(surface: ToolSurface) {
-  return surface === "chatgpt" ? { proxyCountry: null } : {};
+// On ChatGPT an omitted proxyCountry sends none; every other client sends the default, us.
+function proxyCountryFor(
+  surface: ToolSurface,
+  input: { proxyCountry?: unknown },
+) {
+  return surface === "chatgpt" && input.proxyCountry === undefined
+    ? { proxyCountry: null }
+    : {};
 }
 export function registerTools(
   server: McpServer,
@@ -272,7 +280,6 @@ export function registerTools(
   dependencies: ToolDependencies = {},
   surface: ToolSurface = "default",
 ): void {
-  const hidden = hiddenInputValues(surface);
   server.registerTool(
     "status",
     {
@@ -315,7 +322,7 @@ export function registerTools(
       return asStructured(
         await scrapeHtml(url, {
           ...options,
-          ...hidden,
+          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),
@@ -345,7 +352,7 @@ export function registerTools(
       return asStructured(
         await scrapeMarkdown(url, {
           ...options,
-          ...hidden,
+          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),
@@ -372,7 +379,7 @@ export function registerTools(
       return asStructured(
         await getScreenshot(url, {
           ...options,
-          ...hidden,
+          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),
@@ -425,7 +432,7 @@ export function registerTools(
       return asStructured(
         await scrapeJson(url, {
           ...options,
-          ...hidden,
+          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),

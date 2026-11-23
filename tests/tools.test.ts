@@ -84,6 +84,9 @@ describe("MCP seven-service surface", () => {
             for (const input of CHATGPT_HIDDEN_INPUTS) {
               expect(properties).not.toHaveProperty(input);
             }
+            expect(properties).toHaveProperty("maxRetries");
+            expect(properties!.proxyCountry).toMatchObject({ type: "string" });
+            expect(properties!.proxyCountry).not.toHaveProperty("default");
           } else {
             expect(properties).toHaveProperty("super", {
               type: "boolean",
@@ -147,19 +150,10 @@ describe("MCP seven-service surface", () => {
   );
 
   it.each(pageToolNames)(
-    "keeps the proxy, real-device, retry, cookie, and warm-start inputs off the ChatGPT %s tool",
+    "keeps super and proxy off the ChatGPT %s tool and sends no proxy country unless asked",
     async (name) => {
-      const values: Record<string, unknown> = {
-        proxy: "http://user:pass@proxy.example:8080",
-        proxyCountry: "de",
-        super: true,
-        maxRetries: 2,
-        returnCookie: true,
-        warmStart: true,
-      };
       const fullFetch = fake();
       const full = await connect(fullFetch);
-      const { tools } = await full.client.listTools();
       await full.client.callTool({
         name,
         arguments: { url: "https://example.com" },
@@ -170,35 +164,40 @@ describe("MCP seven-service surface", () => {
       expect(new URL(String(fullUrl)).searchParams.get("proxyCountry")).toBe(
         "us",
       );
-      const offeredElsewhere = Object.keys(
-        tools.find((tool) => tool.name === name)!.inputSchema.properties ?? {},
-      ).filter((input) => Object.hasOwn(values, input));
-      expect(offeredElsewhere.length).toBeGreaterThan(0);
 
       const fetchFn = fake();
       const { client, server } = await connect(fetchFn, "chatgpt");
+      const sent = async (args: Record<string, unknown>) => {
+        const result = await client.callTool({
+          name,
+          arguments: { url: "https://example.com", ...args },
+        });
+        expect(result.isError).not.toBe(true);
+        const [url] = vi.mocked(fetchFn).mock.calls.at(-1)!;
+        return new URL(String(url)).searchParams;
+      };
       try {
-        for (const input of offeredElsewhere) {
+        for (const [input, value] of [
+          ["super", true],
+          ["proxy", "http://user:pass@proxy.example:8080"],
+        ] as const) {
           const refused = await client.callTool({
             name,
-            arguments: { url: "https://example.com", [input]: values[input] },
+            arguments: { url: "https://example.com", [input]: value },
           });
           expect(refused.isError, input).toBe(true);
         }
         expect(fetchFn).not.toHaveBeenCalled();
 
-        const result = await client.callTool({
-          name,
-          arguments: { url: "https://example.com" },
-        });
-        expect(result.isError).not.toBe(true);
-        const [url] = vi.mocked(fetchFn).mock.calls[0]!;
-        const params = new URL(String(url)).searchParams;
-        expect(params.get("super")).toBe("false");
-        expect(params.has("proxyCountry")).toBe(false);
-        expect(params.get("geoCode")).toBe("us");
-        expect(params.has("proxy")).toBe(false);
-        expect(params.has("maxRetries")).toBe(false);
+        const plain = await sent({});
+        expect(plain.get("super")).toBe("false");
+        expect(plain.has("proxyCountry")).toBe(false);
+        expect(plain.get("geoCode")).toBe("us");
+        expect(plain.has("proxy")).toBe(false);
+
+        const chosen = await sent({ proxyCountry: "DE", maxRetries: 2 });
+        expect(chosen.get("proxyCountry")).toBe("de");
+        expect(chosen.get("maxRetries")).toBe("2");
       } finally {
         await client.close();
         await server.close();
@@ -207,31 +206,33 @@ describe("MCP seven-service surface", () => {
   );
 
   it.each(["scrapeHtml", "scrapeMarkdown"])(
-    "forwards warmStart for %s",
+    "forwards warmStart on both client surfaces for %s",
     async (name) => {
-      const fetchFn = fake();
-      const { client, server } = await connect(fetchFn);
-      try {
-        for (const warmStart of [false, true]) {
-          const result = await client.callTool({
+      for (const surface of ["default", "chatgpt"] as const) {
+        const fetchFn = fake();
+        const { client, server } = await connect(fetchFn, surface);
+        try {
+          for (const warmStart of [false, true]) {
+            const result = await client.callTool({
+              name,
+              arguments: { url: "https://example.com", warmStart },
+            });
+            expect(result.isError).not.toBe(true);
+            const [url] = vi.mocked(fetchFn).mock.calls.at(-1)!;
+            expect(new URL(String(url)).searchParams.get("warmStart")).toBe(
+              String(warmStart),
+            );
+          }
+          const invalid = await client.callTool({
             name,
-            arguments: { url: "https://example.com", warmStart },
+            arguments: { url: "https://example.com", warmStart: "true" },
           });
-          expect(result.isError).not.toBe(true);
-          const [url] = vi.mocked(fetchFn).mock.calls.at(-1)!;
-          expect(new URL(String(url)).searchParams.get("warmStart")).toBe(
-            String(warmStart),
-          );
+          expect(invalid.isError).toBe(true);
+          expect(fetchFn).toHaveBeenCalledTimes(2);
+        } finally {
+          await client.close();
+          await server.close();
         }
-        const invalid = await client.callTool({
-          name,
-          arguments: { url: "https://example.com", warmStart: "true" },
-        });
-        expect(invalid.isError).toBe(true);
-        expect(fetchFn).toHaveBeenCalledTimes(2);
-      } finally {
-        await client.close();
-        await server.close();
       }
     },
   );

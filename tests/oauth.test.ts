@@ -603,6 +603,10 @@ describe("ChatGPT endpoint", () => {
           "waitUntil",
           "saveResult",
           "blockResources",
+          "proxyCountry",
+          "maxRetries",
+          "returnCookie",
+          "warmStart",
         ]),
       );
       for (const input of CHATGPT_HIDDEN_INPUTS) {
