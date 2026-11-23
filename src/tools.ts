@@ -238,11 +238,34 @@ export const TOOL_DESCRIPTIONS = {
     "Search the web and return ranked results with titles, URLs, descriptions, and sources.",
 } as const;
 
+// ChatGPT and Codex sign-ins get the page tools without the proxy, real-device, retry, cookie
+// and warm-start inputs, which OpenAI's review read as getting around site restrictions
+// (3 Nov 2026). The hidden inputs keep their defaults, and a call that sets one is rejected.
+export const CHATGPT_HIDDEN_INPUTS = [
+  "proxy",
+  "proxyCountry",
+  "super",
+  "maxRetries",
+  "returnCookie",
+  "warmStart",
+] as const;
+export function inputSchemaFor(
+  schema: z.ZodObject,
+  surface: ToolSurface,
+): z.ZodObject {
+  if (surface !== "chatgpt") return schema;
+  const hidden: Record<string, true> = {};
+  for (const name of CHATGPT_HIDDEN_INPUTS) {
+    if (Object.hasOwn(schema.shape, name)) hidden[name] = true;
+  }
+  return schema.omit(hidden);
+}
+
 export function registerTools(
   server: McpServer,
   getToken: () => string,
   dependencies: ToolDependencies = {},
-  _surface: ToolSurface = "default",
+  surface: ToolSurface = "default",
 ): void {
   server.registerTool(
     "status",
@@ -266,7 +289,7 @@ export function registerTools(
     async (input) =>
       asStructured(await statusTool(getToken(), input, dependencies)),
   );
-  const scrapeHtmlSchema = scrapeHtmlInputSchema;
+  const scrapeHtmlSchema = inputSchemaFor(scrapeHtmlInputSchema, surface);
   server.registerTool(
     "scrapeHtml",
     {
@@ -292,7 +315,10 @@ export function registerTools(
       );
     },
   );
-  const scrapeMarkdownSchema = scrapeMarkdownInputSchema;
+  const scrapeMarkdownSchema = inputSchemaFor(
+    scrapeMarkdownInputSchema,
+    surface,
+  );
   server.registerTool(
     "scrapeMarkdown",
     {
@@ -318,7 +344,7 @@ export function registerTools(
       );
     },
   );
-  const getScreenshotSchema = getScreenshotInputSchema;
+  const getScreenshotSchema = inputSchemaFor(getScreenshotInputSchema, surface);
   server.registerTool(
     "getScreenshot",
     {
@@ -370,7 +396,7 @@ export function registerTools(
       );
     },
   );
-  const scrapeJsonSchema = scrapeJsonInputSchema;
+  const scrapeJsonSchema = inputSchemaFor(scrapeJsonInputSchema, surface);
   server.registerTool(
     "scrapeJson",
     {

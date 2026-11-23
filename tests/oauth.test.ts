@@ -21,6 +21,7 @@ import {
 } from "../src/config.js";
 import { isOAuthAccessToken } from "../src/oauth.js";
 import { TOOL_SCOPES, requiredScopesForRequest } from "../src/scopes.js";
+import { CHATGPT_HIDDEN_INPUTS } from "../src/tools.js";
 
 const ISSUER_PLACEHOLDER = "https://issuer.invalid";
 const RESOURCE = "https://mcp.mrscraper.test/mcp";
@@ -559,33 +560,40 @@ describe("ChatGPT endpoint", () => {
     );
   });
 
-  it("accepts CLI proxy controls on both MCP endpoints", async () => {
+  it("accepts proxy controls on /mcp and refuses them on the ChatGPT endpoint", async () => {
     const requests: UpstreamRequest[] = [];
     const baseUrl = await startApp(oauthConfig(), requests);
     const token = await mintToken();
-    await expectToolSuccess(await toolCall(baseUrl, "scrapeHtml", token));
+    const withProxy = {
+      url: "https://example.com",
+      proxy: "http://proxy.example",
+    };
     await expectToolSuccess(
-      await toolCall(baseUrl, "scrapeHtml", token, {
-        path: CHATGPT_MCP_PATH,
-        arguments: {
-          url: "https://example.com",
-          proxy: "http://proxy.example",
-        },
-      }),
+      await toolCall(baseUrl, "scrapeHtml", token, { arguments: withProxy }),
     );
-    expect(requests).toHaveLength(2);
+    const refused = await toolCall(baseUrl, "scrapeHtml", token, {
+      path: CHATGPT_MCP_PATH,
+      arguments: withProxy,
+    });
+    expect(refused.status).toBe(200);
+    const text = await refused.text();
+    const event = text.split("\n").find((line) => line.startsWith("data: "));
+    expect(JSON.parse(event ? event.slice(6) : text).result.isError).toBe(true);
+    expect(requests).toHaveLength(1);
   });
 
   it.each([
     "https://chatgpt.com/oauth/client.json",
     "https://chatgpt.com/oauth/codex/client.json",
   ])(
-    "serves all CLI page options on /mcp to the OAuth client %s",
+    "serves the ChatGPT page options on /mcp to the OAuth client %s",
     async (clientId) => {
       const baseUrl = await startApp();
-      expect(
-        await scraperOptions(baseUrl, await mintToken({ clientId })),
-      ).toEqual(
+      const options = await scraperOptions(
+        baseUrl,
+        await mintToken({ clientId }),
+      );
+      expect(options).toEqual(
         expect.arrayContaining([
           "browserRendering",
           "geoCode",
@@ -593,15 +601,13 @@ describe("ChatGPT endpoint", () => {
           "url",
           "waitForSelector",
           "waitUntil",
-          "proxyCountry",
-          "super",
-          "proxy",
-          "maxRetries",
           "saveResult",
           "blockResources",
-          "returnCookie",
         ]),
       );
+      for (const input of CHATGPT_HIDDEN_INPUTS) {
+        expect(options).not.toContain(input);
+      }
     },
   );
 
