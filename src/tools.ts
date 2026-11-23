@@ -238,11 +238,47 @@ export const TOOL_DESCRIPTIONS = {
     "Search the web and return ranked results with titles, URLs, descriptions, and sources.",
 } as const;
 
+// ChatGPT and Codex sign-ins get the page tools without `super` (real-device routing) and
+// `proxy` (a custom proxy URL), which OpenAI's review read as getting around site
+// restrictions (3 Nov 2026); a call that sets one is rejected. `proxyCountry` stays settable
+// there but has no default: when the caller omits it, no proxy country is sent.
+export const CHATGPT_HIDDEN_INPUTS = ["proxy", "super"] as const;
+const chatgptProxyCountry = z
+  .string()
+  .regex(/^[A-Za-z]{2}$/)
+  .optional()
+  .describe(
+    "Two-letter country code of the proxy server, sent in lowercase. Omit it to use none.",
+  );
+export function inputSchemaFor(
+  schema: z.ZodObject,
+  surface: ToolSurface,
+): z.ZodObject {
+  if (surface !== "chatgpt") return schema;
+  const hidden: Record<string, true> = {};
+  for (const name of CHATGPT_HIDDEN_INPUTS) {
+    if (Object.hasOwn(schema.shape, name)) hidden[name] = true;
+  }
+  const reduced = schema.omit(hidden);
+  return Object.hasOwn(reduced.shape, "proxyCountry")
+    ? reduced.extend({ proxyCountry: chatgptProxyCountry })
+    : reduced;
+}
+
+// On ChatGPT an omitted proxyCountry sends none; every other client sends the default, us.
+function proxyCountryFor(
+  surface: ToolSurface,
+  input: { proxyCountry?: unknown },
+) {
+  return surface === "chatgpt" && input.proxyCountry === undefined
+    ? { proxyCountry: null }
+    : {};
+}
 export function registerTools(
   server: McpServer,
   getToken: () => string,
   dependencies: ToolDependencies = {},
-  _surface: ToolSurface = "default",
+  surface: ToolSurface = "default",
 ): void {
   server.registerTool(
     "status",
@@ -266,7 +302,7 @@ export function registerTools(
     async (input) =>
       asStructured(await statusTool(getToken(), input, dependencies)),
   );
-  const scrapeHtmlSchema = scrapeHtmlInputSchema;
+  const scrapeHtmlSchema = inputSchemaFor(scrapeHtmlInputSchema, surface);
   server.registerTool(
     "scrapeHtml",
     {
@@ -286,13 +322,17 @@ export function registerTools(
       return asStructured(
         await scrapeHtml(url, {
           ...options,
+          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),
       );
     },
   );
-  const scrapeMarkdownSchema = scrapeMarkdownInputSchema;
+  const scrapeMarkdownSchema = inputSchemaFor(
+    scrapeMarkdownInputSchema,
+    surface,
+  );
   server.registerTool(
     "scrapeMarkdown",
     {
@@ -312,13 +352,14 @@ export function registerTools(
       return asStructured(
         await scrapeMarkdown(url, {
           ...options,
+          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),
       );
     },
   );
-  const getScreenshotSchema = getScreenshotInputSchema;
+  const getScreenshotSchema = inputSchemaFor(getScreenshotInputSchema, surface);
   server.registerTool(
     "getScreenshot",
     {
@@ -338,6 +379,7 @@ export function registerTools(
       return asStructured(
         await getScreenshot(url, {
           ...options,
+          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),
@@ -370,7 +412,7 @@ export function registerTools(
       );
     },
   );
-  const scrapeJsonSchema = scrapeJsonInputSchema;
+  const scrapeJsonSchema = inputSchemaFor(scrapeJsonInputSchema, surface);
   server.registerTool(
     "scrapeJson",
     {
@@ -390,6 +432,7 @@ export function registerTools(
       return asStructured(
         await scrapeJson(url, {
           ...options,
+          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),

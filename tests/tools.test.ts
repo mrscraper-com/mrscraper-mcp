@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TOOL_NAMES, type ToolSurface } from "../src/config.js";
 import { createMrscraperServer } from "../src/server.js";
 import {
+  CHATGPT_HIDDEN_INPUTS,
   scrapeHtmlInputSchema,
   scrapeJsonInputSchema,
   getScreenshotInputSchema,
@@ -79,11 +80,20 @@ describe("MCP seven-service surface", () => {
             .inputSchema.properties;
           expect(properties).not.toHaveProperty("superMode");
           expect(properties).toHaveProperty("saveResult");
-          expect(properties).toHaveProperty("super", {
-            type: "boolean",
-            default: false,
-            description: "Whether to route the request through real devices.",
-          });
+          if (surface === "chatgpt") {
+            for (const input of CHATGPT_HIDDEN_INPUTS) {
+              expect(properties).not.toHaveProperty(input);
+            }
+            expect(properties).toHaveProperty("maxRetries");
+            expect(properties!.proxyCountry).toMatchObject({ type: "string" });
+            expect(properties!.proxyCountry).not.toHaveProperty("default");
+          } else {
+            expect(properties).toHaveProperty("super", {
+              type: "boolean",
+              default: false,
+              description: "Whether to route the request through real devices.",
+            });
+          }
         }
       } finally {
         await client.close();
@@ -132,6 +142,62 @@ describe("MCP seven-service surface", () => {
         expect(new URL(String(url)).searchParams.get("saveResult")).toBe(
           "true",
         );
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    },
+  );
+
+  it.each(pageToolNames)(
+    "keeps super and proxy off the ChatGPT %s tool and sends no proxy country unless asked",
+    async (name) => {
+      const fullFetch = fake();
+      const full = await connect(fullFetch);
+      await full.client.callTool({
+        name,
+        arguments: { url: "https://example.com" },
+      });
+      await full.client.close();
+      await full.server.close();
+      const [fullUrl] = vi.mocked(fullFetch).mock.calls[0]!;
+      expect(new URL(String(fullUrl)).searchParams.get("proxyCountry")).toBe(
+        "us",
+      );
+
+      const fetchFn = fake();
+      const { client, server } = await connect(fetchFn, "chatgpt");
+      const sent = async (args: Record<string, unknown>) => {
+        const result = await client.callTool({
+          name,
+          arguments: { url: "https://example.com", ...args },
+        });
+        expect(result.isError).not.toBe(true);
+        const [url] = vi.mocked(fetchFn).mock.calls.at(-1)!;
+        return new URL(String(url)).searchParams;
+      };
+      try {
+        for (const [input, value] of [
+          ["super", true],
+          ["proxy", "http://user:pass@proxy.example:8080"],
+        ] as const) {
+          const refused = await client.callTool({
+            name,
+            arguments: { url: "https://example.com", [input]: value },
+          });
+          expect(refused.isError, input).toBe(true);
+        }
+        expect(fetchFn).not.toHaveBeenCalled();
+
+        const plain = await sent({});
+        expect(plain.get("super")).toBe("false");
+        expect(plain.has("proxyCountry")).toBe(false);
+        expect(plain.get("geoCode")).toBe("us");
+        expect(plain.has("proxy")).toBe(false);
+
+        const chosen = await sent({ proxyCountry: "DE", maxRetries: 2 });
+        expect(chosen.get("proxyCountry")).toBe("de");
+        expect(chosen.get("maxRetries")).toBe("2");
       } finally {
         await client.close();
         await server.close();

@@ -14,6 +14,7 @@ import {
   TOOL_NAMES,
   VERSION,
 } from "../src/config.js";
+import { CHATGPT_HIDDEN_INPUTS } from "../src/tools.js";
 
 const closers: Array<() => Promise<void>> = [];
 
@@ -188,7 +189,7 @@ describe("HTTP application", () => {
   });
 
   it.each([CHATGPT_MCP_PATH, `${CHATGPT_MCP_PATH}/`, "/MCP/ChatGPT"])(
-    "offers the same CLI page options on %s and /mcp",
+    "offers the /mcp page options on %s without the ChatGPT-hidden inputs",
     async (path) => {
       const { baseUrl } = await startApp({
         authEnabled: true,
@@ -210,14 +211,20 @@ describe("HTTP application", () => {
           await client.close();
         }
       };
-      expect(await pageOptions(path)).toEqual(await pageOptions("/mcp"));
-      expect(await pageOptions("/mcp")).toEqual(
+      const full = await pageOptions("/mcp");
+      expect(full).toEqual(
         expect.arrayContaining([
           "proxy",
           "returnCookie",
           "saveResult",
           "super",
         ]),
+      );
+      expect(await pageOptions(path)).toEqual(
+        full.filter(
+          (input) =>
+            !(CHATGPT_HIDDEN_INPUTS as readonly string[]).includes(input),
+        ),
       );
     },
   );
