@@ -157,10 +157,19 @@ describe("MCP seven-service surface", () => {
         returnCookie: true,
         warmStart: true,
       };
-      const full = await connect(fake());
+      const fullFetch = fake();
+      const full = await connect(fullFetch);
       const { tools } = await full.client.listTools();
+      await full.client.callTool({
+        name,
+        arguments: { url: "https://example.com" },
+      });
       await full.client.close();
       await full.server.close();
+      const [fullUrl] = vi.mocked(fullFetch).mock.calls[0]!;
+      expect(new URL(String(fullUrl)).searchParams.get("proxyCountry")).toBe(
+        "us",
+      );
       const offeredElsewhere = Object.keys(
         tools.find((tool) => tool.name === name)!.inputSchema.properties ?? {},
       ).filter((input) => Object.hasOwn(values, input));
@@ -186,7 +195,8 @@ describe("MCP seven-service surface", () => {
         const [url] = vi.mocked(fetchFn).mock.calls[0]!;
         const params = new URL(String(url)).searchParams;
         expect(params.get("super")).toBe("false");
-        expect(params.get("proxyCountry")).toBe("us");
+        expect(params.has("proxyCountry")).toBe(false);
+        expect(params.get("geoCode")).toBe("us");
         expect(params.has("proxy")).toBe(false);
         expect(params.has("maxRetries")).toBe(false);
       } finally {

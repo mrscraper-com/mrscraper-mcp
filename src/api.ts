@@ -24,8 +24,8 @@ export interface PageOptions {
   timeout?: number;
   /** Two-letter country code to load the page from, sent in lowercase. */
   geoCode?: string;
-  /** Two-letter country code of the proxy server, sent in lowercase. */
-  proxyCountry?: string;
+  /** Two-letter country code of the proxy server, sent in lowercase. null sends none. */
+  proxyCountry?: string | null;
   /** Whether to route the request through real devices. */
   super?: boolean;
   /** Navigation completion event to wait for: domcontentloaded, load, networkidle0, or networkidle2. */
@@ -175,7 +175,9 @@ function pageParams(
     url: pageUrl(url),
     timeout: integer("timeout", timeout, 1, 300),
     geoCode: country("geoCode", geoCode),
-    proxyCountry: country("proxyCountry", proxyCountry),
+    ...(proxyCountry === null
+      ? {}
+      : { proxyCountry: country("proxyCountry", proxyCountry) }),
     super: boolean("super", superRouting),
     waitUntil,
     saveResult: boolean("saveResult", saveResult),

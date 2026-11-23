@@ -635,7 +635,7 @@ HTTP and network failures set `isError: true` on the MCP tool result and include
 
 ### Configuration
 
-Every client gets the same seven tools. ChatGPT and Codex sign-ins (the `/mcp/chatgpt` route, or `/mcp` with a `https://chatgpt.com/oauth/` client) get the page tools without `proxy`, `proxyCountry`, `super`, `maxRetries`, `returnCookie`, and `warmStart`: those keep their defaults, and a call that sets one is rejected. Every other input and default is the same on all surfaces, and `/mcp/chatgpt` shares the sign-in audience of `/mcp`. Tools authenticate through the connection.
+Every client gets the same seven tools. ChatGPT and Codex sign-ins (the `/mcp/chatgpt` route, or `/mcp` with a `https://chatgpt.com/oauth/` client) get the page tools without `proxy`, `proxyCountry`, `super`, `maxRetries`, `returnCookie`, and `warmStart`, and a call that sets one is rejected. Their requests send no proxy country (other clients send `us`); the other hidden inputs keep their defaults. Every other input and default is the same on all surfaces, and `/mcp/chatgpt` shares the sign-in audience of `/mcp`. Tools authenticate through the connection.
 
 For local stdio:
 

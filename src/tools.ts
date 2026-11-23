@@ -240,7 +240,8 @@ export const TOOL_DESCRIPTIONS = {
 
 // ChatGPT and Codex sign-ins get the page tools without the proxy, real-device, retry, cookie
 // and warm-start inputs, which OpenAI's review read as getting around site restrictions
-// (3 Nov 2026). The hidden inputs keep their defaults, and a call that sets one is rejected.
+// (3 Nov 2026). A call that sets one is rejected. They send no proxy country, and the other
+// hidden inputs keep their defaults.
 export const CHATGPT_HIDDEN_INPUTS = [
   "proxy",
   "proxyCountry",
@@ -261,12 +262,17 @@ export function inputSchemaFor(
   return schema.omit(hidden);
 }
 
+// The ChatGPT surface sends no proxy country; every other client sends the default, us.
+function hiddenInputValues(surface: ToolSurface) {
+  return surface === "chatgpt" ? { proxyCountry: null } : {};
+}
 export function registerTools(
   server: McpServer,
   getToken: () => string,
   dependencies: ToolDependencies = {},
   surface: ToolSurface = "default",
 ): void {
+  const hidden = hiddenInputValues(surface);
   server.registerTool(
     "status",
     {
@@ -309,6 +315,7 @@ export function registerTools(
       return asStructured(
         await scrapeHtml(url, {
           ...options,
+          ...hidden,
           token: getToken(),
           ...dependencies,
         }),
@@ -338,6 +345,7 @@ export function registerTools(
       return asStructured(
         await scrapeMarkdown(url, {
           ...options,
+          ...hidden,
           token: getToken(),
           ...dependencies,
         }),
@@ -364,6 +372,7 @@ export function registerTools(
       return asStructured(
         await getScreenshot(url, {
           ...options,
+          ...hidden,
           token: getToken(),
           ...dependencies,
         }),
@@ -416,6 +425,7 @@ export function registerTools(
       return asStructured(
         await scrapeJson(url, {
           ...options,
+          ...hidden,
           token: getToken(),
           ...dependencies,
         }),
