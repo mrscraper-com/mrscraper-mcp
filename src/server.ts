@@ -5,7 +5,7 @@ import {
 } from "@modelcontextprotocol/server";
 
 import { resolveApiToken } from "./auth.js";
-import { VERSION } from "./config.js";
+import { OPENAI_OAUTH_CLIENT_PREFIX, VERSION } from "./config.js";
 import { registerTools, type ToolDependencies } from "./tools.js";
 import { registerWidgets } from "./widgets/index.js";
 
@@ -24,10 +24,14 @@ export function createMrscraperServer(
     { name: "MrScraper MCP Server", version: VERSION },
     { instructions: SERVER_INSTRUCTIONS },
   );
+  const chatgpt = context.authInfo?.clientId?.startsWith(
+    OPENAI_OAUTH_CLIENT_PREFIX,
+  );
   registerTools(
     server,
     () => (options.resolveToken || resolveApiToken)(context),
     options,
+    chatgpt ? "chatgpt" : "default",
   );
   registerWidgets(server);
   return server;

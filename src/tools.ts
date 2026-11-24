@@ -12,6 +12,7 @@ import {
   MAX_AGE_LIMIT,
   SCREENSHOT_AREA_PATTERN,
 } from "./api.js";
+import { type ToolSurface } from "./config.js";
 import { widgetMeta } from "./widgets/index.js";
 
 export interface ToolDependencies {
@@ -245,10 +246,29 @@ export const TOOL_DESCRIPTIONS = {
     "Search the web and return ranked results with titles, URLs, descriptions, and sources.",
 } as const;
 
+// ChatGPT and Codex sign-ins see this browserRendering description, worded for OpenAI's
+// review. The input and its behavior are the same on every client.
+const chatgptBrowserRendering = z
+  .boolean()
+  .optional()
+  .describe(
+    "Controls whether the page is loaded in a browser. Leave it out to let MrScraper decide whether the page needs one. Set true to always load the page in a browser, which JavaScript-heavy sites, SPAs, and pages that load content dynamically need. Set false to never use a browser.",
+  );
+export function inputSchemaFor(
+  schema: z.ZodObject,
+  surface: ToolSurface,
+): z.ZodObject {
+  return surface === "chatgpt" &&
+    Object.hasOwn(schema.shape, "browserRendering")
+    ? schema.extend({ browserRendering: chatgptBrowserRendering })
+    : schema;
+}
+
 export function registerTools(
   server: McpServer,
   getToken: () => string,
   dependencies: ToolDependencies = {},
+  surface: ToolSurface = "default",
 ): void {
   server.registerTool(
     "status",
@@ -277,7 +297,7 @@ export function registerTools(
     {
       title: "Scrape HTML",
       description: TOOL_DESCRIPTIONS.scrapeHtml,
-      inputSchema: scrapeHtmlInputSchema,
+      inputSchema: inputSchemaFor(scrapeHtmlInputSchema, surface),
       outputSchema: apiResponseSchema,
       annotations: {
         title: "Scrape HTML",
@@ -302,7 +322,7 @@ export function registerTools(
     {
       title: "Scrape Markdown",
       description: TOOL_DESCRIPTIONS.scrapeMarkdown,
-      inputSchema: scrapeMarkdownInputSchema,
+      inputSchema: inputSchemaFor(scrapeMarkdownInputSchema, surface),
       outputSchema: apiResponseSchema,
       annotations: {
         title: "Scrape Markdown",
@@ -377,7 +397,7 @@ export function registerTools(
     {
       title: "Scrape JSON",
       description: TOOL_DESCRIPTIONS.scrapeJson,
-      inputSchema: scrapeJsonInputSchema,
+      inputSchema: inputSchemaFor(scrapeJsonInputSchema, surface),
       outputSchema: apiResponseSchema,
       annotations: {
         title: "Scrape JSON",

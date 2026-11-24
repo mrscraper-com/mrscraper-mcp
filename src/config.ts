@@ -1,4 +1,4 @@
-export const VERSION = "0.6.1";
+export const VERSION = "0.6.2";
 
 export const TOOL_NAMES = [
   "status",
@@ -11,6 +11,11 @@ export const TOOL_NAMES = [
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
+
+export type ToolSurface = "default" | "chatgpt";
+
+// ChatGPT and Codex sign in with Client ID Metadata Documents hosted here.
+export const OPENAI_OAUTH_CLIENT_PREFIX = "https://chatgpt.com/oauth/";
 
 export type Transport = "stdio" | "http";
 
