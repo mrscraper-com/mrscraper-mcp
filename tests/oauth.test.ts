@@ -71,11 +71,14 @@ async function mintToken(
     issuer?: string;
     expiresIn?: string;
     subject?: string;
+    clientId?: string;
   } = {},
 ) {
   return new SignJWT({
     scope: overrides.scope ?? "scrape:read",
-    client_id: "https://claude.ai/oauth/claude-code-client-metadata",
+    client_id:
+      overrides.clientId ??
+      "https://claude.ai/oauth/claude-code-client-metadata",
   })
     .setProtectedHeader({ alg: "RS256", kid: "test" })
     .setIssuer(overrides.issuer ?? issuer)
@@ -505,5 +508,72 @@ describe("API key compatibility", () => {
   it("still rejects an unknown API key", async () => {
     const baseUrl = await startApp();
     expect((await toolCall(baseUrl, "scrapeHtml", "nope")).status).toBe(401);
+  });
+});
+
+async function listTools(baseUrl: string, token: string) {
+  const response = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+  });
+  expect(response.status).toBe(200);
+  const text = await response.text();
+  const event = text.split("\n").find((line) => line.startsWith("data: "));
+  return JSON.parse(event ? event.slice(6) : text).result.tools as Array<{
+    name: string;
+    inputSchema: { properties: Record<string, { description?: string }> };
+  }>;
+}
+
+describe("ChatGPT and Codex wording", () => {
+  const pageTools = ["scrapeHtml", "scrapeMarkdown", "scrapeJson"];
+  const docsWording =
+    "Leave it out to load the page without a browser first and switch to a browser automatically if the request is blocked.";
+  const chatgptWording =
+    "Leave it out to let MrScraper decide whether the page needs one.";
+
+  it.each([
+    "https://chatgpt.com/oauth/client.json",
+    "https://chatgpt.com/oauth/codex/client.json",
+  ])(
+    "words browserRendering for OpenAI's review for the OAuth client %s",
+    async (clientId) => {
+      const baseUrl = await startApp();
+      const chatgpt = await listTools(baseUrl, await mintToken({ clientId }));
+      const other = await listTools(baseUrl, await mintToken());
+      for (const name of pageTools) {
+        const fields = chatgpt.find((tool) => tool.name === name)!.inputSchema
+          .properties;
+        expect(fields.browserRendering!.description).toContain(chatgptWording);
+        expect(fields.browserRendering!.description).not.toContain("blocked");
+      }
+      // Only that description differs: same tools, inputs, and other descriptions.
+      const withoutRendering = (tools: typeof chatgpt) =>
+        tools.map((tool) => {
+          const { browserRendering: _, ...rest } = tool.inputSchema.properties;
+          return {
+            ...tool,
+            inputSchema: { ...tool.inputSchema, properties: rest },
+          };
+        });
+      expect(withoutRendering(chatgpt)).toEqual(withoutRendering(other));
+    },
+  );
+
+  it("keeps the API docs wording for other OAuth clients and API keys", async () => {
+    const baseUrl = await startApp();
+    for (const credential of [await mintToken(), "valid-key"]) {
+      const tools = await listTools(baseUrl, credential);
+      for (const name of pageTools)
+        expect(
+          tools.find((tool) => tool.name === name)!.inputSchema.properties
+            .browserRendering!.description,
+        ).toContain(docsWording);
+    }
   });
 });

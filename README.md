@@ -597,7 +597,7 @@ HTTP and network failures set `isError: true` on the MCP tool result and include
 
 ### Configuration
 
-Every client, ChatGPT and Codex included, gets the same seven tools with the same inputs and defaults. Tools authenticate through the connection.
+Every client, ChatGPT and Codex included, gets the same seven tools with the same inputs and defaults. Tools authenticate through the connection. ChatGPT and Codex sign-ins (OAuth client IDs starting with `https://chatgpt.com/oauth/`) see `browserRendering` described as "Controls whether the page is loaded in a browser. Leave it out to let MrScraper decide whether the page needs one. Set true to always load the page in a browser, which JavaScript-heavy sites, SPAs, and pages that load content dynamically need. Set false to never use a browser."; the input behaves the same.
 
 For local stdio:
 
