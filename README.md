@@ -71,13 +71,14 @@ Response examples show selected keys and types observed in live API responses. V
 
 ## Shared parameters
 
-### Page controls
+The tools take the parameters documented for each service in the [API reference](https://docs.mrscraper.com/docs/api/scraper-api/scrape-html), with these integration rules:
 
-HTML, Markdown, screenshots, and JSON extraction share `url`, `timeout`, `geoCode`, `proxyCountry`, `super`, `waitUntil`, `proxy`, `maxRetries`, and `saveResult` (using the naming style shown below). Page defaults are 300 seconds, US geolocation/proxy country, real-device routing off, and dashboard saving off. Omitted retry limits mean no limit. Exact types, defaults, and standard descriptions appear in each service table.
+- An optional parameter is sent only when you set it, so the API's own default applies otherwise. For example, leaving `browserRendering` out loads the page without a browser first and switches to one if the request is blocked, while `false` never uses a browser.
+- HTML, Markdown, screenshots, and JSON extraction always send `saveResult=true`, so every result is saved to the dashboard Result tab. They send `maxAge=0` (always scrape fresh) unless you set a cache age.
+- Each tool sends its own fixed values: `html=true` and `markdown=false` for HTML; `markdown=true`, `html=false`, and `screenshot=false` for Markdown; `browserRendering=true`, `html=false`, and `markdown=false` for screenshots; `agent=general` for JSON; `action=brand-scraping` and `bundle=none` for brand; `action=websearch` for search.
+- `tokenCap`, `action`, real-device routing, custom proxies, proxy countries, cookies, and navigation events are not available. A call that sets one of them is rejected.
 
-### Loading controls
-
-HTML, Markdown, and screenshots additionally accept `blockResources`, `waitForSelector`, and `returnCookie`. JSON extraction does not accept these controls. Browser rendering is optional for HTML, Markdown, and JSON; screenshots always enable it. Markdown with HTML also enables browser rendering.
+Every tool's table below lists its exact parameters, types, and the defaults the server sends.
 
 ## Service reference
 
@@ -157,26 +158,24 @@ MCP tool result; the API response envelope is in `structuredContent`:
 
 #### Description
 
-Retrieve the raw HTML of a page. Browser rendering is optional.
+Retrieve the raw HTML of a page. Browser rendering and a screenshot are optional.
 
 #### Parameters
 
-| Parameter          | HTTP field         | Type                                                               | Default              | Description                                                                                     |
-| ------------------ | ------------------ | ------------------------------------------------------------------ | -------------------- | ----------------------------------------------------------------------------------------------- |
-| `url`              | `url`              | string                                                             | Required             | Absolute HTTP or HTTPS URL of the page to process.                                              |
-| `timeout`          | `timeout`          | integer                                                            | `300`                | Page load timeout in seconds, from 1 to 300. The HTTP request allows 30 additional seconds.     |
-| `geoCode`          | `geoCode`          | string                                                             | `"us"`               | Two-letter country code to load the page from, sent in lowercase.                               |
-| `proxyCountry`     | `proxyCountry`     | string                                                             | `"us"`               | Two-letter country code of the proxy server, sent in lowercase.                                 |
-| `super`            | `super`            | boolean                                                            | `false`              | Whether to route the request through real devices.                                              |
-| `waitUntil`        | `waitUntil`        | string: `domcontentloaded`, `load`, `networkidle0`, `networkidle2` | `"domcontentloaded"` | Navigation completion event to wait for: domcontentloaded, load, networkidle0, or networkidle2. |
-| `proxy`            | `proxy`            | string                                                             | Omitted              | Custom proxy URL used to load the page.                                                         |
-| `maxRetries`       | `maxRetries`       | integer                                                            | Omitted              | Maximum number of retries, as a nonnegative integer. Omit this parameter for no limit.          |
-| `saveResult`       | `saveResult`       | boolean                                                            | `false`              | Whether to save the result to the dashboard Result tab.                                         |
-| `blockResources`   | `blockResources`   | boolean                                                            | `false`              | Whether to block images, fonts, and stylesheets while loading the page.                         |
-| `waitForSelector`  | `waitForSelector`  | string                                                             | Omitted              | Wait for the page to contain the specified CSS selector before returning the result.            |
-| `returnCookie`     | `returnCookie`     | boolean                                                            | `false`              | Whether to include browser session cookies in the response.                                     |
-| `browserRendering` | `browserRendering` | boolean                                                            | `false`              | Whether to render the page in a browser before returning the result.                            |
-| `warmStart`        | `warmStart`        | boolean                                                            | `false`              | Whether to enable warm start for more reliable scraping, at the cost of additional latency.     |
+| Parameter          | HTTP field         | Type                                                  | Default  | Description                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------ | ------------------ | ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`              | `url`              | string                                                | Required | URL of the page to scrape. Must include the protocol (https://).                                                                                                                                                                                                                                                                                                                                               |
+| `browserRendering` | `browserRendering` | boolean                                               | Omitted  | Controls whether the page is loaded in a browser. Leave it out to load the page without a browser first and switch to a browser automatically if the request is blocked. Set true to always load the page in a browser, which JavaScript-heavy sites, SPAs, and pages that load content dynamically need. Set false to never use a browser.                                                                    |
+| `timeout`          | `timeout`          | integer                                               | Omitted  | Maximum seconds to wait for the scrape before the request times out, from 1 to 330. Increase for slow or complex pages. Defaults to 300.                                                                                                                                                                                                                                                                       |
+| `warmStart`        | `warmStart`        | boolean                                               | Omitted  | Opens the site's home page first to warm the session before loading the target URL. Useful for sites that expect a normal browsing session before deeper pages.                                                                                                                                                                                                                                                |
+| `blockResources`   | `blockResources`   | boolean                                               | Omitted  | Blocks images, fonts, and stylesheets from loading. Speeds up scraping and reduces bandwidth usage.                                                                                                                                                                                                                                                                                                            |
+| `waitForSelector`  | `waitForSelector`  | string                                                | Omitted  | Waits until a specific CSS selector or text appears on the page before returning it, such as #results. Up to 500 characters. Useful for content that loads asynchronously after the initial page load.                                                                                                                                                                                                         |
+| `geoCode`          | `geoCode`          | string                                                | Omitted  | Two-letter country code to load the page from, such as us or gb. Defaults to the United States.                                                                                                                                                                                                                                                                                                                |
+| `maxAge`           | `maxAge`           | integer                                               | `0`      | Serves a cached result of the same request when it is newer than this age, in milliseconds, such as 86400000 for 1 day. Up to 604800000 (7 days). 0, the default, always scrapes fresh. A cached result costs the same tokens as the original scrape.                                                                                                                                                          |
+| `maxRetries`       | `maxRetries`       | integer                                               | Omitted  | Maximum number of retries for the request. Omit for no limit.                                                                                                                                                                                                                                                                                                                                                  |
+| `screenshot`       | `screenshot`       | string: `full`, `top`, or `<width>x<height>[-<zoom>]` | Omitted  | Also captures a screenshot of the rendered page as a base64-encoded PNG: full captures the entire scroll height, top captures the first viewport, and <width>x<height> sets the viewport size in pixels with an optional -<zoom> percent, such as 1280x800 or 1920x1080-75. Width and height range from 100 to 3840, zoom from 25 to 300. Setting it forces browser rendering. Leave it out for no screenshot. |
+
+Always sent: `html=true`, `markdown=false`, and `saveResult=true`.
 
 #### Example
 
@@ -196,7 +195,7 @@ Retrieve the raw HTML of a page. Browser rendering is optional.
 
 #### Response
 
-The default response body is HTML text. Additional controls can cause the API to return JSON; the returned structure is preserved.
+The default response body is HTML text. Setting `screenshot` can make the API return JSON with the HTML and the base64 screenshot; the returned structure is preserved.
 
 MCP tool result; the API response envelope is in `structuredContent`:
 
@@ -224,27 +223,23 @@ MCP tool result; the API response envelope is in `structuredContent`:
 
 #### Description
 
-Retrieve a page as Markdown. Including HTML also enables browser rendering and returns both outputs as JSON.
+Retrieve a page as Markdown. Browser rendering is optional.
 
 #### Parameters
 
-| Parameter          | HTTP field         | Type                                                               | Default              | Description                                                                                     |
-| ------------------ | ------------------ | ------------------------------------------------------------------ | -------------------- | ----------------------------------------------------------------------------------------------- |
-| `url`              | `url`              | string                                                             | Required             | Absolute HTTP or HTTPS URL of the page to process.                                              |
-| `timeout`          | `timeout`          | integer                                                            | `300`                | Page load timeout in seconds, from 1 to 300. The HTTP request allows 30 additional seconds.     |
-| `geoCode`          | `geoCode`          | string                                                             | `"us"`               | Two-letter country code to load the page from, sent in lowercase.                               |
-| `proxyCountry`     | `proxyCountry`     | string                                                             | `"us"`               | Two-letter country code of the proxy server, sent in lowercase.                                 |
-| `super`            | `super`            | boolean                                                            | `false`              | Whether to route the request through real devices.                                              |
-| `waitUntil`        | `waitUntil`        | string: `domcontentloaded`, `load`, `networkidle0`, `networkidle2` | `"domcontentloaded"` | Navigation completion event to wait for: domcontentloaded, load, networkidle0, or networkidle2. |
-| `proxy`            | `proxy`            | string                                                             | Omitted              | Custom proxy URL used to load the page.                                                         |
-| `maxRetries`       | `maxRetries`       | integer                                                            | Omitted              | Maximum number of retries, as a nonnegative integer. Omit this parameter for no limit.          |
-| `saveResult`       | `saveResult`       | boolean                                                            | `false`              | Whether to save the result to the dashboard Result tab.                                         |
-| `blockResources`   | `blockResources`   | boolean                                                            | `false`              | Whether to block images, fonts, and stylesheets while loading the page.                         |
-| `waitForSelector`  | `waitForSelector`  | string                                                             | Omitted              | Wait for the page to contain the specified CSS selector before returning the result.            |
-| `returnCookie`     | `returnCookie`     | boolean                                                            | `false`              | Whether to include browser session cookies in the response.                                     |
-| `browserRendering` | `browserRendering` | boolean                                                            | `false`              | Whether to render the page in a browser before returning the result.                            |
-| `warmStart`        | `warmStart`        | boolean                                                            | `false`              | Whether to enable warm start for more reliable scraping, at the cost of additional latency.     |
-| `html`             | `html`             | boolean                                                            | `false`              | Whether to include the page HTML in the response.                                               |
+| Parameter          | HTTP field         | Type    | Default  | Description                                                                                                                                                                                                                                                                                                                                 |
+| ------------------ | ------------------ | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`              | `url`              | string  | Required | URL of the page to scrape. Must include the protocol (https://).                                                                                                                                                                                                                                                                            |
+| `browserRendering` | `browserRendering` | boolean | Omitted  | Controls whether the page is loaded in a browser. Leave it out to load the page without a browser first and switch to a browser automatically if the request is blocked. Set true to always load the page in a browser, which JavaScript-heavy sites, SPAs, and pages that load content dynamically need. Set false to never use a browser. |
+| `timeout`          | `timeout`          | integer | Omitted  | Maximum seconds to wait for the scrape before the request times out, from 1 to 330. Increase for slow or complex pages. Defaults to 300.                                                                                                                                                                                                    |
+| `geoCode`          | `geoCode`          | string  | Omitted  | Two-letter country code to load the page from, such as us or gb. Defaults to the United States.                                                                                                                                                                                                                                             |
+| `warmStart`        | `warmStart`        | boolean | Omitted  | Opens the site's home page first to warm the session before loading the target URL. Useful for sites that expect a normal browsing session before deeper pages.                                                                                                                                                                             |
+| `blockResources`   | `blockResources`   | boolean | Omitted  | Blocks images, fonts, and stylesheets from loading. Speeds up scraping and reduces bandwidth usage.                                                                                                                                                                                                                                         |
+| `waitForSelector`  | `waitForSelector`  | string  | Omitted  | Waits until a specific CSS selector or text appears on the page before returning it, such as #results. Up to 500 characters. Useful for content that loads asynchronously after the initial page load.                                                                                                                                      |
+| `maxAge`           | `maxAge`           | integer | `0`      | Serves a cached result of the same request when it is newer than this age, in milliseconds, such as 86400000 for 1 day. Up to 604800000 (7 days). 0, the default, always scrapes fresh. A cached result costs the same tokens as the original scrape.                                                                                       |
+| `maxRetries`       | `maxRetries`       | integer | Omitted  | Maximum number of retries for the request. Omit for no limit.                                                                                                                                                                                                                                                                               |
+
+Always sent: `markdown=true`, `html=false`, `screenshot=false`, and `saveResult=true`.
 
 #### Example
 
@@ -253,7 +248,6 @@ Retrieve a page as Markdown. Including HTML also enables browser rendering and r
   "name": "scrapeMarkdown",
   "arguments": {
     "url": "https://example.com",
-    "html": true,
     "warmStart": true
   }
 }
@@ -261,34 +255,11 @@ Retrieve a page as Markdown. Including HTML also enables browser rendering and r
 
 #### Response
 
-The default response body is Markdown text. Enabling HTML returns JSON containing both HTML and Markdown.
+The response body is Markdown text.
 
 MCP tool result; the API response envelope is in `structuredContent`:
 
-**With html enabled**
-
-```json
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "[Formatted JSON matching structuredContent]"
-    }
-  ],
-  "structuredContent": {
-    "status_code": 200,
-    "data": {
-      "html": "<html>...</html>",
-      "markdown": "# Example page\n\n..."
-    },
-    "headers": {
-      "content-type": "application/json"
-    }
-  }
-}
-```
-
-**Default Markdown text**
+**Markdown text**
 
 ```json
 {
@@ -312,27 +283,21 @@ MCP tool result; the API response envelope is in `structuredContent`:
 
 #### Description
 
-Capture a base64 screenshot of the full page or top viewport. Browser rendering is always enabled.
+Capture a base64 PNG screenshot of the full page, the top viewport, or a custom viewport size. Browser rendering is always enabled.
 
 #### Parameters
 
-| Parameter         | HTTP field        | Type                                                               | Default              | Description                                                                                     |
-| ----------------- | ----------------- | ------------------------------------------------------------------ | -------------------- | ----------------------------------------------------------------------------------------------- |
-| `url`             | `url`             | string                                                             | Required             | Absolute HTTP or HTTPS URL of the page to process.                                              |
-| `timeout`         | `timeout`         | integer                                                            | `300`                | Page load timeout in seconds, from 1 to 300. The HTTP request allows 30 additional seconds.     |
-| `geoCode`         | `geoCode`         | string                                                             | `"us"`               | Two-letter country code to load the page from, sent in lowercase.                               |
-| `proxyCountry`    | `proxyCountry`    | string                                                             | `"us"`               | Two-letter country code of the proxy server, sent in lowercase.                                 |
-| `super`           | `super`           | boolean                                                            | `false`              | Whether to route the request through real devices.                                              |
-| `waitUntil`       | `waitUntil`       | string: `domcontentloaded`, `load`, `networkidle0`, `networkidle2` | `"domcontentloaded"` | Navigation completion event to wait for: domcontentloaded, load, networkidle0, or networkidle2. |
-| `proxy`           | `proxy`           | string                                                             | Omitted              | Custom proxy URL used to load the page.                                                         |
-| `maxRetries`      | `maxRetries`      | integer                                                            | Omitted              | Maximum number of retries, as a nonnegative integer. Omit this parameter for no limit.          |
-| `saveResult`      | `saveResult`      | boolean                                                            | `false`              | Whether to save the result to the dashboard Result tab.                                         |
-| `blockResources`  | `blockResources`  | boolean                                                            | `false`              | Whether to block images, fonts, and stylesheets while loading the page.                         |
-| `waitForSelector` | `waitForSelector` | string                                                             | Omitted              | Wait for the page to contain the specified CSS selector before returning the result.            |
-| `returnCookie`    | `returnCookie`    | boolean                                                            | `false`              | Whether to include browser session cookies in the response.                                     |
-| `screenshot`      | `screenshot`      | string: `full`, `top`                                              | `"full"`             | Screenshot area to capture: full for the entire page or top for the top viewport.               |
-| `html`            | `html`            | boolean                                                            | `true`               | Whether to include the page HTML in the response.                                               |
-| `markdown`        | `markdown`        | boolean                                                            | `false`              | Whether to include the page Markdown in the response.                                           |
+| Parameter         | HTTP field        | Type                                                  | Default  | Description                                                                                                                                                                                                                                                                                                                        |
+| ----------------- | ----------------- | ----------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`             | `url`             | string                                                | Required | URL of the page to scrape. Must include the protocol (https://).                                                                                                                                                                                                                                                                   |
+| `screenshot`      | `screenshot`      | string: `full`, `top`, or `<width>x<height>[-<zoom>]` | `"full"` | Screenshot area: full captures the entire scroll height (the default), top captures the first viewport, and <width>x<height> sets the viewport size in pixels with an optional -<zoom> percent, such as 1280x800 or 1920x1080-75. Width and height range from 100 to 3840, zoom from 25 to 300. The image is a base64-encoded PNG. |
+| `timeout`         | `timeout`         | integer                                               | Omitted  | Maximum seconds to wait for the scrape before the request times out, from 1 to 330. Increase for slow or complex pages. Defaults to 300.                                                                                                                                                                                           |
+| `geoCode`         | `geoCode`         | string                                                | Omitted  | Two-letter country code to load the page from, such as us or gb. Defaults to the United States.                                                                                                                                                                                                                                    |
+| `waitForSelector` | `waitForSelector` | string                                                | Omitted  | Waits until a specific CSS selector or text appears on the page before returning it, such as #results. Up to 500 characters. Useful for content that loads asynchronously after the initial page load.                                                                                                                             |
+| `maxAge`          | `maxAge`          | integer                                               | `0`      | Serves a cached result of the same request when it is newer than this age, in milliseconds, such as 86400000 for 1 day. Up to 604800000 (7 days). 0, the default, always scrapes fresh. A cached result costs the same tokens as the original scrape.                                                                              |
+| `maxRetries`      | `maxRetries`      | integer                                               | Omitted  | Maximum number of retries for the request. Omit for no limit.                                                                                                                                                                                                                                                                      |
+
+Always sent: `browserRendering=true`, `html=false`, `markdown=false`, and `saveResult=true`.
 
 #### Example
 
@@ -341,16 +306,14 @@ Capture a base64 screenshot of the full page or top viewport. Browser rendering 
   "name": "getScreenshot",
   "arguments": {
     "url": "https://example.com",
-    "screenshot": "top",
-    "html": false,
-    "markdown": true
+    "screenshot": "1280x800"
   }
 }
 ```
 
 #### Response
 
-The response body contains a base64 screenshot and requested page outputs. The API can still include HTML when HTML output is disabled.
+The response body contains the base64 screenshot. The API can still include an html field, empty or not, although HTML output is off.
 
 MCP tool result; the API response envelope is in `structuredContent`:
 
@@ -367,9 +330,7 @@ MCP tool result; the API response envelope is in `structuredContent`:
   "structuredContent": {
     "status_code": 200,
     "data": {
-      "html": "<html>...</html>",
-      "screenshot": "BASE64_PNG_DATA",
-      "markdown": "# Example page\n\n..."
+      "screenshot": "BASE64_PNG_DATA"
     },
     "headers": {
       "content-type": "application/json; charset=utf-8"
@@ -386,13 +347,13 @@ Extract a website's colors, typography, logos, and social links as JSON.
 
 #### Parameters
 
-| Parameter | HTTP field | Type   | Default  | Description                                        |
-| --------- | ---------- | ------ | -------- | -------------------------------------------------- |
-| `url`     | `url`      | string | Required | Absolute HTTP or HTTPS URL of the page to process. |
+| Parameter | HTTP field | Type   | Default  | Description                                                      |
+| --------- | ---------- | ------ | -------- | ---------------------------------------------------------------- |
+| `url`     | `url`      | string | Required | URL of the page to scrape. Must include the protocol (https://). |
 
 The HTTP deadline is fixed at 120 seconds. It is not a service parameter.
 
-The request uses `action=brand-scraping` and `bundle=none`; page controls are not accepted.
+The request always sends `action=brand-scraping` and `bundle=none`. No other parameters are accepted.
 
 #### Example
 
@@ -461,23 +422,22 @@ Extract structured JSON from a page using a natural-language prompt. Append Json
 
 #### Parameters
 
-| Parameter          | HTTP field         | Type                                                               | Default                                       | Description                                                                                             |
-| ------------------ | ------------------ | ------------------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `url`              | `url`              | string                                                             | Required                                      | Absolute HTTP or HTTPS URL of the page to process.                                                      |
-| `timeout`          | `timeout`          | integer                                                            | `300`                                         | Page load timeout in seconds, from 1 to 300. The HTTP request allows 30 additional seconds.             |
-| `geoCode`          | `geoCode`          | string                                                             | `"us"`                                        | Two-letter country code to load the page from, sent in lowercase.                                       |
-| `proxyCountry`     | `proxyCountry`     | string                                                             | `"us"`                                        | Two-letter country code of the proxy server, sent in lowercase.                                         |
-| `super`            | `super`            | boolean                                                            | `false`                                       | Whether to route the request through real devices.                                                      |
-| `waitUntil`        | `waitUntil`        | string: `domcontentloaded`, `load`, `networkidle0`, `networkidle2` | `"domcontentloaded"`                          | Navigation completion event to wait for: domcontentloaded, load, networkidle0, or networkidle2.         |
-| `proxy`            | `proxy`            | string                                                             | Omitted                                       | Custom proxy URL used to load the page.                                                                 |
-| `maxRetries`       | `maxRetries`       | integer                                                            | Omitted                                       | Maximum number of retries, as a nonnegative integer. Omit this parameter for no limit.                  |
-| `saveResult`       | `saveResult`       | boolean                                                            | `false`                                       | Whether to save the result to the dashboard Result tab.                                                 |
-| `prompt`           | `prompt`           | string                                                             | `"Extract all data as complete as possible."` | Instructions describing the data to extract. Append Json Schema: and a JSON schema to shape the output. |
-| `browserRendering` | `browserRendering` | boolean                                                            | `false`                                       | Whether to render the page in a browser before returning the result.                                    |
-| `html`             | `html`             | boolean                                                            | `false`                                       | Whether to include the page HTML in the response.                                                       |
-| `screenshot`       | `screenshot`       | boolean                                                            | `false`                                       | Whether to include a base64 screenshot in the response.                                                 |
+| Parameter          | HTTP field         | Type    | Default  | Description                                                                                                                                                                                                                                                                                                                                 |
+| ------------------ | ------------------ | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`              | `url`              | string  | Required | URL of the page to scrape. Must include the protocol (https://).                                                                                                                                                                                                                                                                            |
+| `prompt`           | `prompt`           | string  | Omitted  | Description of the data shape you want back, for example fields like title, price, and rating. The prompt only parses the scraped content; it cannot instruct the scraper itself. To shape the output with a JSON schema, append it to the prompt as a Json Schema: section. Defaults to "Extract all data as complete as possible."        |
+| `html`             | `html`             | boolean | `true`   | Returns the raw HTML of the scraped page in the response. On by default; set false to leave it out.                                                                                                                                                                                                                                         |
+| `screenshot`       | `screenshot`       | boolean | `false`  | Captures a screenshot of the rendered page as a base64-encoded image. Useful for verifying what the scraper actually saw. Off by default.                                                                                                                                                                                                   |
+| `browserRendering` | `browserRendering` | boolean | Omitted  | Controls whether the page is loaded in a browser. Leave it out to load the page without a browser first and switch to a browser automatically if the request is blocked. Set true to always load the page in a browser, which JavaScript-heavy sites, SPAs, and pages that load content dynamically need. Set false to never use a browser. |
+| `waitForSelector`  | `waitForSelector`  | string  | Omitted  | Waits until a specific CSS selector or text appears on the page before returning it, such as #results. Up to 500 characters. Useful for content that loads asynchronously after the initial page load.                                                                                                                                      |
+| `warmStart`        | `warmStart`        | boolean | Omitted  | Opens the site's home page first to warm the session before loading the target URL. Useful for sites that expect a normal browsing session before deeper pages.                                                                                                                                                                             |
+| `blockResources`   | `blockResources`   | boolean | Omitted  | Blocks images, fonts, and stylesheets from loading. Speeds up scraping and reduces bandwidth usage.                                                                                                                                                                                                                                         |
+| `timeout`          | `timeout`          | integer | Omitted  | Maximum seconds to wait for the scrape before the request times out, from 1 to 330. Increase for slow or complex pages. Defaults to 300.                                                                                                                                                                                                    |
+| `geoCode`          | `geoCode`          | string  | Omitted  | Two-letter country code to load the page from, such as us or gb. Defaults to the United States.                                                                                                                                                                                                                                             |
+| `maxAge`           | `maxAge`           | integer | `0`      | Serves a cached result of the same request when it is newer than this age, in milliseconds, such as 86400000 for 1 day. Up to 604800000 (7 days). 0, the default, always scrapes fresh. A cached result costs the same tokens as the original scrape.                                                                                       |
+| `maxRetries`       | `maxRetries`       | integer | Omitted  | Maximum number of retries for the request. Omit for no limit.                                                                                                                                                                                                                                                                               |
 
-The request uses `agent=general` and GET. If the encoded URL exceeds 8,000 characters, it switches to POST with `url`, `prompt`, and `agent` in the body; page controls remain in the query.
+Always sent: `agent=general` and `saveResult=true`. The request uses GET. If the encoded URL exceeds 8,000 characters, it switches to POST with `url`, `prompt`, and `agent` in the body; the other settings stay in the query.
 
 #### Example
 
@@ -494,7 +454,7 @@ The request uses `agent=general` and GET. If the encoded URL exceeds 8,000 chara
 
 #### Response
 
-Extraction results are in the API body's data field and follow the requested schema. Response metadata includes thread_id, token_usage, status, error, runtime, and cookies. html, markdown, and screenshot can be empty strings when not requested.
+Extraction results are in the API body's data field and follow the requested schema. Response metadata includes thread_id, token_usage, status, error, runtime, and cookies. html is included by default; markdown, and screenshot unless requested, can be empty strings.
 
 MCP tool result; the API response envelope is in `structuredContent`:
 
@@ -520,7 +480,7 @@ MCP tool result; the API response envelope is in `structuredContent`:
       ],
       "thread_id": "THREAD_ID",
       "token_usage": 1,
-      "html": "",
+      "html": "<html>...</html>",
       "markdown": "",
       "screenshot": "",
       "status": "Results ready",
@@ -543,11 +503,13 @@ Search the web and return ranked results with titles, URLs, descriptions, and so
 
 #### Parameters
 
-| Parameter    | HTTP field   | Type    | Default  | Description                                                                                       |
-| ------------ | ------------ | ------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `query`      | `query`      | string  | Required | Search query text, trimmed before sending, containing 1 to 1000 characters.                       |
-| `country`    | `country`    | string  | `"us"`   | Two-letter country code to search from, sent in lowercase.                                        |
-| `numResults` | `numResults` | integer | `10`     | Number of search results to request, as an integer from 10 to 100. Fewer results may be returned. |
+| Parameter    | HTTP field   | Type    | Default  | Description                                                                              |
+| ------------ | ------------ | ------- | -------- | ---------------------------------------------------------------------------------------- |
+| `query`      | `query`      | string  | Required | The search query, from 1 to 1000 characters.                                             |
+| `country`    | `country`    | string  | Omitted  | Two-letter country code to run the search from. Defaults to the United States.           |
+| `numResults` | `numResults` | integer | Omitted  | How many results to return, from 10 to 100. The search may return fewer. Defaults to 10. |
+
+Always sent: `action=websearch`.
 
 The HTTP deadline is fixed at 120 seconds. It is not a service parameter.
 
@@ -635,7 +597,7 @@ HTTP and network failures set `isError: true` on the MCP tool result and include
 
 ### Configuration
 
-Every client gets the same seven tools. ChatGPT and Codex sign-ins (the `/mcp/chatgpt` route, or `/mcp` with a `https://chatgpt.com/oauth/` client) get the page tools without `super` and `proxy`, and a call that sets either is rejected (`super` stays `false`). Their `proxyCountry` has no default: omitted, no proxy country is sent (other clients send `us`). Every other input and default is the same on all surfaces, and `/mcp/chatgpt` shares the sign-in audience of `/mcp`. Tools authenticate through the connection.
+Every client, ChatGPT and Codex included, gets the same seven tools with the same inputs and defaults. Tools authenticate through the connection.
 
 For local stdio:
 
@@ -657,7 +619,7 @@ For local HTTP, run `TRANSPORT=http npm start` after building; the default endpo
 
 OAuth access tokens are verified against the configured issuer's JWKS and must include this resource in their audience. API keys are validated before tool execution. HTTP requests use their caller's credential; stdio reads server environment credentials. Metadata discovery is available at `/.well-known/oauth-protected-resource` and the `/mcp` path-suffixed variant.
 
-All six scraping/search tools require `scrape:read`. Status requires `account:read`. These are the only application scopes advertised in OAuth resource metadata; authorization-server metadata also offers `offline_access` for refresh tokens. The scraper gateway checks the same token again: `GET` requests need `scrape:read`, and the `POST` that `scrapeJson` switches to above 8,000 encoded URL characters needs `scrape:write`, so OAuth connections without that scope receive 403 for such requests. HTML, Markdown, screenshot, and JSON tools advertise `readOnlyHint: false` because `saveResult` can persist data; status, brand, and search advertise `readOnlyHint: true`. All tools advertise `destructiveHint: false`; status has `openWorldHint: false` and scraping/search have `openWorldHint: true`.
+All six scraping/search tools require `scrape:read`. Status requires `account:read`. These are the only application scopes advertised in OAuth resource metadata; authorization-server metadata also offers `offline_access` for refresh tokens. The scraper gateway checks the same token again: `GET` requests need `scrape:read`, and the `POST` that `scrapeJson` switches to above 8,000 encoded URL characters needs `scrape:write`, so OAuth connections without that scope receive 403 for such requests. HTML, Markdown, screenshot, and JSON tools advertise `readOnlyHint: false` because they always save the result to the dashboard Result tab (`saveResult=true`); status, brand, and search advertise `readOnlyHint: true`. All tools advertise `destructiveHint: false`; status has `openWorldHint: false` and scraping/search have `openWorldHint: true`.
 
 Supported hosts can render self-contained search and account widgets. The account widget calculates its visual usage display locally from the raw tool result. Widget display does not change the raw status response.
 
@@ -686,7 +648,9 @@ For 401, reconnect through OAuth or check the bearer key. For `insufficient_scop
 
 ## Migration
 
-Status keeps its tool name and returns the raw API body. Replace `scraperAPI` with `scrapeHtml`, `scrapeMarkdown`, or `getScreenshot`. Brand and JSON extraction are separate tools. Search uses `query`, `country`, and `numResults`. All clients now receive the full CLI-aligned input schema. Refresh cached tool definitions. OAuth connections need `scrape:read` for scraping/search; connections that already hold it keep working. API keys continue to work without OAuth scope approval.
+Status keeps its tool name and returns the raw API body. Replace `scraperAPI` with `scrapeHtml`, `scrapeMarkdown`, or `getScreenshot`. Brand and JSON extraction are separate tools. Search uses `query`, `country`, and `numResults`. OAuth connections need `scrape:read` for scraping/search; connections that already hold it keep working. API keys continue to work without OAuth scope approval.
+
+0.6.0 follows the API docs for every tool's inputs. Removed: `super`, `proxy`, `proxyCountry`, `waitUntil`, `returnCookie` and `saveResult` on the page tools, `html` on `scrapeMarkdown`, and `html`, `markdown` and `blockResources` on `getScreenshot`; a call that sets one is rejected. Page results are always saved to the Result tab. Optional inputs are sent only when set, so `geoCode`, `timeout`, `browserRendering`, `country` and `numResults` no longer default to `us`, `300`, `false`, `us` and `10` on our side (the API applies its own defaults). Added: `maxAge` on the page tools, `screenshot` on `scrapeHtml`, custom viewport sizes on `getScreenshot`, and `waitForSelector`, `warmStart` and `blockResources` on `scrapeJson`, whose `html` now defaults to `true`. The ChatGPT-only `/mcp/chatgpt` endpoint is gone; ChatGPT and Codex use `/mcp` like every client. Refresh cached tool definitions.
 
 ## Development and testing
 

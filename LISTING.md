@@ -113,17 +113,17 @@ Connect MrScraper MCP to this agent. Detect the current MCP client and configure
 
 ## Tools
 
-| Tool             | What it does                                                                                                                    |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `status`         | Return the raw account status API response without summarizing, redacting body fields, or adding calculated fields.             |
-| `scrapeHtml`     | Retrieve the raw HTML of a page. Browser rendering is optional.                                                                 |
-| `scrapeMarkdown` | Retrieve a page as Markdown. Including HTML also enables browser rendering and returns both outputs as JSON.                    |
-| `getScreenshot`  | Capture a base64 screenshot of the full page or top viewport. Browser rendering is always enabled.                              |
-| `scrapeBrand`    | Extract a website's colors, typography, logos, and social links as JSON.                                                        |
-| `scrapeJson`     | Extract structured JSON from a page using a natural-language prompt. Append Json Schema: and a JSON schema to shape the output. |
-| `webSearch`      | Search the web and return ranked results with titles, URLs, descriptions, and sources.                                          |
+| Tool             | What it does                                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `status`         | Return the raw account status API response without summarizing, redacting body fields, or adding calculated fields.                 |
+| `scrapeHtml`     | Retrieve the raw HTML of a page. Browser rendering and a screenshot are optional.                                                   |
+| `scrapeMarkdown` | Retrieve a page as Markdown. Browser rendering is optional.                                                                         |
+| `getScreenshot`  | Capture a base64 PNG screenshot of the full page, the top viewport, or a custom viewport size. Browser rendering is always enabled. |
+| `scrapeBrand`    | Extract a website's colors, typography, logos, and social links as JSON.                                                            |
+| `scrapeJson`     | Extract structured JSON from a page using a natural-language prompt. Append Json Schema: and a JSON schema to shape the output.     |
+| `webSearch`      | Search the web and return ranked results with titles, URLs, descriptions, and sources.                                              |
 
-The six scraping/search tools consume quota. `status`, `scrapeBrand`, and `webSearch` are read-only. The other tools are marked non-read-only because they support saving results with `saveResult` on every client surface. Hosts with MCP Apps support also show search results and account usage widgets.
+The six scraping/search tools consume quota. `status`, `scrapeBrand`, and `webSearch` are read-only. The other tools are marked non-read-only because they always save the result to the dashboard Result tab. Hosts with MCP Apps support also show search results and account usage widgets.
 
 ## Connect manually
 

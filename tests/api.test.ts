@@ -104,81 +104,160 @@ describe("HTTP helpers", () => {
   });
 });
 
-describe("CLI service contract", () => {
+describe("integration service contract", () => {
   it.each([
-    [
-      "HTML",
-      scrapeHtml,
-      {
-        html: "true",
-        markdown: "false",
-        screenshot: "false",
-        browserRendering: "false",
-        warmStart: "false",
-        blockResources: "false",
-        returnCookie: "false",
-      },
-    ],
+    ["HTML", scrapeHtml, { html: "true", markdown: "false" }],
     [
       "Markdown",
       scrapeMarkdown,
-      {
-        html: "false",
-        markdown: "true",
-        screenshot: "false",
-        browserRendering: "false",
-        warmStart: "false",
-        blockResources: "false",
-        returnCookie: "false",
-      },
+      { markdown: "true", html: "false", screenshot: "false" },
     ],
     [
       "Screenshot",
       getScreenshot,
       {
-        html: "true",
-        markdown: "false",
         screenshot: "full",
         browserRendering: "true",
-        blockResources: "false",
-        returnCookie: "false",
+        html: "false",
+        markdown: "false",
       },
     ],
     [
       "JSON",
       scrapeJson,
-      {
-        browserRendering: "false",
-        html: "false",
-        screenshot: "false",
-        agent: "general",
-        prompt: "Extract all data as complete as possible.",
-      },
+      { agent: "general", html: "true", screenshot: "false" },
     ],
-  ] as const)("GETs %s with CLI defaults", async (_name, fn, flags) => {
-    const fetchFn = mockFetch((url, init) => {
-      expect(init.method).toBe("GET");
-      expect(init.body).toBeUndefined();
-      expect(url.origin).toBe("https://api.mrscraper.com");
-      expect(Object.fromEntries(url.searchParams)).toEqual({
-        url: "https://example.com",
-        timeout: "300",
-        geoCode: "us",
-        proxyCountry: "us",
-        super: "false",
-        waitUntil: "domcontentloaded",
-        saveResult: "false",
-        ...flags,
+  ] as const)(
+    "GETs %s with only the fixed values, saveResult and maxAge",
+    async (_name, fn, flags) => {
+      const fetchFn = mockFetch((url, init) => {
+        expect(init.method).toBe("GET");
+        expect(init.body).toBeUndefined();
+        expect(url.origin).toBe("https://api.mrscraper.com");
+        expect(Object.fromEntries(url.searchParams)).toEqual({
+          url: "https://example.com",
+          maxAge: "0",
+          saveResult: "true",
+          ...flags,
+        });
+        expect(init.headers).toMatchObject({
+          Authorization: "Bearer test",
+          "x-api-token": "test",
+        });
+        return Response.json({ ok: true });
       });
-      expect(init.headers).toMatchObject({
-        Authorization: "Bearer test",
-        "x-api-token": "test",
-      });
+      await fn("https://example.com", { token: "test", fetchFn });
+    },
+  );
+  it("forwards every documented page input the caller sets", async () => {
+    const seen: Record<string, string>[] = [];
+    const fetchFn = mockFetch((url) => {
+      seen.push(Object.fromEntries(url.searchParams));
       return Response.json({ ok: true });
     });
-    await fn("https://example.com", { token: "test", fetchFn });
+    const page = {
+      timeout: 330,
+      geoCode: "GB",
+      waitForSelector: " #results ",
+      maxAge: 86400000,
+      maxRetries: 0,
+    };
+    const loading = {
+      browserRendering: false,
+      warmStart: true,
+      blockResources: true,
+    };
+    const options = { token: "test", fetchFn, ...page };
+    await scrapeHtml("https://example.com", {
+      ...options,
+      ...loading,
+      screenshot: "1920x1080-75",
+    });
+    await scrapeMarkdown("https://example.com", { ...options, ...loading });
+    await getScreenshot("https://example.com", {
+      ...options,
+      screenshot: "top",
+    });
+    await scrapeJson("https://example.com", {
+      ...options,
+      ...loading,
+      prompt: "List the titles.",
+      html: false,
+      screenshot: true,
+    });
+    const sent = {
+      url: "https://example.com",
+      timeout: "330",
+      geoCode: "gb",
+      waitForSelector: "#results",
+      maxAge: "86400000",
+      maxRetries: "0",
+      saveResult: "true",
+    };
+    const loaded = {
+      browserRendering: "false",
+      warmStart: "true",
+      blockResources: "true",
+    };
+    expect(seen).toEqual([
+      {
+        ...sent,
+        ...loaded,
+        html: "true",
+        markdown: "false",
+        screenshot: "1920x1080-75",
+      },
+      {
+        ...sent,
+        ...loaded,
+        markdown: "true",
+        html: "false",
+        screenshot: "false",
+      },
+      {
+        ...sent,
+        screenshot: "top",
+        browserRendering: "true",
+        html: "false",
+        markdown: "false",
+      },
+      {
+        ...sent,
+        ...loaded,
+        agent: "general",
+        prompt: "List the titles.",
+        html: "false",
+        screenshot: "true",
+      },
+    ]);
   });
-  it("reads status from the CLI platform endpoint", async () => {
+  it("accepts only the documented screenshot areas", async () => {
+    const fetchFn = mockFetch(() => Response.json({ ok: true }));
+    for (const screenshot of ["full", "top", "100x3840", "1280x800-25"])
+      await getScreenshot("https://example.com", {
+        token: "test",
+        fetchFn,
+        screenshot,
+      });
+    for (const screenshot of ["side", "99x800", "1280x3841", "1280x800-301"]) {
+      await expect(
+        getScreenshot("https://example.com", {
+          token: "test",
+          fetchFn,
+          screenshot,
+        }),
+      ).rejects.toThrow(/screenshot must be/);
+      await expect(
+        scrapeHtml("https://example.com", {
+          token: "test",
+          fetchFn,
+          screenshot,
+        }),
+      ).rejects.toThrow(/screenshot must be/);
+    }
+    expect(fetchFn).toHaveBeenCalledTimes(4);
+  });
+  it("reads status from the platform endpoint", async () => {
     const fetchFn = mockFetch((url, init) => {
       expect(init.method).toBe("GET");
       expect(url.href).toBe(
@@ -193,7 +272,7 @@ describe("CLI service contract", () => {
     });
     await getSubscriptionAccountApi("test", { fetchFn });
   });
-  it("brand and search use only their CLI fields", async () => {
+  it("brand and search send only their fixed values and set fields", async () => {
     const seen: Record<string, string>[] = [];
     const fetchFn = mockFetch((url, init) => {
       expect(init.method).toBe("GET");
@@ -211,12 +290,7 @@ describe("CLI service contract", () => {
     });
     expect(seen).toEqual([
       { url: "https://example.com", action: "brand-scraping", bundle: "none" },
-      {
-        action: "websearch",
-        query: "web scraping",
-        country: "us",
-        numResults: "10",
-      },
+      { action: "websearch", query: "web scraping" },
       {
         action: "websearch",
         query: "web scraping",
@@ -225,51 +299,12 @@ describe("CLI service contract", () => {
       },
     ]);
   });
-  it("forces Markdown rendering and captures top screenshots", async () => {
-    const calls: URL[] = [];
-    const fetchFn = mockFetch((url) => {
-      calls.push(url);
-      return Response.json({
-        html: "keep",
-        markdown: "# Test",
-        screenshot: "base64",
-      });
-    });
-    const md = await scrapeMarkdown("https://example.com", {
-      token: "test",
-      fetchFn,
-      html: true,
-      browserRendering: false,
-    });
-    await getScreenshot("https://example.com", {
-      token: "test",
-      fetchFn,
-      screenshot: "top",
-      html: false,
-      markdown: true,
-      maxRetries: 0,
-      saveResult: true,
-      returnCookie: true,
-    });
-    expect(calls[0]!.searchParams.get("browserRendering")).toBe("true");
-    expect(md.data).toMatchObject({ html: "keep" });
-    expect(Object.fromEntries(calls[1]!.searchParams)).toMatchObject({
-      screenshot: "top",
-      browserRendering: "true",
-      html: "false",
-      markdown: "true",
-      maxRetries: "0",
-      saveResult: "true",
-      returnCookie: "true",
-    });
-  });
-  it("JSON defaults and long-prompt POST fallback", async () => {
+  it("JSON long-prompt POST fallback", async () => {
     const calls: Array<{ url: URL; init: RequestInit }> = [];
     const fetchFn = mockFetch((url, init) => {
       calls.push({ url, init });
       return Response.json({ ok: true });
     });
-    await scrapeJson("https://example.com", { token: "test", fetchFn });
     const prompt = "é &".repeat(4000);
     await scrapeJson("https://example.com", {
       token: "test",
@@ -277,27 +312,19 @@ describe("CLI service contract", () => {
       prompt,
       maxRetries: 0,
     });
-    expect(Object.fromEntries(calls[0]!.url.searchParams)).toMatchObject({
-      agent: "general",
-      prompt: "Extract all data as complete as possible.",
-      html: "false",
-      screenshot: "false",
-    });
-    expect(calls[1]!.init.method).toBe("POST");
-    expect(JSON.parse(String(calls[1]!.init.body))).toEqual({
+    expect(calls[0]!.init.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
       url: "https://example.com",
       agent: "general",
       prompt,
     });
-    for (const key of [
-      "url",
-      "agent",
-      "prompt",
-      "token",
-      "blockResources",
-      "returnCookie",
-    ])
-      expect(calls[1]!.url.searchParams.has(key)).toBe(false);
+    expect(Object.fromEntries(calls[0]!.url.searchParams)).toEqual({
+      html: "true",
+      screenshot: "false",
+      maxRetries: "0",
+      maxAge: "0",
+      saveResult: "true",
+    });
   });
   it("OAuth JWT credentials stay only in Authorization", async () => {
     const fetchFn = mockFetch((url, init) => {
@@ -314,22 +341,3 @@ describe("CLI service contract", () => {
     });
   });
 });
-
-it.each([scrapeHtml, scrapeMarkdown])(
-  "forwards warmStart booleans for %s",
-  async (operation) => {
-    const seen: string[] = [];
-    const fetchFn = mockFetch((url) => {
-      seen.push(url.searchParams.get("warmStart")!);
-      return Response.json({ ok: true });
-    });
-    for (const warmStart of [false, true]) {
-      await operation("https://example.com", {
-        token: "test",
-        fetchFn,
-        warmStart,
-      });
-    }
-    expect(seen).toEqual(["false", "true"]);
-  },
-);
