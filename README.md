@@ -76,7 +76,7 @@ The tools take the parameters documented for each service in the [API reference]
 - An optional parameter is sent only when you set it, so the API's own default applies otherwise. For example, leaving `browserRendering` out loads the page without a browser first and switches to one if the request is blocked, while `false` never uses a browser.
 - HTML, Markdown, screenshots, and JSON extraction always send `saveResult=true`, so every result is saved to the dashboard Result tab. They send `maxAge=0` (always scrape fresh) unless you set a cache age.
 - Each tool sends its own fixed values: `html=true` and `markdown=false` for HTML; `markdown=true`, `html=false`, and `screenshot=false` for Markdown; `browserRendering=true`, `html=false`, and `markdown=false` for screenshots; `agent=general` for JSON; `action=brand-scraping` and `bundle=none` for brand; `action=websearch` for search.
-- `tokenCap`, `action`, real-device routing, custom proxies, proxy countries, cookies, and navigation events are not available. A call that sets one of them is rejected.
+- A call that sets a parameter not listed for its tool is rejected.
 
 Every tool's table below lists its exact parameters, types, and the defaults the server sends.
 
@@ -645,12 +645,6 @@ Trusted local origins, `claude.ai`, `chatgpt.com`, and configured exact origins 
 ### Troubleshooting
 
 For 401, reconnect through OAuth or check the bearer key. For `insufficient_scope`, reconnect and approve `scrape:read` for scraping/search or `account:read` for status. Ensure the hosted URL ends in `/mcp` because the audience is bound to that resource. For origin errors, configure the exact browser origin in `MRSCRAPER_ALLOWED_ORIGINS`. Start a new client session if cached tool schemas are stale.
-
-## Migration
-
-Status keeps its tool name and returns the raw API body. Replace `scraperAPI` with `scrapeHtml`, `scrapeMarkdown`, or `getScreenshot`. Brand and JSON extraction are separate tools. Search uses `query`, `country`, and `numResults`. OAuth connections need `scrape:read` for scraping/search; connections that already hold it keep working. API keys continue to work without OAuth scope approval.
-
-0.6.0 follows the API docs for every tool's inputs. Removed: `super`, `proxy`, `proxyCountry`, `waitUntil`, `returnCookie` and `saveResult` on the page tools, `html` on `scrapeMarkdown`, and `html`, `markdown` and `blockResources` on `getScreenshot`; a call that sets one is rejected. Page results are always saved to the Result tab. Optional inputs are sent only when set, so `geoCode`, `timeout`, `browserRendering`, `country` and `numResults` no longer default to `us`, `300`, `false`, `us` and `10` on our side (the API applies its own defaults). Added: `maxAge` on the page tools, `screenshot` on `scrapeHtml`, custom viewport sizes on `getScreenshot`, and `waitForSelector`, `warmStart` and `blockResources` on `scrapeJson`, whose `html` now defaults to `true`. The ChatGPT-only `/mcp/chatgpt` endpoint is gone; ChatGPT and Codex use `/mcp` like every client. Refresh cached tool definitions.
 
 ## Development and testing
 
