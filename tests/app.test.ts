@@ -8,13 +8,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpApp } from "../src/app.js";
 import {
-  CHATGPT_MCP_PATH,
   DEFAULT_GLAMA_CLAIM,
   GLAMA_CLAIM_PATHS,
   TOOL_NAMES,
   VERSION,
 } from "../src/config.js";
-import { CHATGPT_HIDDEN_INPUTS } from "../src/tools.js";
 
 const closers: Array<() => Promise<void>> = [];
 
@@ -187,47 +185,6 @@ describe("HTTP application", () => {
       await client.close();
     }
   });
-
-  it.each([CHATGPT_MCP_PATH, `${CHATGPT_MCP_PATH}/`, "/MCP/ChatGPT"])(
-    "offers the /mcp page options on %s without the ChatGPT-hidden inputs",
-    async (path) => {
-      const { baseUrl } = await startApp({
-        authEnabled: true,
-        validateToken: async (token) => token === "valid-key",
-      });
-      const pageOptions = async (endpoint: string) => {
-        const client = new Client({ name: "surface-test", version: "1" });
-        await client.connect(
-          new StreamableHTTPClientTransport(new URL(`${baseUrl}${endpoint}`), {
-            authProvider: { token: async () => "valid-key" },
-          }),
-        );
-        try {
-          const { tools } = await client.listTools();
-          expect(tools.map((tool) => tool.name)).toEqual(TOOL_NAMES);
-          const scraper = tools.find((tool) => tool.name === "scrapeHtml")!;
-          return Object.keys(scraper.inputSchema.properties ?? {}).sort();
-        } finally {
-          await client.close();
-        }
-      };
-      const full = await pageOptions("/mcp");
-      expect(full).toEqual(
-        expect.arrayContaining([
-          "proxy",
-          "returnCookie",
-          "saveResult",
-          "super",
-        ]),
-      );
-      expect(await pageOptions(path)).toEqual(
-        full.filter(
-          (input) =>
-            !(CHATGPT_HIDDEN_INPUTS as readonly string[]).includes(input),
-        ),
-      );
-    },
-  );
 
   it("supports the current MCP protocol negotiation", async () => {
     const { baseUrl } = await startApp({

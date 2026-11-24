@@ -8,8 +8,10 @@ import {
   scrapeJson,
   webSearch,
   getSubscriptionAccountApi,
+  isScreenshotArea,
+  MAX_AGE_LIMIT,
+  SCREENSHOT_AREA_PATTERN,
 } from "./api.js";
-import { type ToolSurface } from "./config.js";
 import { widgetMeta } from "./widgets/index.js";
 
 export interface ToolDependencies {
@@ -29,148 +31,151 @@ export const apiResponseSchema = z.object({
 });
 const url = z
   .url({ protocol: /^https?$/ })
-  .describe("Absolute HTTP or HTTPS URL of the page to process.");
-const country = z
+  .describe("URL of the page to scrape. Must include the protocol (https://).");
+const countryCode = z.string().regex(/^[A-Za-z]{2}$/);
+// Inputs the caller may leave out are optional without a default, so nothing is sent for them
+// and the API's own defaults apply.
+const browserRendering = z
+  .boolean()
+  .optional()
+  .describe(
+    "Controls whether the page is loaded in a browser. Leave it out to load the page without a browser first and switch to a browser automatically if the request is blocked. Set true to always load the page in a browser, which JavaScript-heavy sites, SPAs, and pages that load content dynamically need. Set false to never use a browser.",
+  );
+const timeout = z
+  .number()
+  .int()
+  .min(1)
+  .max(330)
+  .optional()
+  .describe(
+    "Maximum seconds to wait for the scrape before the request times out, from 1 to 330. Increase for slow or complex pages. Defaults to 300.",
+  );
+const warmStart = z
+  .boolean()
+  .optional()
+  .describe(
+    "Opens the site's home page first to warm the session before loading the target URL. Useful for sites that expect a normal browsing session before deeper pages.",
+  );
+const blockResources = z
+  .boolean()
+  .optional()
+  .describe(
+    "Blocks images, fonts, and stylesheets from loading. Speeds up scraping and reduces bandwidth usage.",
+  );
+const waitForSelector = z
   .string()
-  .regex(/^[A-Za-z]{2}$/)
-  .default("us")
-  .describe("Two-letter country code to search from, sent in lowercase.");
-const page = {
-  url,
-  timeout: z
-    .number()
-    .int()
-    .min(1)
-    .max(300)
-    .default(300)
-    .describe(
-      "Page load timeout in seconds, from 1 to 300. The HTTP request allows 30 additional seconds.",
-    ),
-  geoCode: country.describe(
-    "Two-letter country code to load the page from, sent in lowercase.",
-  ),
-  proxyCountry: country.describe(
-    "Two-letter country code of the proxy server, sent in lowercase.",
-  ),
-  super: z
-    .boolean()
-    .default(false)
-    .describe("Whether to route the request through real devices."),
-  waitUntil: z
-    .enum(["domcontentloaded", "load", "networkidle0", "networkidle2"])
-    .default("domcontentloaded")
-    .describe(
-      "Navigation completion event to wait for: domcontentloaded, load, networkidle0, or networkidle2.",
-    ),
-  proxy: z
-    .string()
-    .trim()
-    .min(1)
-    .optional()
-    .describe("Custom proxy URL used to load the page."),
-  maxRetries: z
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .describe(
-      "Maximum number of retries, as a nonnegative integer. Omit this parameter for no limit.",
-    ),
-  saveResult: z
-    .boolean()
-    .default(false)
-    .describe("Whether to save the result to the dashboard Result tab."),
-};
-const loading = {
-  blockResources: z
-    .boolean()
-    .default(false)
-    .describe(
-      "Whether to block images, fonts, and stylesheets while loading the page.",
-    ),
-  waitForSelector: z
-    .string()
-    .trim()
-    .min(1)
-    .optional()
-    .describe(
-      "Wait for the page to contain the specified CSS selector before returning the result.",
-    ),
-  returnCookie: z
-    .boolean()
-    .default(false)
-    .describe("Whether to include browser session cookies in the response."),
-};
+  .trim()
+  .min(1)
+  .max(500)
+  .optional()
+  .describe(
+    "Waits until a specific CSS selector or text appears on the page before returning it, such as #results. Up to 500 characters. Useful for content that loads asynchronously after the initial page load.",
+  );
+const geoCode = countryCode
+  .optional()
+  .describe(
+    "Two-letter country code to load the page from, such as us or gb. Defaults to the United States.",
+  );
+const maxAge = z
+  .number()
+  .int()
+  .min(0)
+  .max(MAX_AGE_LIMIT)
+  .default(0)
+  .describe(
+    "Serves a cached result of the same request when it is newer than this age, in milliseconds, such as 86400000 for 1 day. Up to 604800000 (7 days). 0, the default, always scrapes fresh. A cached result costs the same tokens as the original scrape.",
+  );
+const maxRetries = z
+  .number()
+  .int()
+  .min(0)
+  .optional()
+  .describe("Maximum number of retries for the request. Omit for no limit.");
+const screenshotArea = z
+  .string()
+  .regex(SCREENSHOT_AREA_PATTERN)
+  .refine(
+    isScreenshotArea,
+    "Width and height must be 100 to 3840 and zoom 25 to 300.",
+  );
 export const scrapeHtmlInputSchema = z
   .object({
-    ...page,
-    ...loading,
-    warmStart: z
-      .boolean()
-      .default(false)
+    url,
+    browserRendering,
+    timeout,
+    warmStart,
+    blockResources,
+    waitForSelector,
+    geoCode,
+    maxAge,
+    maxRetries,
+    screenshot: screenshotArea
+      .optional()
       .describe(
-        "Whether to enable warm start for more reliable scraping, at the cost of additional latency.",
-      ),
-    browserRendering: z
-      .boolean()
-      .default(false)
-      .describe(
-        "Whether to render the page in a browser before returning the result.",
+        "Also captures a screenshot of the rendered page as a base64-encoded PNG: full captures the entire scroll height, top captures the first viewport, and <width>x<height> sets the viewport size in pixels with an optional -<zoom> percent, such as 1280x800 or 1920x1080-75. Width and height range from 100 to 3840, zoom from 25 to 300. Setting it forces browser rendering. Leave it out for no screenshot.",
       ),
   })
   .strict();
-export const scrapeMarkdownInputSchema = scrapeHtmlInputSchema.extend({
-  html: z
-    .boolean()
-    .default(false)
-    .describe("Whether to include the page HTML in the response."),
-});
+export const scrapeMarkdownInputSchema = z
+  .object({
+    url,
+    browserRendering,
+    timeout,
+    geoCode,
+    warmStart,
+    blockResources,
+    waitForSelector,
+    maxAge,
+    maxRetries,
+  })
+  .strict();
 export const getScreenshotInputSchema = z
   .object({
-    ...page,
-    ...loading,
-    screenshot: z
-      .enum(["full", "top"])
+    url,
+    screenshot: screenshotArea
       .default("full")
       .describe(
-        "Screenshot area to capture: full for the entire page or top for the top viewport.",
+        "Screenshot area: full captures the entire scroll height (the default), top captures the first viewport, and <width>x<height> sets the viewport size in pixels with an optional -<zoom> percent, such as 1280x800 or 1920x1080-75. Width and height range from 100 to 3840, zoom from 25 to 300. The image is a base64-encoded PNG.",
       ),
-    html: z
-      .boolean()
-      .default(true)
-      .describe("Whether to include the page HTML in the response."),
-    markdown: z
-      .boolean()
-      .default(false)
-      .describe("Whether to include the page Markdown in the response."),
+    timeout,
+    geoCode,
+    waitForSelector,
+    maxAge,
+    maxRetries,
   })
   .strict();
 export const scrapeBrandInputSchema = z.object({ url }).strict();
 export const scrapeJsonInputSchema = z
   .object({
-    ...page,
+    url,
     prompt: z
       .string()
       .min(1)
       .refine((value) => Boolean(value.trim()), "prompt must be non-empty")
-      .default("Extract all data as complete as possible.")
+      .optional()
       .describe(
-        "Instructions describing the data to extract. Append Json Schema: and a JSON schema to shape the output.",
-      ),
-    browserRendering: z
-      .boolean()
-      .default(false)
-      .describe(
-        "Whether to render the page in a browser before returning the result.",
+        'Description of the data shape you want back, for example fields like title, price, and rating. The prompt only parses the scraped content; it cannot instruct the scraper itself. To shape the output with a JSON schema, append it to the prompt as a Json Schema: section. Defaults to "Extract all data as complete as possible."',
       ),
     html: z
       .boolean()
-      .default(false)
-      .describe("Whether to include the page HTML in the response."),
+      .default(true)
+      .describe(
+        "Returns the raw HTML of the scraped page in the response. On by default; set false to leave it out.",
+      ),
     screenshot: z
       .boolean()
       .default(false)
-      .describe("Whether to include a base64 screenshot in the response."),
+      .describe(
+        "Captures a screenshot of the rendered page as a base64-encoded image. Useful for verifying what the scraper actually saw. Off by default.",
+      ),
+    browserRendering,
+    waitForSelector,
+    warmStart,
+    blockResources,
+    timeout,
+    geoCode,
+    maxAge,
+    maxRetries,
   })
   .strict();
 export const webSearchInputSchema = z
@@ -183,18 +188,20 @@ export const webSearchInputSchema = z
         (value) => [...value].length <= 1000,
         "query must be 1 to 1000 characters",
       )
+      .describe("The search query, from 1 to 1000 characters."),
+    country: countryCode
+      .optional()
       .describe(
-        "Search query text, trimmed before sending, containing 1 to 1000 characters.",
+        "Two-letter country code to run the search from. Defaults to the United States.",
       ),
-    country,
     numResults: z
       .number()
       .int()
       .min(10)
       .max(100)
-      .default(10)
+      .optional()
       .describe(
-        "Number of search results to request, as an integer from 10 to 100. Fewer results may be returned.",
+        "How many results to return, from 10 to 100. The search may return fewer. Defaults to 10.",
       ),
   })
   .strict();
@@ -225,11 +232,11 @@ function asStructured(result: Record<string, unknown>) {
 export const TOOL_DESCRIPTIONS = {
   status:
     "Return the raw account status API response without summarizing, redacting body fields, or adding calculated fields.",
-  scrapeHtml: "Retrieve the raw HTML of a page. Browser rendering is optional.",
-  scrapeMarkdown:
-    "Retrieve a page as Markdown. Including HTML also enables browser rendering and returns both outputs as JSON.",
+  scrapeHtml:
+    "Retrieve the raw HTML of a page. Browser rendering and a screenshot are optional.",
+  scrapeMarkdown: "Retrieve a page as Markdown. Browser rendering is optional.",
   getScreenshot:
-    "Capture a base64 screenshot of the full page or top viewport. Browser rendering is always enabled.",
+    "Capture a base64 PNG screenshot of the full page, the top viewport, or a custom viewport size. Browser rendering is always enabled.",
   scrapeBrand:
     "Extract a website's colors, typography, logos, and social links as JSON.",
   scrapeJson:
@@ -238,47 +245,10 @@ export const TOOL_DESCRIPTIONS = {
     "Search the web and return ranked results with titles, URLs, descriptions, and sources.",
 } as const;
 
-// ChatGPT and Codex sign-ins get the page tools without `super` (real-device routing) and
-// `proxy` (a custom proxy URL), which OpenAI's review read as getting around site
-// restrictions (3 Nov 2026); a call that sets one is rejected. `proxyCountry` stays settable
-// there but has no default: when the caller omits it, no proxy country is sent.
-export const CHATGPT_HIDDEN_INPUTS = ["proxy", "super"] as const;
-const chatgptProxyCountry = z
-  .string()
-  .regex(/^[A-Za-z]{2}$/)
-  .optional()
-  .describe(
-    "Two-letter country code of the proxy server, sent in lowercase. Omit it to use none.",
-  );
-export function inputSchemaFor(
-  schema: z.ZodObject,
-  surface: ToolSurface,
-): z.ZodObject {
-  if (surface !== "chatgpt") return schema;
-  const hidden: Record<string, true> = {};
-  for (const name of CHATGPT_HIDDEN_INPUTS) {
-    if (Object.hasOwn(schema.shape, name)) hidden[name] = true;
-  }
-  const reduced = schema.omit(hidden);
-  return Object.hasOwn(reduced.shape, "proxyCountry")
-    ? reduced.extend({ proxyCountry: chatgptProxyCountry })
-    : reduced;
-}
-
-// On ChatGPT an omitted proxyCountry sends none; every other client sends the default, us.
-function proxyCountryFor(
-  surface: ToolSurface,
-  input: { proxyCountry?: unknown },
-) {
-  return surface === "chatgpt" && input.proxyCountry === undefined
-    ? { proxyCountry: null }
-    : {};
-}
 export function registerTools(
   server: McpServer,
   getToken: () => string,
   dependencies: ToolDependencies = {},
-  surface: ToolSurface = "default",
 ): void {
   server.registerTool(
     "status",
@@ -302,13 +272,12 @@ export function registerTools(
     async (input) =>
       asStructured(await statusTool(getToken(), input, dependencies)),
   );
-  const scrapeHtmlSchema = inputSchemaFor(scrapeHtmlInputSchema, surface);
   server.registerTool(
     "scrapeHtml",
     {
       title: "Scrape HTML",
       description: TOOL_DESCRIPTIONS.scrapeHtml,
-      inputSchema: scrapeHtmlSchema,
+      inputSchema: scrapeHtmlInputSchema,
       outputSchema: apiResponseSchema,
       annotations: {
         title: "Scrape HTML",
@@ -322,23 +291,18 @@ export function registerTools(
       return asStructured(
         await scrapeHtml(url, {
           ...options,
-          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),
       );
     },
   );
-  const scrapeMarkdownSchema = inputSchemaFor(
-    scrapeMarkdownInputSchema,
-    surface,
-  );
   server.registerTool(
     "scrapeMarkdown",
     {
       title: "Scrape Markdown",
       description: TOOL_DESCRIPTIONS.scrapeMarkdown,
-      inputSchema: scrapeMarkdownSchema,
+      inputSchema: scrapeMarkdownInputSchema,
       outputSchema: apiResponseSchema,
       annotations: {
         title: "Scrape Markdown",
@@ -352,20 +316,18 @@ export function registerTools(
       return asStructured(
         await scrapeMarkdown(url, {
           ...options,
-          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),
       );
     },
   );
-  const getScreenshotSchema = inputSchemaFor(getScreenshotInputSchema, surface);
   server.registerTool(
     "getScreenshot",
     {
       title: "Get Screenshot",
       description: TOOL_DESCRIPTIONS.getScreenshot,
-      inputSchema: getScreenshotSchema,
+      inputSchema: getScreenshotInputSchema,
       outputSchema: apiResponseSchema,
       annotations: {
         title: "Get Screenshot",
@@ -379,20 +341,18 @@ export function registerTools(
       return asStructured(
         await getScreenshot(url, {
           ...options,
-          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),
       );
     },
   );
-  const scrapeBrandSchema = scrapeBrandInputSchema;
   server.registerTool(
     "scrapeBrand",
     {
       title: "Scrape Brand",
       description: TOOL_DESCRIPTIONS.scrapeBrand,
-      inputSchema: scrapeBrandSchema,
+      inputSchema: scrapeBrandInputSchema,
       outputSchema: apiResponseSchema,
       annotations: {
         title: "Scrape Brand",
@@ -412,13 +372,12 @@ export function registerTools(
       );
     },
   );
-  const scrapeJsonSchema = inputSchemaFor(scrapeJsonInputSchema, surface);
   server.registerTool(
     "scrapeJson",
     {
       title: "Scrape JSON",
       description: TOOL_DESCRIPTIONS.scrapeJson,
-      inputSchema: scrapeJsonSchema,
+      inputSchema: scrapeJsonInputSchema,
       outputSchema: apiResponseSchema,
       annotations: {
         title: "Scrape JSON",
@@ -432,20 +391,18 @@ export function registerTools(
       return asStructured(
         await scrapeJson(url, {
           ...options,
-          ...proxyCountryFor(surface, input),
           token: getToken(),
           ...dependencies,
         }),
       );
     },
   );
-  const webSearchSchema = webSearchInputSchema;
   server.registerTool(
     "webSearch",
     {
       title: "Web Search",
       description: TOOL_DESCRIPTIONS.webSearch,
-      inputSchema: webSearchSchema,
+      inputSchema: webSearchInputSchema,
       outputSchema: apiResponseSchema,
       annotations: {
         title: "Web Search",

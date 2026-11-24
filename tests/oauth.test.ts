@@ -13,15 +13,9 @@ import {
 } from "vitest";
 
 import { createHttpApp } from "../src/app.js";
-import {
-  CHATGPT_MCP_PATH,
-  OAUTH_SCOPES,
-  TOOL_NAMES,
-  type OAuthConfig,
-} from "../src/config.js";
+import { OAUTH_SCOPES, TOOL_NAMES, type OAuthConfig } from "../src/config.js";
 import { isOAuthAccessToken } from "../src/oauth.js";
 import { TOOL_SCOPES, requiredScopesForRequest } from "../src/scopes.js";
-import { CHATGPT_HIDDEN_INPUTS } from "../src/tools.js";
 
 const ISSUER_PLACEHOLDER = "https://issuer.invalid";
 const RESOURCE = "https://mcp.mrscraper.test/mcp";
@@ -77,14 +71,11 @@ async function mintToken(
     issuer?: string;
     expiresIn?: string;
     subject?: string;
-    clientId?: string;
   } = {},
 ) {
   return new SignJWT({
     scope: overrides.scope ?? "scrape:read",
-    client_id:
-      overrides.clientId ??
-      "https://claude.ai/oauth/claude-code-client-metadata",
+    client_id: "https://claude.ai/oauth/claude-code-client-metadata",
   })
     .setProtectedHeader({ alg: "RS256", kid: "test" })
     .setIssuer(overrides.issuer ?? issuer)
@@ -181,13 +172,8 @@ async function startApp(
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
-function toolCall(
-  baseUrl: string,
-  name: string,
-  token?: string,
-  options: { path?: string; arguments?: Record<string, unknown> } = {},
-) {
-  return fetch(`${baseUrl}${options.path ?? "/mcp"}`, {
+function toolCall(baseUrl: string, name: string, token?: string) {
+  return fetch(`${baseUrl}/mcp`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -201,12 +187,11 @@ function toolCall(
       params: {
         name,
         arguments:
-          options.arguments ??
-          (name === "status"
+          name === "status"
             ? {}
             : name === "webSearch"
               ? { query: "MrScraper" }
-              : { url: "https://example.com" }),
+              : { url: "https://example.com" },
       },
     }),
   });
@@ -394,35 +379,30 @@ describe("bearer challenges", () => {
 });
 
 describe("per-tool scope gate", () => {
-  it.each(["/mcp", CHATGPT_MCP_PATH])(
-    "executes all six services with scrape:read alone on %s",
-    async (path) => {
-      const requests: UpstreamRequest[] = [];
-      const baseUrl = await startApp(oauthConfig(), requests);
-      const token = await mintToken({ scope: "scrape:read" });
-      for (const name of TOOL_NAMES.filter((name) => name !== "status")) {
-        await expectToolSuccess(await toolCall(baseUrl, name, token, { path }));
-      }
-      expect(
-        requests.map((request) => [
-          request.url.pathname,
-          request.url.searchParams.get("action"),
-        ]),
-      ).toEqual([
-        ["/", null],
-        ["/", null],
-        ["/", null],
-        ["/", "brand-scraping"],
-        ["/", null],
-        ["/", "websearch"],
-      ]);
-      expect(
-        requests.every(
-          (request) => request.authorization === `Bearer ${token}`,
-        ),
-      ).toBe(true);
-    },
-  );
+  it("executes all six services with scrape:read alone", async () => {
+    const requests: UpstreamRequest[] = [];
+    const baseUrl = await startApp(oauthConfig(), requests);
+    const token = await mintToken({ scope: "scrape:read" });
+    for (const name of TOOL_NAMES.filter((name) => name !== "status")) {
+      await expectToolSuccess(await toolCall(baseUrl, name, token));
+    }
+    expect(
+      requests.map((request) => [
+        request.url.pathname,
+        request.url.searchParams.get("action"),
+      ]),
+    ).toEqual([
+      ["/", null],
+      ["/", null],
+      ["/", null],
+      ["/", "brand-scraping"],
+      ["/", null],
+      ["/", "websearch"],
+    ]);
+    expect(
+      requests.every((request) => request.authorization === `Bearer ${token}`),
+    ).toBe(true);
+  });
 
   it("executes all seven services with both read scopes", async () => {
     const baseUrl = await startApp();
@@ -525,107 +505,5 @@ describe("API key compatibility", () => {
   it("still rejects an unknown API key", async () => {
     const baseUrl = await startApp();
     expect((await toolCall(baseUrl, "scrapeHtml", "nope")).status).toBe(401);
-  });
-});
-
-async function scraperOptions(baseUrl: string, token: string) {
-  const response = await fetch(`${baseUrl}/mcp`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json, text/event-stream",
-      authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
-  });
-  expect(response.status).toBe(200);
-  const text = await response.text();
-  const event = text.split("\n").find((line) => line.startsWith("data: "));
-  const { result } = JSON.parse(event ? event.slice(6) : text);
-  const scraper = result.tools.find(
-    (tool: { name: string }) => tool.name === "scrapeHtml",
-  );
-  return Object.keys(scraper.inputSchema.properties).sort();
-}
-
-describe("ChatGPT endpoint", () => {
-  it("sends ChatGPT to the /mcp resource metadata, so one sign-in covers both endpoints", async () => {
-    const baseUrl = await startApp();
-    const response = await toolCall(baseUrl, "scrapeHtml", undefined, {
-      path: CHATGPT_MCP_PATH,
-    });
-    expect(response.status).toBe(401);
-    expect(response.headers.get("www-authenticate")).toContain(
-      'resource_metadata="https://mcp.mrscraper.test/.well-known/oauth-protected-resource/mcp"',
-    );
-  });
-
-  it("accepts proxy controls on /mcp and refuses them on the ChatGPT endpoint", async () => {
-    const requests: UpstreamRequest[] = [];
-    const baseUrl = await startApp(oauthConfig(), requests);
-    const token = await mintToken();
-    const withProxy = {
-      url: "https://example.com",
-      proxy: "http://proxy.example",
-    };
-    await expectToolSuccess(
-      await toolCall(baseUrl, "scrapeHtml", token, { arguments: withProxy }),
-    );
-    const refused = await toolCall(baseUrl, "scrapeHtml", token, {
-      path: CHATGPT_MCP_PATH,
-      arguments: withProxy,
-    });
-    expect(refused.status).toBe(200);
-    const text = await refused.text();
-    const event = text.split("\n").find((line) => line.startsWith("data: "));
-    expect(JSON.parse(event ? event.slice(6) : text).result.isError).toBe(true);
-    expect(requests).toHaveLength(1);
-  });
-
-  it.each([
-    "https://chatgpt.com/oauth/client.json",
-    "https://chatgpt.com/oauth/codex/client.json",
-  ])(
-    "serves the ChatGPT page options on /mcp to the OAuth client %s",
-    async (clientId) => {
-      const baseUrl = await startApp();
-      const options = await scraperOptions(
-        baseUrl,
-        await mintToken({ clientId }),
-      );
-      expect(options).toEqual(
-        expect.arrayContaining([
-          "browserRendering",
-          "geoCode",
-          "timeout",
-          "url",
-          "waitForSelector",
-          "waitUntil",
-          "saveResult",
-          "blockResources",
-          "proxyCountry",
-          "maxRetries",
-          "returnCookie",
-          "warmStart",
-        ]),
-      );
-      for (const input of CHATGPT_HIDDEN_INPUTS) {
-        expect(options).not.toContain(input);
-      }
-    },
-  );
-
-  it("keeps the full page options on /mcp for other OAuth clients and API keys", async () => {
-    const baseUrl = await startApp();
-    for (const credential of [await mintToken(), "valid-key"]) {
-      expect(await scraperOptions(baseUrl, credential)).toEqual(
-        expect.arrayContaining([
-          "proxy",
-          "returnCookie",
-          "saveResult",
-          "super",
-        ]),
-      );
-    }
   });
 });

@@ -1,22 +1,18 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it, vi } from "vitest";
-import { TOOL_NAMES, type ToolSurface } from "../src/config.js";
+import { TOOL_NAMES } from "../src/config.js";
 import { createMrscraperServer } from "../src/server.js";
 import {
-  CHATGPT_HIDDEN_INPUTS,
   scrapeHtmlInputSchema,
   scrapeJsonInputSchema,
   getScreenshotInputSchema,
   webSearchInputSchema,
 } from "../src/tools.js";
 
-async function connect(
-  fetchFn: typeof fetch,
-  surface: ToolSurface = "default",
-) {
+async function connect(fetchFn: typeof fetch) {
   const server = createMrscraperServer(
     { era: "legacy" },
-    { resolveToken: () => "test-token", fetchFn, surface },
+    { resolveToken: () => "test-token", fetchFn },
   );
   const client = new Client({ name: "tools-test", version: "1" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
@@ -42,144 +38,135 @@ const pageToolNames = [
   "scrapeJson",
 ] as const;
 
+// The documented inputs per tool, in order, and the ones with a default the server sends.
+const inputs: Record<(typeof TOOL_NAMES)[number], string[]> = {
+  status: [],
+  scrapeHtml: [
+    "url",
+    "browserRendering",
+    "timeout",
+    "warmStart",
+    "blockResources",
+    "waitForSelector",
+    "geoCode",
+    "maxAge",
+    "maxRetries",
+    "screenshot",
+  ],
+  scrapeMarkdown: [
+    "url",
+    "browserRendering",
+    "timeout",
+    "geoCode",
+    "warmStart",
+    "blockResources",
+    "waitForSelector",
+    "maxAge",
+    "maxRetries",
+  ],
+  getScreenshot: [
+    "url",
+    "screenshot",
+    "timeout",
+    "geoCode",
+    "waitForSelector",
+    "maxAge",
+    "maxRetries",
+  ],
+  scrapeBrand: ["url"],
+  scrapeJson: [
+    "url",
+    "prompt",
+    "html",
+    "screenshot",
+    "browserRendering",
+    "waitForSelector",
+    "warmStart",
+    "blockResources",
+    "timeout",
+    "geoCode",
+    "maxAge",
+    "maxRetries",
+  ],
+  webSearch: ["query", "country", "numResults"],
+};
+const defaults: Record<string, Record<string, unknown>> = {
+  scrapeHtml: { maxAge: 0 },
+  scrapeMarkdown: { maxAge: 0 },
+  getScreenshot: { screenshot: "full", maxAge: 0 },
+  scrapeJson: { html: true, screenshot: false, maxAge: 0 },
+};
+
 describe("MCP seven-service surface", () => {
-  it.each(["default", "chatgpt"] as const)(
-    "lists seven tools with accurate hints on %s",
-    async (surface) => {
-      const { client, server } = await connect(fake(), surface);
-      try {
-        const { tools } = await client.listTools();
-        expect(tools.map((t) => t.name)).toEqual([
-          "status",
-          "scrapeHtml",
-          "scrapeMarkdown",
-          "getScreenshot",
-          "scrapeBrand",
-          "scrapeJson",
-          "webSearch",
-        ]);
-        for (const tool of tools) {
-          const canSave = Object.hasOwn(
-            tool.inputSchema.properties ?? {},
-            "saveResult",
-          );
-          expect(tool.annotations).toMatchObject({
-            readOnlyHint: !canSave,
-            destructiveHint: false,
-            openWorldHint: tool.name !== "status",
-          });
-          expect(tool.inputSchema.properties).not.toHaveProperty("token");
-          expect(tool.outputSchema).toBeDefined();
-        }
-        const search = tools.find((tool) => tool.name === "webSearch")!;
-        expect(Object.keys(search.inputSchema.properties ?? {}).sort()).toEqual(
-          ["country", "numResults", "query"],
-        );
-        for (const name of pageToolNames) {
-          const properties = tools.find((tool) => tool.name === name)!
-            .inputSchema.properties;
-          expect(properties).not.toHaveProperty("superMode");
-          expect(properties).toHaveProperty("saveResult");
-          if (surface === "chatgpt") {
-            for (const input of CHATGPT_HIDDEN_INPUTS) {
-              expect(properties).not.toHaveProperty(input);
-            }
-            expect(properties).toHaveProperty("maxRetries");
-            expect(properties!.proxyCountry).toMatchObject({ type: "string" });
-            expect(properties!.proxyCountry).not.toHaveProperty("default");
-          } else {
-            expect(properties).toHaveProperty("super", {
-              type: "boolean",
-              default: false,
-              description: "Whether to route the request through real devices.",
-            });
-          }
-        }
-      } finally {
-        await client.close();
-        await server.close();
-      }
-    },
-  );
-  it.each(pageToolNames)("forwards the super API key for %s", async (name) => {
-    const fetchFn = fake();
-    const { client, server } = await connect(fetchFn);
+  it("lists the seven tools with the documented inputs and hints", async () => {
+    const { client, server } = await connect(fake());
     try {
-      for (const value of [false, true]) {
-        const result = await client.callTool({
-          name,
-          arguments: { url: "https://example.com", super: value },
+      const { tools } = await client.listTools();
+      expect(tools.map((t) => t.name)).toEqual([...TOOL_NAMES]);
+      for (const tool of tools) {
+        const name = tool.name as (typeof TOOL_NAMES)[number];
+        const properties = tool.inputSchema.properties ?? {};
+        expect(Object.keys(properties), name).toEqual(inputs[name]);
+        const sentByDefault = Object.fromEntries(
+          Object.entries(properties).flatMap(([key, field]) =>
+            field && typeof field === "object" && "default" in field
+              ? [[key, field.default]]
+              : [],
+          ),
+        );
+        expect(sentByDefault, name).toEqual(defaults[name] ?? {});
+        // The page tools always save the result to the Result tab.
+        expect(tool.annotations).toMatchObject({
+          readOnlyHint: !(pageToolNames as readonly string[]).includes(name),
+          destructiveHint: false,
+          openWorldHint: name !== "status",
         });
-        expect(result.isError).not.toBe(true);
-        const [requestUrl] = vi.mocked(fetchFn).mock.calls.at(-1)!;
-        const params = new URL(String(requestUrl)).searchParams;
-        expect(params.get("super")).toBe(String(value));
-        expect(params.has("superMode")).toBe(false);
+        expect(tool.outputSchema).toBeDefined();
       }
-      const unsupported = await client.callTool({
-        name,
-        arguments: { url: "https://example.com", superMode: true },
-      });
-      expect(unsupported.isError).toBe(true);
-      expect(fetchFn).toHaveBeenCalledTimes(2);
     } finally {
       await client.close();
       await server.close();
     }
   });
   it.each(pageToolNames)(
-    "supports CLI dashboard saving on the ChatGPT %s tool",
+    "sends only the fixed values, maxAge and saveResult for a bare %s call",
     async (name) => {
       const fetchFn = fake();
-      const { client, server } = await connect(fetchFn, "chatgpt");
+      const { client, server } = await connect(fetchFn);
       try {
         const result = await client.callTool({
           name,
-          arguments: { url: "https://example.com", saveResult: true },
+          arguments: { url: "https://example.com" },
         });
         expect(result.isError).not.toBe(true);
         const [url] = vi.mocked(fetchFn).mock.calls[0]!;
-        expect(new URL(String(url)).searchParams.get("saveResult")).toBe(
-          "true",
-        );
+        const params = Object.fromEntries(new URL(String(url)).searchParams);
+        expect(params).toMatchObject({ maxAge: "0", saveResult: "true" });
+        for (const unset of ["timeout", "geoCode", "warmStart", "maxRetries"])
+          expect(params, unset).not.toHaveProperty(unset);
+        if (name !== "getScreenshot")
+          expect(params).not.toHaveProperty("browserRendering");
       } finally {
         await client.close();
         await server.close();
       }
     },
   );
-
   it.each(pageToolNames)(
-    "keeps super and proxy off the ChatGPT %s tool and sends no proxy country unless asked",
+    "rejects inputs outside the docs on %s before calling upstream",
     async (name) => {
-      const fullFetch = fake();
-      const full = await connect(fullFetch);
-      await full.client.callTool({
-        name,
-        arguments: { url: "https://example.com" },
-      });
-      await full.client.close();
-      await full.server.close();
-      const [fullUrl] = vi.mocked(fullFetch).mock.calls[0]!;
-      expect(new URL(String(fullUrl)).searchParams.get("proxyCountry")).toBe(
-        "us",
-      );
-
       const fetchFn = fake();
-      const { client, server } = await connect(fetchFn, "chatgpt");
-      const sent = async (args: Record<string, unknown>) => {
-        const result = await client.callTool({
-          name,
-          arguments: { url: "https://example.com", ...args },
-        });
-        expect(result.isError).not.toBe(true);
-        const [url] = vi.mocked(fetchFn).mock.calls.at(-1)!;
-        return new URL(String(url)).searchParams;
-      };
+      const { client, server } = await connect(fetchFn);
       try {
         for (const [input, value] of [
           ["super", true],
           ["proxy", "http://user:pass@proxy.example:8080"],
+          ["proxyCountry", "de"],
+          ["waitUntil", "load"],
+          ["returnCookie", true],
+          ["saveResult", false],
+          ["tokenCap", 10],
+          ["action", "brand-scraping"],
         ] as const) {
           const refused = await client.callTool({
             name,
@@ -188,63 +175,54 @@ describe("MCP seven-service surface", () => {
           expect(refused.isError, input).toBe(true);
         }
         expect(fetchFn).not.toHaveBeenCalled();
-
-        const plain = await sent({});
-        expect(plain.get("super")).toBe("false");
-        expect(plain.has("proxyCountry")).toBe(false);
-        expect(plain.get("geoCode")).toBe("us");
-        expect(plain.has("proxy")).toBe(false);
-
-        const chosen = await sent({ proxyCountry: "DE", maxRetries: 2 });
-        expect(chosen.get("proxyCountry")).toBe("de");
-        expect(chosen.get("maxRetries")).toBe("2");
       } finally {
         await client.close();
         await server.close();
       }
     },
   );
-
-  it.each(["scrapeHtml", "scrapeMarkdown"])(
-    "forwards warmStart on both client surfaces for %s",
-    async (name) => {
-      for (const surface of ["default", "chatgpt"] as const) {
-        const fetchFn = fake();
-        const { client, server } = await connect(fetchFn, surface);
-        try {
-          for (const warmStart of [false, true]) {
-            const result = await client.callTool({
-              name,
-              arguments: { url: "https://example.com", warmStart },
-            });
-            expect(result.isError).not.toBe(true);
-            const [url] = vi.mocked(fetchFn).mock.calls.at(-1)!;
-            expect(new URL(String(url)).searchParams.get("warmStart")).toBe(
-              String(warmStart),
-            );
-          }
-          const invalid = await client.callTool({
-            name,
-            arguments: { url: "https://example.com", warmStart: "true" },
-          });
-          expect(invalid.isError).toBe(true);
-          expect(fetchFn).toHaveBeenCalledTimes(2);
-        } finally {
-          await client.close();
-          await server.close();
-        }
-      }
-    },
-  );
-  it.each(["getScreenshot", "scrapeJson"])(
-    "rejects warmStart on %s",
+  it.each(["scrapeHtml", "scrapeMarkdown", "scrapeJson"])(
+    "forwards warmStart and browserRendering false instead of dropping it for %s",
     async (name) => {
       const fetchFn = fake();
       const { client, server } = await connect(fetchFn);
       try {
-        const result = await client.callTool({
+        for (const value of [false, true]) {
+          const result = await client.callTool({
+            name,
+            arguments: {
+              url: "https://example.com",
+              warmStart: value,
+              browserRendering: value,
+            },
+          });
+          expect(result.isError).not.toBe(true);
+          const [url] = vi.mocked(fetchFn).mock.calls.at(-1)!;
+          const params = new URL(String(url)).searchParams;
+          expect(params.get("warmStart")).toBe(String(value));
+          expect(params.get("browserRendering")).toBe(String(value));
+        }
+        const invalid = await client.callTool({
           name,
-          arguments: { url: "https://example.com", warmStart: true },
+          arguments: { url: "https://example.com", warmStart: "true" },
+        });
+        expect(invalid.isError).toBe(true);
+        expect(fetchFn).toHaveBeenCalledTimes(2);
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    },
+  );
+  it.each(["warmStart", "blockResources", "browserRendering", "html"])(
+    "rejects %s on getScreenshot",
+    async (input) => {
+      const fetchFn = fake();
+      const { client, server } = await connect(fetchFn);
+      try {
+        const result = await client.callTool({
+          name: "getScreenshot",
+          arguments: { url: "https://example.com", [input]: true },
         });
         expect(result.isError).toBe(true);
         expect(fetchFn).not.toHaveBeenCalled();
@@ -346,15 +324,21 @@ describe("MCP seven-service surface", () => {
       await server.close();
     }
   });
-  it("rejects unsupported options before calling upstream", async () => {
+  it("rejects scrapeBrand inputs other than url", async () => {
     const fetchFn = fake();
     const { client, server } = await connect(fetchFn);
     try {
-      const result = await client.callTool({
-        name: "scrapeJson",
-        arguments: { url: "https://example.com", returnCookie: true },
-      });
-      expect(result.isError).toBe(true);
+      for (const input of ["geoCode", "timeout", "warmStart"]) {
+        const result = await client.callTool({
+          name: "scrapeBrand",
+          arguments: {
+            url: "https://example.com",
+            [input]:
+              input === "timeout" ? 60 : input === "geoCode" ? "us" : true,
+          },
+        });
+        expect(result.isError, input).toBe(true);
+      }
       expect(fetchFn).not.toHaveBeenCalled();
     } finally {
       await client.close();
@@ -366,27 +350,38 @@ describe("MCP seven-service surface", () => {
 describe("input validation", () => {
   it.each([
     { url: "file:///tmp/a" },
-    { url: "https://example.com", timeout: 301 },
+    { url: "https://example.com", timeout: 331 },
     { url: "https://example.com", maxRetries: -1 },
+    { url: "https://example.com", maxAge: -1 },
+    { url: "https://example.com", maxAge: 604800001 },
     { url: "https://example.com", geoCode: "usa" },
-    { url: "https://example.com", waitUntil: "networkidle" },
+    { url: "https://example.com", waitForSelector: "x".repeat(501) },
+    { url: "https://example.com", screenshot: "side" },
+    { url: "https://example.com", screenshot: true },
   ])("rejects invalid page input %j", (input) =>
     expect(() => scrapeHtmlInputSchema.parse(input)).toThrow(),
   );
   it("rejects invalid screenshot and JSON controls", () => {
-    expect(() =>
+    for (const screenshot of [true, "1280x800-301", "99x800"])
+      expect(() =>
+        getScreenshotInputSchema.parse({
+          url: "https://example.com",
+          screenshot,
+        }),
+      ).toThrow();
+    expect(
       getScreenshotInputSchema.parse({
         url: "https://example.com",
-        screenshot: true,
-      }),
-    ).toThrow();
+        screenshot: "1920x1080-75",
+      }).screenshot,
+    ).toBe("1920x1080-75");
     expect(() =>
       scrapeJsonInputSchema.parse({ url: "https://example.com", prompt: " " }),
     ).toThrow();
     expect(() =>
       scrapeJsonInputSchema.parse({
         url: "https://example.com",
-        blockResources: true,
+        screenshot: "full",
       }),
     ).toThrow();
   });
