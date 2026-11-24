@@ -3,7 +3,7 @@
   "name": "io.github.mrscraper-com/mrscraper-mcp",
   "title": "MrScraper MCP",
   "description": "Seven services: account, HTML, Markdown, screenshots, brand, JSON extraction, and web search.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "repository": {
     "url": "https://github.com/mrscraper-com/mrscraper-mcp",
     "source": "github"
